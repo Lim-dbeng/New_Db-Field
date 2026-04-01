@@ -1,0 +1,30 @@
+# Maven
+maven_repository*/
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Node.js
+node_modules/
+
+# Tomcat 로그 및 실행파일
+**/.run/
+**/logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 환경변수
+.env
