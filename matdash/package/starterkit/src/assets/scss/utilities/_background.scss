@@ -1,0 +1,20 @@
+// ----------------------------------------------
+// Background Style
+// ----------------------------------------------
+
+.bg-hover-primary {
+  &:hover {
+    color: var(--bs-primary) !important;
+  }
+}
+
+.bg-hover-light-black {
+  &:hover {
+    background: var(--bs-light-bg-subtle);
+  }
+}
+
+
+hr {
+  border-top: 1px solid var(--bs-border-color) !important;
+}

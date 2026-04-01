@@ -1,0 +1,15 @@
+# CAD → GeoJSON 프록시 서버 (localhost:5000) 의존성
+# 사용: pip install -r requirements_cad_proxy.txt
+
+flask>=2.0
+ezdxf>=1.0
+geopandas>=0.10
+shapely>=2.0
+pyproj>=3.0
+
+# DGN 변환 시에만 필요 (GDAL 설치가 플랫폼별로 다름)
+# Windows: conda install gdal 또는 OSGeo4W 등 참고
+# gdal>=3.0
+
+# DWG 변환: ODA File Converter 별도 설치 필요
+# https://www.opendesign.com/guestfiles/oda_file_converter

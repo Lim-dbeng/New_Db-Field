@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" data-bs-theme="light" data-color-theme="Blue_Theme" data-layout="vertical"
+  data-boxed-layout="boxed">
+
+<head>
+  @@include("../main/partials/head.html")
+  <title>MatDash Bootstrap Admin</title>
+
+  <link rel="stylesheet" href="@@webRoot/node_modules/prismjs/themes/prism-okaidia.min.css" />
+</head>
+
+<body class="link-sidebar">
+
+  <!-- ============================================================== -->
+  <!-- Main wrapper - style you can find in pages.scss -->
+  <!-- ============================================================== -->
+  <div id="main-wrapper">
+    <!-- ============================================================== -->
+    <!-- End Topbar header -->
+    <!-- ============================================================== -->
+    <!-- ============================================================== -->
+    <!-- Left Sidebar - style you can find in sidebar.scss  -->
+    <!-- ============================================================== -->
+    <!--Desktop view sidebar menu-->
+    <aside class="left-sidebar with-vertical">
+      @@include("./partials/sidebar.html")
+    </aside>
+
+    <!-- ============================================================== -->
+    <!-- End Left Sidebar - style you can find in sidebar.scss  -->
+    <!-- ============================================================== -->
+    <div class="page-wrapper">
+      <!-- ============================================================== -->
+      <!-- Topbar header - style you can find in pages.scss -->
+      <!-- ============================================================== -->
+      <header class="topbar position-relative">
+        <div class="navbar navbar-header bg-white d-flex align-items-center justify-content-between p-3 fixed-top">
+          <!-- ============================================================== -->
+          <!-- Toggle which is visible on mobile only -->
+          <!-- ============================================================== -->
+          <!-- Logo icon -->
+          <a href="index.html">
+            <b class="logo-icon d-xl-none d-block">
+              <!-- Dark Logo icon -->
+              <img src="@@webRoot/assets/images/logos/logo.svg" alt="homepage" class="dark-logo" />
+            </b>
+            <!--End Logo icon -->
+          </a>
+          <div class="d-flex align-items-center">
+            <!---Mobile view canvas button--->
+            <a class="fs-8 text-muted d-xl-none d-block sidebartoggler" href="javascript:void(0)" role="button">
+              <i class="ti ti-menu-2"></i>
+            </a>
+          </div>
+        </div>
+      </header>
+      <!-- ============================================================== -->
+      <!-- Page wrapper  -->
+      <!-- ============================================================== -->
+      <div class="body-wrapper" data-bs-spy="scroll" data-bs-target="#navbar-example3" data-bs-smooth-scroll="true"
+        tabindex="0">
+        <!-- ============================================================== -->
+        <!-- Container fluid  -->
+        <!-- ============================================================== -->
+        <div class="container-fluid">
+          <!-- ============================================================== -->
+          <!-- Start Page Content -->
+          <!-- ============================================================== -->
+          <h4 class="mb-4 pb-2 fs-5">Typography</h3>
+            <div class="mt-4 card">
+              <div class="card-body">
+                <h4 class="card-title">Google fonts</h4>
+                <h5 class="card-subtitle mt-2 text-muted">1) Customize the Google Fonts link to your preferred
+                  selection : <span class="text-dark fw-bold">scss/style.css</span></h5>
+                <div class="py-3 bg-white">
+                  <div class="alert bg-primary-subtle p-3 text-primary mb-4">
+                    <h5>Note:</h5>
+                    To execute Gulp, navigate to the directory containing the package.json file. Open a command prompt
+                    in that location and enter the command "gulp" as indicated below. For instructions on installing
+                    Gulp, please refer to the following link
+                    <a href="./docs-start.html" class="text-dark fw-bold">Gulp</a>
+                  </div>
+                  <pre>
+                            <code class="language-js py-0">
+gulp
+                            </code>
+                        </pre>
+                </div>
+                <pre>
+                            <code class="language-html py-0">
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&display=swap");
+                            </code>
+                        </pre>
+                <h5 class="card-subtitle mt-4 text-muted">2) Change Font family : <span
+                    class="text-dark fw-bold">scss/variables.scss</span></h5>
+                <pre>
+                            <code class="language-js py-0">
+$font-family-sans-serif: "Manrope", sans-serif !default;
+                            </code>
+                        </pre>
+                <div class="alert alert-success text-success fw-normal mt-3">
+
+                  Now, save your variable.scss file and verify the changes in the browser.
+                </div>
+                <div class="alert alert-info text-info fw-normal mb-0">
+                  To alter the font selection within the theme, insert the URL linking to your desired fonts and
+                  update the font family attribute accordingly within the variable.scss file.
+                </div>
+              </div>
+            </div>
+        </div>
+        <!-- ============================================================== -->
+        <!-- End Container fluid  -->
+        <!-- ============================================================== -->
+      </div>
+      <!-- ============================================================== -->
+      <!-- End Page wrapper  -->
+      <!-- ============================================================== -->
+    </div>
+  </div>
+  <div class="dark-transparent sidebartoggler"></div>
+  <!-- ============================================================== -->
+  <!-- End Wrapper -->
+  <!-- ============================================================== -->
+  <!-- End Page -->
+  <!-- ============================================================== -->
+  <!-- All Jquery -->
+  <!-- ============================================================== -->
+  @@include("../docs/partials/scripts.html")
+  <script src="@@webRoot/node_modules/prismjs/prism.js"></script>
+  <!-- End JS -->
+</body>
+
+</html>

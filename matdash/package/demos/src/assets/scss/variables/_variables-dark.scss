@@ -1,0 +1,38 @@
+//
+// using scss variables
+//
+$border-color-dark: #313e54 !default;
+$body-color-dark: rgba(255, 255, 255, 0.6) !default;
+$body-bg-dark: #1a2537 !default;
+$link-color-dark: #ffffffd9 !default;
+
+$primary-bg-subtle-dark: rgba($primary, 0.2) !default;
+$secondary-bg-subtle-dark: rgba($secondary, 0.2) !default;
+$success-bg-subtle-dark: rgba($success, 0.2) !default;
+$info-bg-subtle-dark: rgba($info, 0.2) !default;
+$warning-bg-subtle-dark: rgba($warning, 0.2) !default;
+$danger-bg-subtle-dark: rgba($danger, 0.2) !default;
+$light-bg-subtle-dark: rgba($light, 0.2) !default;
+$dark-bg-subtle-dark: rgba($dark, 0.2) !default;
+$bg-dark: #1d2228 !default;
+$link-hover-color-dark: $primary !default;
+
+$dropdown-dark-link-hover-bg: $primary-bg-subtle !default;
+
+//
+// using css variables
+//
+[data-bs-theme="dark"] {
+  $dark-bg-variant: #1f2a3d;
+
+  .progress {
+    --bs-progress-bg: #1f2a3d !important;
+  }
+  --bs-heading-color: rgba(255, 255, 255, 0.85);
+  --bs-body-color: rgba(255, 255, 255, 0.6) !important;
+  --bs-card-subtitle-color: rgba(255, 255, 255, 0.6) !important;
+  --bs-secondary-color: rgba(255, 255, 255, 0.6) !important;
+  --bs-gray-100: #1f2a3d !important;
+  
+  @import "../layouts/dark";
+}

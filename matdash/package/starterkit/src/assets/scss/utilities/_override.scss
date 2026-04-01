@@ -1,0 +1,28 @@
+// ----------------------------------------------
+// Position Style
+// ----------------------------------------------
+.z-index-5 {
+    z-index: 5 !important;
+}
+
+// ----------------------------------------------
+// Text  Style
+// ----------------------------------------------
+.text-body-color {
+    color: var(--bs-body-color) !important;
+}
+
+
+label {
+    font-weight: 500;
+}
+
+body .text-muted {
+    color: $muted !important;
+}
+
+.form-select {
+    --bs-form-select-bg-img: url(../images/svgs/caret-down.svg) !important;
+    background-size: 24px 24px;
+    background-position: right 11px center;
+}

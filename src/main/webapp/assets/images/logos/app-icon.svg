@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Pin gradient: teal brand color -->
+    <linearGradient id="pinGrad" x1="380" y1="80" x2="620" y2="950" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22D4B6"/>
+      <stop offset="45%" stop-color="#13A88E"/>
+      <stop offset="100%" stop-color="#0A7260"/>
+    </linearGradient>
+
+    <!-- Subtle glass shine on pin -->
+    <radialGradient id="shine" cx="0.40" cy="0.26" r="0.46">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Drop shadow -->
+    <filter id="shadow" x="-8%" y="-4%" width="116%" height="116%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#0A5045" flood-opacity="0.20"/>
+    </filter>
+  </defs>
+
+  <!-- White background -->
+  <rect width="1024" height="1024" fill="#FFFFFF"/>
+
+  <!-- Map Pin -->
+  <g filter="url(#shadow)">
+    <path d="M512 940
+             C498 870 232 592 232 362
+             A280 280 0 1 1 792 362
+             C792 592 526 870 512 940Z"
+          fill="url(#pinGrad)"/>
+  </g>
+  <!-- Glass shine overlay -->
+  <path d="M512 940
+           C498 870 232 592 232 362
+           A280 280 0 1 1 792 362
+           C792 592 526 870 512 940Z"
+        fill="url(#shine)"/>
+
+  <!-- Building / Facility icon (white, inside pin head) -->
+
+  <!-- Main building body -->
+  <rect x="404" y="200" width="216" height="264" rx="8" fill="white"/>
+
+  <!-- Roof cap (slightly darker top stripe for definition) -->
+  <rect x="404" y="200" width="216" height="18" rx="8" fill="white" opacity="0.6"/>
+  <!-- Roof overhang lines -->
+  <rect x="392" y="194" width="240" height="22" rx="6" fill="white"/>
+
+  <!-- Windows — 2 columns × 3 rows -->
+  <!-- Row 1 -->
+  <rect x="424" y="232" width="60" height="52" rx="6" fill="#13A88E"/>
+  <rect x="540" y="232" width="60" height="52" rx="6" fill="#13A88E"/>
+  <!-- Row 2 -->
+  <rect x="424" y="304" width="60" height="52" rx="6" fill="#13A88E"/>
+  <rect x="540" y="304" width="60" height="52" rx="6" fill="#13A88E"/>
+
+  <!-- Door (centered) -->
+  <rect x="478" y="382" width="68" height="82" rx="6" fill="#13A88E"/>
+  <!-- Door knob -->
+  <circle cx="536" cy="425" r="7" fill="white"/>
+
+  <!-- Ground line under building (subtle) -->
+  <rect x="380" y="462" width="264" height="6" rx="3" fill="white" opacity="0.40"/>
+
+  <!-- "DB·Field" text — at bottom of pin, above tip -->
+  <text x="512" y="660"
+        text-anchor="middle"
+        font-family="'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
+        font-size="88"
+        font-weight="800"
+        fill="white"
+        opacity="0.92"
+        letter-spacing="2">DB·Field</text>
+</svg>

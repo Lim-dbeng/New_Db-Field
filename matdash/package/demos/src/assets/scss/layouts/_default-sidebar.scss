@@ -1,0 +1,201 @@
+//
+// Default sidebar
+//
+[data-layout="vertical"] {
+  .link-sidebar {
+    .left-sidebar {
+      width: $sidebar-width-default;
+      flex-shrink: 0;
+      z-index: 99;
+      transition: 0.2s ease-in;
+      position: fixed;
+      left: 0;
+      right: 0;
+      height: 100%;
+    }
+    .brand-logo {
+      padding: 0 24px;
+    }
+
+    .scroll-sidebar {
+      overflow-y: auto;
+      padding: 0 16px;
+      height: calc(100vh - 66px);
+    }
+
+    // sidebar
+    .nav-small-cap {
+      .mini-icon {
+        display: none;
+      }
+    }
+  }
+}
+
+//
+// Above Large screen
+//
+@include media-breakpoint-up(xl) {
+  html {
+    &[data-layout="vertical"] {
+      .link-sidebar {
+        .topbar {
+          width: calc(100% - #{$sidebar-width-default});
+        }
+
+        .page-wrapper {
+          margin-left: $sidebar-width-default;
+        }
+      }
+
+      // ------------------------
+      // minisidebar
+      [data-sidebartype="mini-sidebar"] {
+        &.link-sidebar {
+          .topbar {
+            width: calc(100% - #{$sidebar-width-mini});
+          }
+
+          .brand-logo {
+            padding: 0 16px;
+            .logo-img {
+              width: 40px;
+              overflow: hidden;
+              margin: 0 5px;
+            }
+          }
+
+          .left-sidebar {
+            width: $sidebar-width-mini;
+          }
+
+          .page-wrapper {
+            margin-left: $sidebar-width-mini;
+          }
+
+          .nav-small-cap {
+            text-align: center;
+
+            .mini-icon {
+              display: inline-block;
+            }
+
+            .hide-menu {
+              display: none;
+            }
+          }
+
+          .sidebar-nav {
+            .has-arrow::after {
+              display: none;
+            }
+            ul {
+              .sidebar-item .sidebar-link {
+                padding: 13px 16px;
+              }
+            }
+            .sidebar-menu {
+              .sidebar-item {
+                .sidebar-link {
+                  .hide-menu {
+                    display: none;
+                  }
+                }
+              }
+            }
+          }
+
+          .left-sidebar {
+            &:hover {
+              width: 260px;
+              background-color: var(--bs-body-bg);
+              box-shadow: 0 5px 10px rgba(0, 0, 0, 0.03);
+              .brand-logo {
+                .logo-img {
+                  width: auto;
+                  overflow: unset;
+                  margin: 0;
+                }
+              }
+
+              .nav-small-cap {
+                text-align: left;
+
+                .mini-icon {
+                  display: none;
+                }
+
+                .hide-menu {
+                  display: inline-block;
+                }
+              }
+
+              .sidebar-nav {
+                .has-arrow::after {
+                  display: inline-block;
+                }
+                .sidebar-menu {
+                  .sidebar-item {
+                    .sidebar-link {
+                      .hide-menu {
+                        display: inline-block;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// below large screen
+@include media-breakpoint-down(xl) {
+  html {
+    &[data-layout="vertical"],
+    &[data-layout="horizontal"] {
+      .link-sidebar,
+      .link-sidebar[data-sidebartype="mini-sidebar"] {
+        .left-sidebar {
+          left: -260px;
+          background-color: var(--bs-body-bg);
+        }
+      }
+    }
+
+    &[data-layout="horizontal"] {
+      .link-sidebar {
+        .left-sidebar {
+          width: 260px;
+          box-shadow: 7px 7px 10px rgba(0, 0, 0, 0.03);
+          flex-shrink: 0;
+          background-color: var(--bs-body-bg);
+          z-index: 99;
+          transition: 0.2s ease-in;
+          position: fixed;
+          left: 0;
+          right: 0;
+          height: 100%;
+        }
+
+        .scroll-sidebar {
+          padding: 0 16px;
+          overflow-x: auto;
+          height: calc(100vh - 75px);
+        }
+
+        // sidebar
+        .nav-small-cap {
+          .mini-icon {
+            display: none;
+          }
+        }
+      }
+    }
+  }
+}
+
+

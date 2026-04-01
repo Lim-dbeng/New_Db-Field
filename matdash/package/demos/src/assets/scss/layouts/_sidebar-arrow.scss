@@ -1,0 +1,27 @@
+// Down arrow
+
+.sidebar-nav .has-arrow {
+  position: relative;
+
+  &::after {
+    position: absolute;
+    content: "";
+    width: 9px;
+    height: 9px;
+    border-width: 1px 0 0 1px;
+    border-style: solid;
+    border-color: var(--bs-dark-text-emphasis);
+    margin-left: 10px;
+    transform: rotate(-135deg) translate(0, -50%);
+    transform-origin: top;
+    top: 21px;
+    right: 16px;
+    transition: all 0.3s ease-out;
+  }
+}
+
+.sidebar-nav li.active > .has-arrow::after,
+.sidebar-nav li > .has-arrow.active::after,
+.sidebar-nav .has-arrow[aria-expanded="true"]::after {
+  border-color: var(--bs-primary);
+}

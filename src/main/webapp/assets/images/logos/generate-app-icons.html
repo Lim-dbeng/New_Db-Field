@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>DBENG Field - App Icon Generator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f5; color: #333; padding: 32px;
+  }
+  h1 { font-size: 24px; margin-bottom: 8px; }
+  .subtitle { color: #666; margin-bottom: 32px; }
+  .section { background: white; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .section h2 { font-size: 18px; margin-bottom: 16px; color: #0B7264; }
+  .icon-grid { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-end; }
+  .icon-item { text-align: center; }
+  .icon-item canvas { border: 1px solid #e0e0e0; border-radius: 8px; background: white; }
+  .icon-item .label { margin-top: 8px; font-size: 12px; color: #888; }
+  .icon-item .size { font-weight: 600; color: #333; }
+  .btn {
+    display: inline-block; padding: 10px 20px; border: none; border-radius: 8px;
+    background: #0E7E6E; color: white; font-size: 14px; cursor: pointer;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: #0A5E52; }
+  .btn-group { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+  .preview-large { margin: 24px 0; text-align: center; }
+  .preview-large canvas { border-radius: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+  .info { background: #E8F8F5; padding: 16px; border-radius: 8px; margin-top: 16px; font-size: 13px; line-height: 1.6; }
+  .download-all { margin-top: 24px; }
+</style>
+</head>
+<body>
+
+<h1>DBENG Field App Icon Generator</h1>
+<p class="subtitle">동부엔지니어링 현장조사관리시스템 모바일 앱 아이콘</p>
+
+<div class="section">
+  <h2>Preview</h2>
+  <div class="preview-large">
+    <canvas id="preview" width="256" height="256"></canvas>
+  </div>
+</div>
+
+<div class="section">
+  <h2>iOS Sizes</h2>
+  <div class="icon-grid" id="ios-icons"></div>
+  <div class="btn-group">
+    <button class="btn" onclick="downloadAll('ios')">Download All iOS Icons</button>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Android Sizes</h2>
+  <div class="icon-grid" id="android-icons"></div>
+  <div class="btn-group">
+    <button class="btn" onclick="downloadAll('android')">Download All Android Icons</button>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Web / PWA</h2>
+  <div class="icon-grid" id="web-icons"></div>
+  <div class="btn-group">
+    <button class="btn" onclick="downloadAll('web')">Download All Web Icons</button>
+  </div>
+</div>
+
+<div class="info">
+  <strong>Usage:</strong><br>
+  1. Click each icon to download individually, or use the batch download buttons.<br>
+  2. iOS icons are square (the OS applies rounded corners).<br>
+  3. Android adaptive icons use foreground + background layers (separate SVGs provided).<br>
+  4. For React Native, place icons in <code>android/app/src/main/res/</code> and <code>ios/AppName/Images.xcassets/AppIcon.appiconset/</code>.
+</div>
+
+<script>
+const IOS_SIZES = [
+  { size: 1024, label: 'App Store', scale: '' },
+  { size: 180, label: 'iPhone @3x', scale: '60@3x' },
+  { size: 120, label: 'iPhone @2x', scale: '60@2x' },
+  { size: 167, label: 'iPad Pro @2x', scale: '83.5@2x' },
+  { size: 152, label: 'iPad @2x', scale: '76@2x' },
+  { size: 87, label: 'Spotlight @3x', scale: '29@3x' },
+  { size: 80, label: 'Spotlight @2x', scale: '40@2x' },
+  { size: 76, label: 'iPad @1x', scale: '76@1x' },
+  { size: 58, label: 'Settings @2x', scale: '29@2x' },
+  { size: 40, label: 'Notification @2x', scale: '20@2x' },
+];
+
+const ANDROID_SIZES = [
+  { size: 512, label: 'Play Store', folder: '' },
+  { size: 192, label: 'xxxhdpi', folder: 'mipmap-xxxhdpi' },
+  { size: 144, label: 'xxhdpi', folder: 'mipmap-xxhdpi' },
+  { size: 96, label: 'xhdpi', folder: 'mipmap-xhdpi' },
+  { size: 72, label: 'hdpi', folder: 'mipmap-hdpi' },
+  { size: 48, label: 'mdpi', folder: 'mipmap-mdpi' },
+];
+
+const WEB_SIZES = [
+  { size: 512, label: 'PWA 512' },
+  { size: 192, label: 'PWA 192' },
+  { size: 180, label: 'Apple Touch' },
+  { size: 128, label: 'Chrome Web Store' },
+  { size: 96, label: 'Shortcut' },
+  { size: 48, label: 'Desktop' },
+  { size: 32, label: 'Favicon 32' },
+  { size: 16, label: 'Favicon 16' },
+];
+
+let svgImage = null;
+
+async function loadSVG() {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { svgImage = img; resolve(img); };
+    img.onerror = reject;
+    // Load the SVG - try relative path first
+    img.src = 'app-icon.svg';
+  });
+}
+
+function renderIcon(canvas, size) {
+  const ctx = canvas.getContext('2d');
+  canvas.width = size;
+  canvas.height = size;
+  ctx.clearRect(0, 0, size, size);
+  if (svgImage) {
+    ctx.drawImage(svgImage, 0, 0, size, size);
+  }
+}
+
+function downloadCanvas(canvas, filename) {
+  const link = document.createElement('a');
+  link.download = filename;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+function createIconItem(container, size, label, filenamePrefix, platform) {
+  const item = document.createElement('div');
+  item.className = 'icon-item';
+
+  const displaySize = Math.min(size, 128);
+  const canvas = document.createElement('canvas');
+  canvas.style.width = displaySize + 'px';
+  canvas.style.height = displaySize + 'px';
+  canvas.style.cursor = 'pointer';
+  canvas.dataset.platform = platform;
+  canvas.dataset.size = size;
+  canvas.dataset.label = label;
+
+  renderIcon(canvas, size);
+
+  const filename = `${filenamePrefix}-${size}x${size}.png`;
+  canvas.title = `Click to download ${filename}`;
+  canvas.onclick = () => downloadCanvas(canvas, filename);
+
+  const labelDiv = document.createElement('div');
+  labelDiv.className = 'label';
+  labelDiv.innerHTML = `<span class="size">${size}x${size}</span><br>${label}`;
+
+  item.appendChild(canvas);
+  item.appendChild(labelDiv);
+  container.appendChild(item);
+
+  return canvas;
+}
+
+function downloadAll(platform) {
+  const canvases = document.querySelectorAll(`canvas[data-platform="${platform}"]`);
+  canvases.forEach((canvas, index) => {
+    setTimeout(() => {
+      const size = canvas.dataset.size;
+      downloadCanvas(canvas, `dbeng-field-${platform}-${size}x${size}.png`);
+    }, index * 200);
+  });
+}
+
+async function init() {
+  try {
+    await loadSVG();
+  } catch (e) {
+    // If relative path fails, try to inline the SVG
+    console.warn('Could not load SVG from file, trying inline approach...');
+    await loadInlineSVG();
+  }
+
+  // Render preview
+  const preview = document.getElementById('preview');
+  renderIcon(preview, 256);
+
+  // iOS icons
+  const iosContainer = document.getElementById('ios-icons');
+  IOS_SIZES.forEach(s => createIconItem(iosContainer, s.size, s.label, 'dbeng-field-ios', 'ios'));
+
+  // Android icons
+  const androidContainer = document.getElementById('android-icons');
+  ANDROID_SIZES.forEach(s => createIconItem(androidContainer, s.size, s.label + (s.folder ? ` (${s.folder})` : ''), 'dbeng-field-android', 'android'));
+
+  // Web icons
+  const webContainer = document.getElementById('web-icons');
+  WEB_SIZES.forEach(s => createIconItem(webContainer, s.size, s.label, 'dbeng-field-web', 'web'));
+}
+
+async function loadInlineSVG() {
+  return new Promise((resolve) => {
+    const svgString = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="pinGrad" x1="380" y1="80" x2="620" y2="950" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22D4B6"/>
+      <stop offset="45%" stop-color="#13A88E"/>
+      <stop offset="100%" stop-color="#0A7260"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="0.40" cy="0.26" r="0.46">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-8%" y="-4%" width="116%" height="116%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#0A5045" flood-opacity="0.20"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="#FFFFFF"/>
+  <g filter="url(#shadow)">
+    <path d="M512 940 C498 870 232 592 232 362 A280 280 0 1 1 792 362 C792 592 526 870 512 940Z" fill="url(#pinGrad)"/>
+  </g>
+  <path d="M512 940 C498 870 232 592 232 362 A280 280 0 1 1 792 362 C792 592 526 870 512 940Z" fill="url(#shine)"/>
+  <rect x="404" y="200" width="216" height="264" rx="8" fill="white"/>
+  <rect x="392" y="194" width="240" height="22" rx="6" fill="white"/>
+  <rect x="424" y="232" width="60" height="52" rx="6" fill="#13A88E"/>
+  <rect x="540" y="232" width="60" height="52" rx="6" fill="#13A88E"/>
+  <rect x="424" y="304" width="60" height="52" rx="6" fill="#13A88E"/>
+  <rect x="540" y="304" width="60" height="52" rx="6" fill="#13A88E"/>
+  <rect x="478" y="382" width="68" height="82" rx="6" fill="#13A88E"/>
+  <circle cx="536" cy="425" r="7" fill="white"/>
+  <rect x="380" y="462" width="264" height="6" rx="3" fill="white" opacity="0.40"/>
+  <text x="512" y="660" text-anchor="middle" font-family="'Segoe UI','SF Pro Display','Helvetica Neue',Arial,sans-serif" font-size="88" font-weight="800" fill="white" opacity="0.92" letter-spacing="2">DB·Field</text>
+</svg>`;
+    const blob = new Blob([svgString], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => { svgImage = img; resolve(); };
+    img.src = url;
+  });
+}
+
+init();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,223 @@
+<nav class="navbar navbar-expand-xl container-fluid p-0">
+  <ul class="navbar-nav align-items-center">
+    <li class="nav-item d-flex d-xl-none">
+      <a
+        class="nav-link sidebartoggler nav-icon-hover-bg rounded-circle"
+        id="sidebarCollapse"
+        href="javascript:void(0)"
+      >
+        <iconify-icon
+          icon="solar:hamburger-menu-line-duotone"
+          class="fs-7"
+        ></iconify-icon>
+      </a>
+    </li>
+    <li class="nav-item d-none d-xl-flex align-items-center">
+      <a href="@@webRoot/minisidebar/index.html" class="text-nowrap nav-link">
+        <img src="@@webRoot/assets/images/logos/logo.svg" alt="matdash-img" />
+      </a>
+    </li>
+    <li
+      class="nav-item d-none d-xl-flex align-items-center nav-icon-hover-bg rounded-circle"
+    >
+      <a
+        class="nav-link"
+        href="javascript:void(0)"
+        data-bs-toggle="modal"
+        data-bs-target="#exampleModal"
+      >
+        <iconify-icon icon="solar:magnifer-linear" class="fs-6"></iconify-icon>
+      </a>
+    </li>
+    <li
+      class="nav-item d-none d-lg-flex align-items-center dropdown nav-icon-hover-bg rounded-circle"
+    >
+      <div class="hover-dd">
+        <a
+          class="nav-link"
+          id="drop2"
+          href="javascript:void(0)"
+          aria-haspopup="true"
+          aria-expanded="false"
+        >
+          <iconify-icon
+            icon="solar:widget-3-line-duotone"
+            class="fs-6"
+          ></iconify-icon>
+        </a>
+        <div
+          class="dropdown-menu dropdown-menu-nav dropdown-menu-animate-up py-0 overflow-hidden"
+          aria-labelledby="drop2"
+        >
+          @@include("./header-components/dd-apps.html")
+        </div>
+      </div>
+    </li>
+  </ul>
+  <div class="d-block d-xl-none">
+    <a href="@@webRoot/minisidebar/index.html" class="text-nowrap nav-link">
+      <img src="@@webRoot/assets/images/logos/logo.svg" alt="matdash-img" />
+    </a>
+  </div>
+  <a
+    class="navbar-toggler nav-icon-hover p-0 border-0 nav-icon-hover-bg rounded-circle"
+    href="javascript:void(0)"
+    data-bs-toggle="collapse"
+    data-bs-target="#navbarNav"
+    aria-controls="navbarNav"
+    aria-expanded="false"
+    aria-label="Toggle navigation"
+  >
+    <span class="p-2">
+      <i class="ti ti-dots fs-7"></i>
+    </span>
+  </a>
+  <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+    <div class="d-flex align-items-center justify-content-between px-0 px-xl-8">
+      <ul
+        class="navbar-nav flex-row mx-auto ms-lg-auto align-items-center justify-content-center"
+      >
+        <li class="nav-item dropdown">
+          <a
+            href="javascript:void(0)"
+            class="nav-link nav-icon-hover-bg rounded-circle d-flex d-lg-none align-items-center justify-content-center"
+            type="button"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#mobilenavbar"
+            aria-controls="offcanvasWithBothOptions"
+          >
+            <iconify-icon
+              icon="solar:sort-line-duotone"
+              class="fs-6"
+            ></iconify-icon>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a
+            class="nav-link nav-icon-hover-bg rounded-circle moon dark-layout"
+            href="javascript:void(0)"
+          >
+            <iconify-icon
+              icon="solar:moon-line-duotone"
+              class="moon fs-6"
+            ></iconify-icon>
+          </a>
+          <a
+            class="nav-link nav-icon-hover-bg rounded-circle sun light-layout"
+            href="javascript:void(0)"
+            style="display: none"
+          >
+            <iconify-icon
+              icon="solar:sun-2-line-duotone"
+              class="sun fs-6"
+            ></iconify-icon>
+          </a>
+        </li>
+        <li class="nav-item d-block d-xl-none">
+          <a
+            class="nav-link nav-icon-hover-bg rounded-circle"
+            href="javascript:void(0)"
+            data-bs-toggle="modal"
+            data-bs-target="#exampleModal"
+          >
+            <iconify-icon
+              icon="solar:magnifer-line-duotone"
+              class="fs-6"
+            ></iconify-icon>
+          </a>
+        </li>
+
+        <!-- ------------------------------- -->
+        <!-- start notification Dropdown -->
+        <!-- ------------------------------- -->
+        <li class="nav-item dropdown nav-icon-hover-bg rounded-circle">
+          <a
+            class="nav-link position-relative"
+            href="javascript:void(0)"
+            id="drop2"
+            aria-expanded="false"
+          >
+            <iconify-icon
+              icon="solar:bell-bing-line-duotone"
+              class="fs-6"
+            ></iconify-icon>
+          </a>
+          <div
+            class="dropdown-menu content-dd dropdown-menu-end dropdown-menu-animate-up"
+            aria-labelledby="drop2"
+          >
+            @@include("./header-components/dd-notification.html")
+          </div>
+        </li>
+        <!-- ------------------------------- -->
+        <!-- end notification Dropdown -->
+        <!-- ------------------------------- -->
+
+        <!-- ------------------------------- -->
+        <!-- start language Dropdown -->
+        <!-- ------------------------------- -->
+        <li class="nav-item dropdown nav-icon-hover-bg rounded-circle">
+          <a
+            class="nav-link"
+            href="javascript:void(0)"
+            id="drop2"
+            data-bs-toggle="dropdown"
+            aria-expanded="false"
+          >
+            <img
+              src="@@webRoot/assets/images/flag/icon-flag-en.svg"
+              alt="matdash-img"
+              width="20px"
+              height="20px"
+              class="rounded-circle object-fit-cover round-20"
+            />
+          </a>
+          <div
+            class="dropdown-menu dropdown-menu-end dropdown-menu-animate-up"
+            aria-labelledby="drop2"
+          >
+            @@include("./header-components/dd-language.html")
+          </div>
+        </li>
+        <!-- ------------------------------- -->
+        <!-- end language Dropdown -->
+        <!-- ------------------------------- -->
+
+        <!-- ------------------------------- -->
+        <!-- start profile Dropdown -->
+        <!-- ------------------------------- -->
+        <li class="nav-item dropdown">
+          <a
+            class="nav-link"
+            href="javascript:void(0)"
+            id="drop1"
+            aria-expanded="false"
+          >
+            <div class="d-flex align-items-center gap-2 lh-base">
+              <img
+                src="@@webRoot/assets/images/profile/user-1.jpg"
+                class="rounded-circle"
+                width="35"
+                height="35"
+                alt="matdash-img"
+              />
+              <iconify-icon
+                icon="solar:alt-arrow-down-bold"
+                class="fs-2"
+              ></iconify-icon>
+            </div>
+          </a>
+          <div
+            class="dropdown-menu profile-dropdown dropdown-menu-end dropdown-menu-animate-up"
+            aria-labelledby="drop1"
+          >
+            @@include("./header-components/dd-profile.html")
+          </div>
+        </li>
+        <!-- ------------------------------- -->
+        <!-- end profile Dropdown -->
+        <!-- ------------------------------- -->
+      </ul>
+    </div>
+  </div>
+</nav>

@@ -1,0 +1,31 @@
+.auth-bg {
+  background: url(../images/backgrounds/login-bg.jpg);
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.auth-login {
+  max-width: 1160px;
+}
+
+.auth-carousel {
+  &.carousel {
+    .carousel-indicators {
+      margin-bottom: -5rem;
+      opacity: 1;
+      button {
+        background-color: var(--bs-primary-bg-subtle);
+        width: 7px;
+        height: 7px;
+        border-radius: 100%;
+        border-top: 0;
+        border-bottom: 0;
+        &.active {
+          width: 32px;
+          background-color: var(--bs-primary);
+          border-radius: 20px;
+        }
+      }
+    }
+  }
+}

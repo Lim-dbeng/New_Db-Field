@@ -1,0 +1,106 @@
+body {
+  .daterangepicker {
+    font-family: $font-family-sans-serif;
+    border: 1px solid var(--bs-border-color);
+  }
+
+  .daterangepicker {
+    td.active {
+      background-color: var(--bs-primary);
+
+      &:hover {
+        background-color: var(--bs-primary);
+      }
+    }
+
+    td.in-range {
+      background-color: var(--bs-primary-bg-subtle);
+      color: var(--bs-primary);
+    }
+
+    .drp-buttons {
+      .btn {
+        margin-left: 12px;
+        font-weight: 400;
+        border-radius: var(--bs-border-radius-sm);
+      }
+
+      border-top: 1px solid var(--bs-border-color);
+    }
+
+    .calendar-table {
+      .next {
+        span {
+          border: solid var(--bs-body-color);
+          border-width: 0 2px 2px 0;
+        }
+      }
+
+      .prev {
+        span {
+          border: solid var(--bs-body-color);
+          border-width: 0 2px 2px 0;
+        }
+      }
+    }
+  }
+
+ 
+
+  .dtp {
+    > .dtp-content {
+      max-height: 530px;
+
+      > .dtp-date-view {
+        > header.dtp-header {
+          background: var(--bs-primary) !important;
+        }
+      }
+    }
+
+    div.dtp-date {
+      background: var(--bs-primary) !important;
+    }
+
+    div.dtp-time {
+      background: var(--bs-primary) !important;
+    }
+
+    table.dtp-picker-days {
+      tr {
+        > td {
+          > a.selected {
+            background: var(--bs-primary) !important;
+          }
+        }
+
+        > th {
+          color: var(--bs-body-color) !important;
+        }
+      }
+    }
+
+    .dtp-actual-meridien {
+      a.selected {
+        background: var(--bs-primary) !important;
+      }
+    }
+
+    .p10 {
+      > a {
+        color: var(--bs-white) !important;
+      }
+    }
+
+    a.dtp-meridien-am {
+      color: var(--bs-body-color) !important;
+      background: var(--bs-body-bg) !important;
+    }
+
+    a.dtp-meridien-pm {
+      color: var(--bs-body-color) !important;
+      background: var(--bs-body-bg) !important;
+    }
+  }
+
+}

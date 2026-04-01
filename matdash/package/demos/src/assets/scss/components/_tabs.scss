@@ -1,0 +1,51 @@
+//
+// Tabs Style
+//
+
+.user-profile-tab {
+  .nav-item {
+    .nav-link {
+      background-color: transparent;
+      color: var(--bs-muted);
+
+      &.active {
+        color: var(--bs-primary);
+        border-bottom: 2px solid var(--bs-primary);
+      }
+    }
+  }
+}
+
+.nav-tabs,
+.nav-tabs .nav-link,
+.nav-pills .nav-link  {
+  border-radius: var(--bs-border-radius-sm);
+}
+
+.theme-tab {
+  &.nav-tabs {
+    .nav-item {
+      &:hover {
+        .nav-link {
+          background-color: var(--bs-primary-bg-subtle) !important;
+        }
+      }
+      .nav-link {
+        background-color: $gray-100;
+        padding: 12px 24px;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 600;
+        iconify-icon {
+          color: var(--bs-body-color);
+        }
+        &.active {
+          background-color: var(--bs-primary) !important;
+          iconify-icon {
+            color: var(--bs-white);
+          }
+        }
+      }
+    }
+  }
+}

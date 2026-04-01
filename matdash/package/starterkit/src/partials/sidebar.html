@@ -1,0 +1,165 @@
+<!-- ---------------------------------- -->
+<!-- Start Vertical Layout Sidebar -->
+<!-- ---------------------------------- -->
+<div class="iconbar">
+  <div>
+    <div class="mini-nav">
+      <div class="brand-logo d-flex align-items-center justify-content-center">
+        <a class="nav-link sidebartoggler" id="headerCollapse" href="javascript:void(0)">
+          <iconify-icon icon="solar:hamburger-menu-line-duotone" class="fs-7"></iconify-icon>
+        </a>
+      </div>
+      <ul class="mini-nav-ul" data-simplebar>
+
+        <!-- --------------------------------------------------------------------------------------------------------- -->
+        <!-- Dashboards -->
+        <!-- --------------------------------------------------------------------------------------------------------- -->
+        <li class="mini-nav-item" id="mini-1">
+          <a href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-custom-class="custom-tooltip"
+            data-bs-placement="right" data-bs-title="Dashboards">
+            <iconify-icon icon="solar:layers-line-duotone" class="fs-7"></iconify-icon>
+          </a>
+        </li>
+
+        <!-- --------------------------------------------------------------------------------------------------------- -->
+        <!-- Multi level -->
+        <!-- --------------------------------------------------------------------------------------------------------- -->
+        <li class="mini-nav-item" id="mini-10">
+          <a href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-custom-class="custom-tooltip"
+            data-bs-placement="right" data-bs-title="Other">
+            <iconify-icon icon="solar:mirror-left-line-duotone" class="fs-7"></iconify-icon>
+          </a>
+        </li>
+      </ul>
+
+    </div>
+    <div class="sidebarmenu">
+      @@include("./logo-sidebar.html")
+      <!-- ---------------------------------- -->
+      <!-- Dashboard -->
+      <!-- ---------------------------------- -->
+      <nav class="sidebar-nav" id="menu-right-mini-1">
+        
+        <ul class="sidebar-menu" id="sidebarnav">
+          <!-- ---------------------------------- -->
+          <!-- Home -->
+          <!-- ---------------------------------- -->
+          <li class="nav-small-cap">
+            <span class="hide-menu">Home</span>
+          </li>
+          <!-- ---------------------------------- -->
+          <!-- Dashboard -->
+          <!-- ---------------------------------- -->
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="@@webRoot" aria-expanded="false">
+              <iconify-icon icon="solar:widget-add-line-duotone" class=""></iconify-icon>
+              <span class="hide-menu">Starter Page</span>
+            </a>
+          </li>
+
+        </ul>
+      </nav>
+
+      <!-- sidebar -->
+      <nav class="sidebar-nav scroll-sidebar" id="menu-right-mini-10" data-simplebar>
+        <ul class="sidebar-menu" id="sidebarnav">
+          <li class="nav-small-cap">
+            <span class="hide-menu">Multi level</span>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link has-arrow primary-hover-bg" href="javascript:void(0)" aria-expanded="false">
+              <iconify-icon icon="solar:align-left-line-duotone"></iconify-icon>
+              <span class="hide-menu">Menu Level</span>
+            </a>
+            <ul aria-expanded="false" class="collapse first-level">
+              <li class="sidebar-item">
+                <a href="javascript:void(0)" class="sidebar-link">
+                  <span class="icon-small"></span>
+                  <span class="hide-menu">Level 1</span>
+                </a>
+              </li>
+              <li class="sidebar-item">
+                <a
+                  class="sidebar-link has-arrow"
+                  href="javascript:void(0)"
+                  aria-expanded="false"
+                >
+                  <span class="icon-small"></span>
+                  <span class="hide-menu">Level 1.1</span>
+                </a>
+                <ul aria-expanded="false" class="collapse two-level">
+                  <li class="sidebar-item">
+                    <a href="javascript:void(0)" class="sidebar-link">
+                      <span class="icon-small"></span>
+                      <span class="hide-menu">Level 2</span>
+                    </a>
+                  </li>
+                  <li class="sidebar-item">
+                    <a
+                      class="sidebar-link has-arrow"
+                      href="javascript:void(0)"
+                      aria-expanded="false"
+                    >
+                      <span class="icon-small"></span>
+                      <span class="hide-menu">Level 2.1</span>
+                    </a>
+                    <ul aria-expanded="false" class="collapse three-level">
+                      <li class="sidebar-item">
+                        <a href="javascript:void(0)" class="sidebar-link">
+                          <span class="icon-small"></span>
+                          <span class="hide-menu">Level 3</span>
+                        </a>
+                      </li>
+                      <li class="sidebar-item">
+                        <a href="javascript:void(0)" class="sidebar-link">
+                          <span class="icon-small"></span>
+                          <span class="hide-menu">Level 3.1</span>
+                        </a>
+                      </li>
+                    </ul>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+          <li>
+            <span class="sidebar-divider"></span>
+          </li>
+          <li class="nav-small-cap">
+            <span class="hide-menu">More Options</span>
+          </li>
+          <li class="sidebar-item">
+            <div class="sidebar-link">
+              <span class="circle-shape bg-primary rounded-pill"></span>
+              <span class="hide-menu">Applications</span>
+            </div>
+          </li>
+          <li class="sidebar-item">
+            <div class="sidebar-link">
+              <span class="circle-shape bg-secondary rounded-pill"></span>
+              <span class="hide-menu">Form Options</span>
+            </div>
+          </li>
+          <li class="sidebar-item">
+            <div class="sidebar-link">
+              <span class="circle-shape bg-danger rounded-pill"></span>
+              <span class="hide-menu">Table Variations</span>
+            </div>
+          </li>
+          <li class="sidebar-item">
+            <div class="sidebar-link">
+              <span class="circle-shape bg-warning rounded-pill"></span>
+              <span class="hide-menu">Charts Selection</span>
+            </div>
+          </li>
+          <li class="sidebar-item">
+            <div class="sidebar-link">
+              <span class="circle-shape bg-success rounded-pill"></span>
+              <span class="hide-menu">Widgets</span>
+            </div>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+</div>

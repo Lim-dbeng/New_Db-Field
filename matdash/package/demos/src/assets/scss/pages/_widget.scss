@@ -1,0 +1,165 @@
+//
+/*Comment widgets*/
+//
+
+.comment-widgets {
+  .comment-row {
+    background: transparent;
+
+    &:hover,
+    &.active {
+      --bs-dropdown-link-hover-bg: #f6f9fc; // css variable
+    }
+  }
+}
+
+.comment-text {
+  &:hover .comment-footer,
+  &.active .comment-footer {
+    .action-icons {
+      visibility: visible;
+    }
+  }
+}
+
+.comment-footer {
+  .action-icons {
+    visibility: hidden;
+
+    a {
+      color: var(--bs-secondary-color);
+
+      &:hover,
+      &.active {
+        color: var(--bs-info);
+      }
+    }
+  }
+}
+
+//
+/*table-stylish widgets*/
+//
+.stylish-table {
+  tbody tr {
+    border-left: 4px solid transparent;
+
+    &:hover,
+    &.active {
+      border-left: 4px solid var(--bs-info);
+    }
+  }
+
+  tbody td {
+    small {
+      line-height: 12px;
+    }
+  }
+}
+
+//
+/*To do widgets*/
+//
+
+.todo-list {
+  li {
+    .assignedto {
+      li {
+        margin-right: 2px;
+
+        img {
+          width: 30px;
+        }
+      }
+    }
+  }
+}
+
+@include media-breakpoint-down(lg) {
+  .w-xs-100 {
+    width: 100% !important;
+  }
+}
+
+//
+// Shop Style
+//
+
+.shop-part {
+  .shop-filters {
+    width: 250px;
+
+    .by-colors {
+      .shop-color-list {
+        .shop-colors-item {
+          width: 24px;
+          height: 24px;
+
+          &.shop-colors-1 {
+            background-color: var(--bs-primary);
+          }
+
+          &.shop-colors-2 {
+            background-color: var(--bs-secondary);
+          }
+
+          &.shop-colors-3 {
+            background-color: var(--bs-danger);
+          }
+
+          &.shop-colors-4 {
+            background-color: var(--bs-warning);
+          }
+
+          &.shop-colors-5 {
+            background-color: var(--bs-success);
+          }
+
+          &.shop-colors-6 {
+            background-color: $black;
+          }
+
+          &.shop-colors-7 {
+            background-color: #ffc0cb;
+          }
+        }
+      }
+    }
+  }
+}
+
+//
+// for authentication
+//
+.circle-top {
+  position: absolute;
+  top: -33%;
+  left: -14%;
+  border: 120px solid #0b2947; // customize bg - no variable
+  height: 700px;
+  width: 700px;
+  display: block;
+  background: transparent;
+  border-radius: 100%;
+  z-index: 1;
+}
+
+.circle-bottom {
+  position: absolute;
+  bottom: -4%;
+  right: 1%;
+  height: 450px;
+  width: 450px;
+  display: block;
+  background: transparent;
+  z-index: 1;
+  opacity: 0.5;
+}
+
+.border-transparent {
+  border-color: var(--bs-card-bg) !important;
+}
+
+.auth-card {
+  max-width: 460px !important;
+}

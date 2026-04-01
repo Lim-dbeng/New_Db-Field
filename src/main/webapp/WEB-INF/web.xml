@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
+         version="4.0">
+
+	<!-- Character Encoding Filter -->
+	<filter>
+		<filter-name>characterEncodingFilter</filter-name>
+		<filter-class>com.newdbfield.filter.CharacterEncodingFilter</filter-class>
+		<init-param>
+			<param-name>encoding</param-name>
+			<param-value>UTF-8</param-value>
+		</init-param>
+	</filter>
+	<filter-mapping>
+		<filter-name>characterEncodingFilter</filter-name>
+		<url-pattern>/*</url-pattern>
+	</filter-mapping>
+
+	<!-- Authentication Filter -->
+	<filter>
+		<filter-name>authFilter</filter-name>
+		<filter-class>com.newdbfield.filter.AuthFilter</filter-class>
+	</filter>
+	<filter-mapping>
+		<filter-name>authFilter</filter-name>
+		<url-pattern>/*</url-pattern>
+	</filter-mapping>
+
+	<!-- App-wide configuration -->
+	<!--<context-param>
+		<param-name>GOOGLE_MAPS_API_KEY</param-name>
+		<param-value>YOUR_GOOGLE_MAPS_API_KEY</param-value>
+	</context-param>-->
+	<context-param>
+		<param-name>VWORLD_API_KEY</param-name>
+		<param-value>1DF56FE5-BB89-30FD-872C-C6F8EA1E2871</param-value>
+	</context-param>
+	<context-param>
+		<param-name>GEOSERVER_WMS_URL</param-name>
+		<param-value>https://field.dbeng.co.kr:8084/geoserver/wms</param-value>
+	</context-param>
+	<context-param>
+		<param-name>DEFAULT_CENTER</param-name>
+		<param-value>37.5665,126.9780</param-value>
+	</context-param>
+	<context-param>
+		<param-name>DEFAULT_ZOOM</param-name>
+		<param-value>13</param-value>
+	</context-param>
+	<context-param>
+		<param-name>KAKAO_REST_KEY</param-name>
+		<param-value>6314ef6362351ee6431306db0b63b1ee</param-value>
+	</context-param>
+	<context-param>
+		<param-name>KAKAO_JS_KEY</param-name>
+		<param-value>da81d80883400a599728dd2f68bb3505</param-value>
+	</context-param>
+	<!-- PostgreSQL DB config -->
+	<!-- Modify these values to match your PostgreSQL setup -->
+	<context-param>
+		<param-name>DB_URL</param-name>
+		<param-value>jdbc:postgresql://172.21.15.134:5433/postgresLocal</param-value>
+	</context-param>
+	<context-param>
+		<param-name>DB_USER</param-name>
+		<param-value>postgres</param-value>
+	</context-param>
+	<context-param>
+		<param-name>DB_PASSWORD</param-name>
+		<param-value>postgres</param-value>
+	</context-param>
+
+	<context-param>
+		<param-name>DB_VIEW_URL</param-name>
+		<param-value>jdbc:sqlserver://10.10.10.35:1443;databaseName=DBExINFO;encrypt=false</param-value>
+	</context-param>
+	<context-param>
+		<param-name>DB_VIEW_USER</param-name>
+		<param-value>dbinfo</param-value>
+	</context-param>
+	<context-param>
+		<param-name>DB_VIEW_PASSWORD</param-name>
+		<param-value>1q2w3e@@</param-value>
+	</context-param>
+
+	<!-- Project Migration 설정 -->
+	<context-param>
+		<param-name>project.auto.migration</param-name>
+		<param-value>false</param-value>
+		<!-- false: VIEW_PROJ_INFO→test.project 자동 마이그레이션 비활성화. test.project는 관리자 생성 프로젝트만 저장 -->
+	</context-param>
+	<context-param>
+		<param-name>project.incremental.migration</param-name>
+		<param-value>true</param-value>
+		<!-- true: 증분 마이그레이션 (새로운 것만 추가), false: 전체 재마이그레이션 -->
+	</context-param>
+	<context-param>
+		<param-name>project.migration.type</param-name>
+		<param-value>all</param-value>
+		<!-- gis: gis_a_layer 기반, all: VIEW_PROJ_INFO와 VIEW_PROJ_MAN_INFO 전체 마이그레이션 -->
+	</context-param>
+
+	<!-- Shapefile DBF 문자셋 (ShpUploadController). 생략 시 기본 MS949(CP949). 영문 전용 SHP는 UTF-8 지정 가능. -->
+	<!--
+	<context-param>
+		<param-name>SHP_DBF_CHARSET</param-name>
+		<param-value>UTF-8</param-value>
+	</context-param>
+	-->
+
+	<!-- GeoJSON에 crs가 없거나 CRS84인데 좌표가 투영값일 때 가정할 원본(ShpUploadController). 미설정 시 기본 EPSG:5186. 통합(5179) 원본이면 EPSG:5179. DISABLE/NONE이면 가정 안 함. -->
+	<!--
+	<context-param>
+		<param-name>GEOJSON_ASSUME_CRS</param-name>
+		<param-value>EPSG:5186</param-value>
+	</context-param>
+	-->
+
+	<display-name>New_Db-Field</display-name>
+
+	<!-- Servlets -->
+	<servlet>
+		<servlet-name>MainServlet</servlet-name>
+		<servlet-class>com.newdbfield.web.MainServlet</servlet-class>
+		<load-on-startup>1</load-on-startup>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>MainServlet</servlet-name>
+		<url-pattern>/app/*</url-pattern>
+	</servlet-mapping>
+
+	<servlet>
+		<servlet-name>ApiServlet</servlet-name>
+		<servlet-class>com.newdbfield.web.ApiServlet</servlet-class>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>ApiServlet</servlet-name>
+		<url-pattern>/api/*</url-pattern>
+	</servlet-mapping>
+
+	<!-- Fac (DB) controller -->
+	<servlet>
+		<servlet-name>FacCommController</servlet-name>
+		<servlet-class>com.newdbfield.web.FacCommController</servlet-class>
+		<load-on-startup>2</load-on-startup>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>FacCommController</servlet-name>
+		<url-pattern>/api/fac/*</url-pattern>
+	</servlet-mapping>
+
+	<!-- App init listener (reads DB config) -->
+	<listener>
+		<listener-class>com.newdbfield.core.AppInit</listener-class>
+	</listener>
+
+	<!-- Project Migration Listener (자동 마이그레이션) -->
+	<listener>
+		<listener-class>com.newdbfield.web.ProjectMigrationListener</listener-class>
+	</listener>
+
+	<!-- Auth Controller -->
+	<servlet>
+		<servlet-name>AuthController</servlet-name>
+		<servlet-class>com.newdbfield.web.AuthController</servlet-class>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>AuthController</servlet-name>
+		<url-pattern>/api/auth/*</url-pattern>
+	</servlet-mapping>
+
+	<!-- Project Controller -->
+	<servlet>
+		<servlet-name>ProjectController</servlet-name>
+		<servlet-class>com.newdbfield.web.ProjectController</servlet-class>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>ProjectController</servlet-name>
+		<url-pattern>/api/project/*</url-pattern>
+	</servlet-mapping>
+
+	<!-- Facility Search Controller -->
+	<servlet>
+		<servlet-name>FacilitySearchController</servlet-name>
+		<servlet-class>com.newdbfield.web.FacilitySearchController</servlet-class>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>FacilitySearchController</servlet-name>
+		<url-pattern>/api/facility/search/*</url-pattern>
+	</servlet-mapping>
+
+	<!-- Image Servlet for DCIM files -->
+	<servlet>
+		<servlet-name>ImageServlet</servlet-name>
+		<servlet-class>com.newdbfield.web.ImageServlet</servlet-class>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>ImageServlet</servlet-name>
+		<url-pattern>/DCIM/*</url-pattern>
+	</servlet-mapping>
+
+	<!-- SHP Upload Controller -->
+	<servlet>
+		<servlet-name>ShpUploadController</servlet-name>
+		<servlet-class>com.newdbfield.web.ShpUploadController</servlet-class>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>ShpUploadController</servlet-name>
+		<url-pattern>/api/shp/*</url-pattern>
+	</servlet-mapping>
+
+	<!-- Mobile Auth API Controller -->
+	<servlet>
+		<servlet-name>MobileAuthApiController</servlet-name>
+		<servlet-class>com.newdbfield.web.MobileAuthApiController</servlet-class>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>MobileAuthApiController</servlet-name>
+		<url-pattern>/api/mobile/auth/*</url-pattern>
+	</servlet-mapping>
+
+	<welcome-file-list>
+		<welcome-file>index.jsp</welcome-file>
+	</welcome-file-list>
+
+</web-app>
+
+

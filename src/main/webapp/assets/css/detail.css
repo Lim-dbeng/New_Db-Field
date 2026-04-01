@@ -1,0 +1,2166 @@
+@charset "UTF-8";.badge-wrap li,.sidebar .sidebar-content .agency-info li {
+    list-style: none
+}
+
+#smsMessageArea textarea:focus,.focus div:focus-visible {
+    outline: 0
+}
+
+div#contactModal .modal-header button.close,div.fotorama__wrap--no-controls.fotorama__wrap--toggle-arrows div.fotorama__fullscreen-icon {
+    opacity: 1
+}
+
+.noto-13,.noto-14 {
+    font-family: NotoSansCJKkr
+}
+
+.wrapper {
+    margin-top: 0
+}
+
+span.label {
+    font-size: 12px;
+    margin-right: 6px
+}
+
+.house-detail .sidebar {
+    padding: 20px
+}
+
+.house-detail .sidebar .header {
+    background-color: #000;
+    color: #fff;
+    font-size: 20px;
+    padding: 14px;
+    text-align: center
+}
+
+.sidebar-container {
+    position: -webkit-sticky;
+    position: sticky;
+    width: 330px
+}
+
+@media (max-width: 720px) {
+    .web {
+        display:block
+    }
+}
+
+.sidebar .sidebar-content .line {
+    margin-bottom: 10px
+}
+
+.sidebar .sidebar-content {
+    border: 1px solid #e7e7e9;
+    padding: 24px 20px;
+    margin-bottom: 10px;
+    width: 330px;
+    border-radius: 8px;
+    overflow: visible;
+    box-shadow: 0 0 6px 0 rgba(0,0,0,.1)
+}
+
+.sidebar .sidebar-content .agency,.sidebar .sidebar-content .direct,.sidebar .sidebar-content .house-index {
+    border-radius: 4px;
+    font-size: 13px;
+    padding: 2px 6px;
+    font-weight: 500
+}
+
+.sidebar .sidebar-content .badge-wrapper {
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-pack: justify;
+    justify-content: space-between;
+    -ms-flex-align: center;
+    align-items: center;
+    margin-bottom: 16px
+}
+
+.sidebar .sidebar-content .badge-wrapper div {
+    display: -ms-flexbox;
+    display: flex;
+    gap: 4px;
+    height: 24px
+}
+
+.sidebar .sidebar-content .direct {
+    background: #f4fbf8;
+    color: #1db177
+}
+
+.sidebar .sidebar-content .agency {
+    background: #ecf0f7;
+    color: #535c68;
+    line-height: 1.5
+}
+
+.sidebar .sidebar-content .house-index {
+    color: #535c68;
+    background: #f4f4f5
+}
+
+.sidebar .sidebar-content .contact-title {
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-align: center;
+    align-items: center;
+    gap: 8px
+}
+
+.sidebar .sidebar-content .contact-title img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    -o-object-fit: cover;
+    object-fit: cover
+}
+
+.sidebar .sidebar-content .contact-title .name-wrapper {
+    display: -ms-grid;
+    display: grid;
+    -ms-grid-columns: auto 1fr;
+    grid-template-columns: auto 1fr;
+    gap: 8px
+}
+
+.sidebar .sidebar-content .contact-title .name-wrapper .name-title {
+    font-weight: 500;
+    font-size: 11px;
+    color: #535c68;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #ced5e0;
+    margin-bottom: 0;
+    height: 20px;
+    line-height: 12px
+}
+
+.sidebar .sidebar-content .contact-title .name-wrapper .name {
+    color: #0c0c0d;
+    font-weight: 500;
+    font-size: 14px;
+    margin-bottom: 0;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden
+}
+
+.sidebar .sidebar-content .agency-name {
+    font-weight: 500;
+    color: #000;
+    font-size: 14px;
+    margin: 16px 0 0
+}
+
+.sidebar .sidebar-content .agency-description {
+    color: #898990;
+    font-size: 13px;
+    margin-top: 2px;
+    margin-bottom: 0;
+    line-height: 20px
+}
+
+.sidebar .sidebar-content .agency-info {
+    margin: 16px 0;
+    color: #0c0c0d;
+    font-size: 13px
+}
+
+.sidebar .sidebar-content .agency-info ul {
+    -webkit-padding-start: 0;
+    padding-inline-start:0;line-height: 20px
+}
+
+.sidebar .sidebar-content .agency-info .th {
+    font-weight: 400;
+    width: 96px;
+    vertical-align: baseline;
+    margin-right: 8px
+}
+
+.sidebar .sidebar-content .agency-info .td {
+    color: #555558;
+    padding-bottom: 4px;
+    word-wrap: break-word;
+    word-break: keep-all
+}
+
+.sidebar .sidebar-content .agency-house {
+    background-color: #f8fafd;
+    padding: 12px 16px;
+    border-radius: 8px;
+    display: -ms-flexbox;
+    display: flex
+}
+
+.sidebar .sidebar-content .agency-house-title {
+    color: #3f3f3f;
+    font-size: 13px
+}
+
+.sidebar .sidebar-content .agency-house-count {
+    color: #000;
+    font-size: 13px;
+    font-weight: 500
+}
+
+.sidebar .sidebar-content .agency-house .title-divider {
+    width: 1px;
+    height: 16px;
+    background-color: #ecf0f7;
+    margin: 0 16px
+}
+
+.sidebar .sidebar-content .agency-house .item-wrapper {
+    display: -ms-flexbox;
+    display: flex;
+    width: 50%;
+    -ms-flex-pack: justify;
+    justify-content: space-between
+}
+
+.sidebar .sidebar-content .maintain-cost {
+    color: #a6a6ab;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 7px 0
+}
+
+.sidebar .sidebar-content.direct_info {
+    cursor: pointer;
+    transition: background-color .5s
+}
+
+.house-detail {
+    min-width: 670px
+}
+
+.house-detail.flexbox {
+    display: -ms-flexbox;
+    display: flex
+}
+
+.house-detail .sidebar button.request,.mb button.request {
+    background-color: #1db177;
+    color: #fff
+}
+
+.house-detail .sidebar .contact-button-wrapper {
+    display: -ms-flexbox;
+    display: flex;
+    gap: 8px;
+    padding-top: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #f4f4f5;
+    margin-bottom: 20px
+}
+
+.badge-wrap,.f-wrap {
+    display: -ms-flexbox
+}
+
+.house-detail .sidebar button,.mb button {
+    background-color: #1db177;
+    width: 100%;
+    border: none;
+    color: #fff;
+    padding: 10px;
+    height: 48px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500
+}
+
+.sendbird_chat_btn {
+    background-color: #fff!important;
+    border: 1px solid #1db177!important;
+    width: 102px!important;
+    color: #1db177!important
+}
+
+.sendbird_chat_btn img {
+    width: 16px;
+    margin-right: 2px
+}
+
+.house-detail .content {
+    padding: 0;
+    width: 670px
+}
+
+.house-detail .content h1 {
+    color: #444;
+    font-size: 20px;
+    font-weight: 700;
+    margin-top: 0;
+    margin-bottom: 0;
+    letter-spacing: -1px;
+    line-height: 28px
+}
+
+.house-detail .content h2 {
+    font-size: 25px;
+    font-weight: 400
+}
+
+.house-detail .detail {
+    width: 670px
+}
+
+.row.border-bottom.cell,.row.border-top.cell {
+    width: 50%
+}
+
+.house-detail .content .detail .row {
+    margin-left: 0;
+    margin-right: 0
+}
+
+.f-wrap {
+    display: flex;
+    -ms-flex-direction: row;
+    flex-direction: row;
+    -ms-flex-wrap: wrap;
+    flex-wrap: wrap
+}
+
+.by-gray {
+    border-top: 1px solid #cacacd;
+    border-bottom: 1px solid #e7e7e9
+}
+
+.by-black {
+    border-top: 2px solid #000;
+    border-bottom: 2px solid #000
+}
+
+.row.border-top {
+    border-top: 1px solid #e5e5e5
+}
+
+.row.border-top.first {
+    border-top: 2px solid #777
+}
+
+.row.border-bottom {
+    border-bottom: 1px solid #e5e5e5
+}
+
+.row.border-bottom.first {
+    border-bottom: 2px solid #777
+}
+
+#houseSaleInfo tr,.badge-wrap .peter-verified,.house-detail .detail .detail-table.facility {
+    border-bottom: 1px solid #e5e5e5
+}
+
+.agent_detail .title {
+    font-size: 22px
+}
+
+.house-detail .guide {
+    padding: 16px
+}
+
+.house-detail .detail-section-header {
+    font-size: 20px;
+    font-weight: 700;
+    position: relative;
+    margin-bottom: 16px
+}
+
+.house-detail .detail-section-header.mt-50 {
+    margin-top: 50px
+}
+
+.house-detail .detail-section-header.optional {
+    font-size: 20px;
+    font-weight: 700;
+    position: relative;
+    margin: 50px 0 20px
+}
+
+.agent_detail {
+    font-size: 16px;
+    background-color: #e5e5e5;
+    padding: 16px 12px
+}
+
+.house-detail .fotorama {
+    background-color: #424242;
+    border: 1px solid #e5e5e5
+}
+
+.house-detail .title h2 {
+    margin: 0;
+    font-size: 26px;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis
+}
+
+.house-detail .badge-wrap,.house-detail .title {
+    border: 1px solid #e5e5e5;
+    padding: 0 20px;
+    background-color: #fefefe;
+    font-weight: 400;
+    width: 670px
+}
+
+.house-detail .badge-wrap,.house-detail .title.top-border-none {
+    border-top: none
+}
+
+.house-detail .title {
+    padding: 18px
+}
+
+.badge-wrap {
+    display: flex;
+    -ms-flex-direction: column;
+    flex-direction: column;
+    font-size: 13px;
+    line-height: 15px;
+    color: #818181;
+    overflow: hidden;
+    padding: 13px 18px
+}
+
+.badge-wrap .naver-verified,.badge-wrap .peter-verified {
+    padding: 15px 0
+}
+
+.badge-wrap ul {
+    position: absolute;
+    margin: 0;
+    padding: 0
+}
+
+.badge-wrap li {
+    float: left;
+    padding: 0 8px 0 2px;
+    border-right: 1px solid #d8d8d8;
+    margin-right: 8px;
+    height: 15px;
+    font-size: 14px
+}
+
+.badge-wrap li.naverVerification {
+    display: -ms-flexbox;
+    display: flex
+}
+
+.badge-wrap li.naverVerification>svg {
+    margin-right: 6px
+}
+
+.badge-wrap li.peterVerification {
+    background: url("/images/img-ci-peterpan@2x.png") left 0 center no-repeat;
+    background-size: 15px;
+    padding: 0 8px 0 20px
+}
+
+.badge-wrap li:last-child {
+    border-right: 0
+}
+
+.badge-wrap div {
+    float: right
+}
+
+.house-detail .detail .detail-table .column {
+    margin-top: 12px;
+    margin-bottom: 12px;
+    padding-left: 3px;
+    padding-right: 0
+}
+
+.house-detail .detail .detail-table {
+    font-size: 15px;
+    color: #000;
+    margin-top: 10px;
+    font-weight: 500;
+    letter-spacing: -1px
+}
+
+.detail h3 {
+    color: #000;
+    font-weight: 700;
+    margin-top: 30px
+}
+
+.house-detail .detail .detail-table .value {
+    font-weight: 400;
+    text-align: right
+}
+
+#contactModal h4,#noImages,#reportModal h4,.optionEach,.person .count,div.fotorama__stage {
+    text-align: center
+}
+
+.house-detail .detail .detail-table .column.value {
+    color: #444
+}
+
+.house-detail .detail .detail-table .row {
+    padding: 8px
+}
+
+.house-detail .hl h2 {
+    border-left: 4px solid #e66c6c;
+    font-size: 22px;
+    padding-left: 8px
+}
+
+.house-detail .hl .round-box {
+    border: 1px solid #e5e5e5;
+    padding: 20px;
+    font-size: 14px;
+    border-radius: 4px
+}
+
+#noImages,#recommendItem {
+    border: 1px solid #e5e5e5
+}
+
+.detailTitleWrapper .detail-right {
+    margin: 50px 0 20px auto;
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-align: center;
+    align-items: center
+}
+
+.detailTitleWrapper .detail-right .btn-address-type-change {
+    color: #818181;
+    font-size: 14px;
+    margin-left: 10px;
+    height: 32px;
+    line-height: 1
+}
+
+.detailTitleWrapper .detail-right .btn-address-type-change img.rotate-icon {
+    width: 16px;
+    vertical-align: top
+}
+
+.detailTitleWrapper .address {
+    font-size: 15px;
+    color: #000
+}
+
+.detailTitleWrapper .btn-roadview {
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-align: center;
+    align-items: center;
+    -ms-flex-pack: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin-left: 10px;
+    padding: 0
+}
+
+#map,#roadview {
+    height: 400px;
+    width: 100%
+}
+
+#map {
+    float: left
+}
+
+#roadview {
+    top: 0
+}
+
+#noImages {
+    height: 453px;
+    font-size: 3rem;
+    width: 668px;
+    margin-left: 1px
+}
+
+#noImages p {
+    margin-top: 20%
+}
+
+.options-images {
+    margin-top: 14px
+}
+
+.optionEach {
+    display: inline-block;
+    width: 76px;
+    height: 70px;
+    line-height: 112px;
+    margin: 2px
+}
+
+#houseSaleInfo {
+    width: 100%
+}
+
+#houseSaleInfo td,#houseSaleInfo th {
+    padding: 10px
+}
+
+#houseSaleInfo tr {
+    border-top: 1px solid #e5e5e5
+}
+
+#houseSaleInfo th {
+    border-right: 1px solid #e5e5e5
+}
+
+#houseSaleInfo td {
+    color: #000;
+    font-weight: 400
+}
+
+#contract_type {
+    font-size: 24px;
+    color: #0c0c0d;
+    font-weight: 700;
+    margin-right: 4px
+}
+
+#hashTag {
+    font-size: 1.5rem
+}
+
+.socialButton {
+    display: inline;
+    padding: 5px 20px;
+    margin: 2px 2px 10px;
+    float: left;
+    color: #fff
+}
+
+.socialButton a,.socialButton a:active,.socialButton a:focus,.socialButton a:hover,.socialButton a:link {
+    color: #fff
+}
+
+#kakao {
+    background-color: #fcd411
+}
+
+#facebook {
+    background-color: #3b5998
+}
+
+#twitter {
+    background-color: #55acee
+}
+
+#facebook,#kakao,#twitter {
+    cursor: pointer
+}
+
+.popover {
+    max-width: 588px
+}
+
+#recommendItem h4,.input-group {
+    margin-top: 11px
+}
+
+#recommendItem {
+    margin-bottom: 12px
+}
+
+#recommendItem img {
+    width: 140px;
+    height: 80px;
+    float: left;
+    margin-right: 12px
+}
+
+#recommendItem a {
+    text-decoration: none;
+    color: inherit
+}
+
+#recommandItem span {
+    margin-left: 12px
+}
+
+.house-detail .sidebar .buttons a {
+    font-size: 14px
+}
+
+div.fotorama--fullscreen {
+    z-index: 2040!important
+}
+
+div.fotorama__fullscreen-icon {
+    width: 420px;
+    height: 420px;
+    margin: -210px auto auto;
+    top: 50%;
+    background-image: url("/images/watermark.png");
+    position: relative;
+    background-position: 0 0
+}
+
+.fotorama--fullscreen .fotorama__fullscreen-icon {
+    background-position: 0 0
+}
+
+.fotorama__wrap--css3.fotorama__wrap--no-controls.fotorama__wrap--slide.fotorama__wrap--toggle-arrows .fotorama__fullscreen-icon:not(:focus) {
+    transform: none
+}
+
+.fullscreen #min {
+    position: absolute;
+    top: 0;
+    right: 20px;
+    display: inline-block
+}
+
+#min {
+    display: none;
+    z-index: 19999999!important;
+    font-size: 50px
+}
+
+#price {
+    font-size: 24px;
+    color: #0c0c0d;
+    font-weight: 700
+}
+
+#sigudong,.room-info span {
+    font-size: 14px
+}
+
+#sigudong {
+    font-weight: 400;
+    color: #555558
+}
+
+.room-info {
+    display: -ms-grid;
+    display: grid;
+    -ms-grid-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
+    margin-top: 24px;
+    gap: 12px
+}
+
+.room-info-item {
+    -ms-flex-align: center;
+    align-items: center;
+    display: -ms-flexbox;
+    display: flex
+}
+
+.room-info img {
+    width: 24px;
+    margin-right: 4px
+}
+
+#add-favorite {
+    cursor: pointer
+}
+
+#add-favorite-icon {
+    width: 30px;
+    height: 30px
+}
+
+#btnRequestContact {
+    height: 4.5rem;
+    background-color: #1db177;
+    color: #fff;
+    border: 0
+}
+
+.person .count {
+    background-color: #f8f8f8;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 20px auto
+}
+
+.count>tbody>tr>th {
+    width: calc(100% / 3);
+    font-size: 13px;
+    line-height: 13px;
+    color: #818181;
+    text-align: center!important;
+    font-weight: 400;
+    padding: 21px 0 9px
+}
+
+.count>tbody>tr>td {
+    font-size: 15px;
+    line-height: 15px;
+    letter-spacing: 0;
+    font-weight: 500;
+    padding-bottom: 21px
+}
+
+.person .text {
+    font-size: 13px;
+    line-height: 18px;
+    color: #818181;
+    margin: 0
+}
+
+.person .agency.text {
+    padding-top: 20px;
+    border-top: 1px solid #eaeaea
+}
+
+#contactModal .modal-dialog {
+    width: 360px;
+    display: inline-block;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%,-50%)!important
+}
+
+#contactModal>.modal-dialog.desktop {
+    min-width: 55rem;
+    width: 80rem
+}
+
+#contactModal .modal-header:first-child {
+    font-size: 24px;
+    font-weight: 500
+}
+
+#contactModal .modal-header {
+    height: 8.3rem;
+    background-color: #fff;
+    border-radius: 5px 5px 0 0;
+    border-bottom: 1px solid #1db177
+}
+
+#contactModal .modal-footer {
+    padding: 0
+}
+
+#contactModal .modal-footer button {
+    border: 0;
+    height: 54px
+}
+
+#contactModal .modal-body {
+    display: -ms-flexbox;
+    display: flex;
+    padding: 40px 30px;
+    text-align: center
+}
+
+#contactModal .modal-body .contact-profile-img {
+    width: 65px;
+    height: 65px;
+    background: 50% 50% no-repeat;
+    background-size: cover;
+    border-radius: 50%
+}
+
+.sellerInfo,.sellerInfo-wrapper {
+    background-color: #fafafa
+}
+
+#contactModal #contactNumber .cTitle,#contactModal #contactNumber .cValue {
+    text-align: left
+}
+
+#contactModal #contactNumber .cTitle {
+    width: 40%;
+    color: #999
+}
+
+#contactModal #contactNumber .cValue {
+    width: 60%;
+    color: #1db177;
+    font-size: 14px;
+    font-weight: 500
+}
+
+#contactModal #contactNumber .cValue.isCrow {
+    text-align: right
+}
+
+#contactModal #contactNumber .cTitle.isCrow {
+    -ms-flex: 1;
+    flex: 1;
+    text-align: left
+}
+
+#contactModal .modal-body .agency-call-num>div:nth-child(2),#contactModal .modal-body .agency-master-name>div:nth-child(2),#contactModal .modal-body .agency-name>div:nth-child(2),#contactModal .modal-body .avail-contact-time>div:nth-child(2) {
+    -ms-flex: 3;
+    flex: 3;
+    line-height: 1;
+    text-align: left
+}
+
+#contactModal .modal-body .avail-contact-time .multi-line {
+    font-size: 12px!important
+}
+
+#contactModal .modal-body .avail-contact-time>div:nth-child(2).isCrow {
+    -ms-flex: 3;
+    flex: 3;
+    text-align: center
+}
+
+#contactNumber.isAgency .avail-contact-time {
+    font-size: 14px
+}
+
+#contactModal #contactInfo {
+    font-size: 14px;
+    padding-top: 20px;
+    color: #818181
+}
+
+#contactModal #contactNumber {
+    display: -ms-flexbox;
+    display: flex;
+    margin: 20px 0
+}
+
+#contactModal #contactNumber.isAgency {
+    margin: 17px 0;
+    font-size: 12px;
+    -ms-flex-align: center;
+    align-items: center
+}
+
+#contactModal #contactNumber>div:last-child {
+    color: #1db177
+}
+
+#contactModal #contactNumber span {
+    font-size: 16px
+}
+
+#contactModal #saleNum {
+    text-align: left;
+    font-size: 16px;
+    color: #444;
+    font-weight: 700
+}
+
+#contactModal #agencyInfo {
+    margin-bottom: 19px;
+    border-top: 2px solid #aaa;
+    border-bottom: 2px solid #aaa
+}
+
+#contactModal #agencyInfo table {
+    width: 100%
+}
+
+#contactModal #agencyInfo th,#contactModal #agencyInfo tr {
+    padding: 10px 14px;
+    width: 35%
+}
+
+.sellerInfo-wrapper {
+    -ms-flex: 1;
+    flex: 1;
+    padding: 45px 55px
+}
+
+.sellerInfo-wrapper.isCrow {
+    padding: 45px 5px
+}
+
+.sellerInfo .name {
+    font-size: 16px;
+    font-weight: 500
+}
+
+.sellerInfo .houseIndex,.sellerInfo .name span {
+    font-size: 14px;
+    line-height: 25px;
+    color: #818181;
+    font-weight: 400
+}
+
+.agency-call-num,.agency-master-name,.agency-name,.avail-contact-time {
+    display: -ms-flexbox;
+    display: flex;
+    margin: 1.7rem 0;
+    font-size: 12px
+}
+
+#contactModal #agencyInfo tr {
+    border-bottom: 1px solid #eee
+}
+
+.contact-input {
+    height: 4.3rem;
+    padding: 10px 15px;
+    line-height: 4.3rem;
+    text-align: left
+}
+
+#smsMessageTextArea,.contact-input {
+    border-radius: 2px;
+    border: 1px solid #d0d0d0
+}
+
+#smsMessageTextArea:-ms-input-placeholder,.contact-input:-ms-input-placeholder {
+    letter-spacing: -.32px;
+    color: #d0d0d0
+}
+
+#smsMessageTextArea::placeholder,.contact-input::placeholder {
+    letter-spacing: -.32px;
+    color: #d0d0d0
+}
+
+.sidebar-content {
+    height: 100%;
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-direction: column;
+    flex-direction: column;
+    padding: 0 20px
+}
+
+.sidebar-content>.description {
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-direction: column;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    text-align: left;
+    font-size: 14px
+}
+
+#fotorama>img,a.at-share-btn.at-svc-lineme,input.check-agree {
+    display: none
+}
+
+#smsMessageArea,.sidebar-content>.description>.phoneNumberInputArea {
+    margin-bottom: 30px
+}
+
+#smsMessageArea #textCount {
+    float: right;
+    font-size: 1.2rem;
+    letter-spacing: -.4px;
+    color: #999
+}
+
+#smsMessageArea textarea {
+    width: 100%;
+    height: 120px;
+    color: #000;
+    font-weight: 400;
+    text-align: left
+}
+
+.fotorama__nav-wrap {
+    position: absolute!important;
+    background-color: #424242
+}
+
+div#contactModal .modal-content {
+    font-size: 14px
+}
+
+div#contactModal .modal-body .panel {
+    margin-top: 16px
+}
+
+div#contactModal .modal-body .panel .panel-heading {
+    font-size: 16px;
+    font-weight: 700;
+    color: #444;
+    padding: 4px;
+    height: 29px;
+    background-color: #eee
+}
+
+div#contactModal .modal-body #saleNum {
+    font-size: 16px;
+    font-weight: 700
+}
+
+div#seoulHouseShare {
+    text-align: center;
+    border-top: 1px solid #f2f2f2;
+    background-position: 50% 50%;
+    background-color: #fcfcfc;
+    background-repeat: no-repeat;
+    height: 149px
+}
+
+div#safety-house-check-banner {
+    margin-bottom: 10px
+}
+
+div#safety-service-apply-banner+img {
+    margin-top: 2px;
+    float: right
+}
+
+input.check-agree+label {
+    background: url("/images/gray_rounded_checkbox_off.png") left 0 top 2px no-repeat;
+    background-size: 20px;
+    padding-left: 25px;
+    padding-top: 2px;
+    height: 25px;
+    margin-top: 12px;
+    margin-bottom: 26px
+}
+
+input.check-agree:checked+label {
+    background: url("/images/gray_rounded_checkbox_on.png") left 0 top 2px no-repeat;
+    background-size: 20px
+}
+
+#fotorama div.slide {
+    max-height: 450px!important;
+    overflow: hidden!important
+}
+
+@media (max-width: 720px) {
+    footer,nav {
+        display:none
+    }
+
+    .wrapper .container {
+        padding: 0
+    }
+
+    div#seoulHouseShare {
+        background-image: url("/images/house_share_m.png");
+        background-size: contain;
+        height: 45px
+    }
+}
+
+@media (min-width: 992px) {
+    .right-padding-20 {
+        padding-right:30px!important
+    }
+
+    .left-padding-20 {
+        padding-left: 20px!important
+    }
+}
+
+#single_banner_area {
+    position: relative;
+    height: 14.2rem
+}
+
+.carousel-inner {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    max-height: 100%!important
+}
+
+.carousel-inner>.item {
+    height: 100%!important;
+    top: 0!important;
+    left: 0!important
+}
+
+.carousel-inner>.item>a>img {
+    width: 100%;
+    height: 100%
+}
+
+#fotorama {
+    overflow: hidden;
+    height: 450px;
+    width: 670px
+}
+
+img {
+    max-width: 100%
+}
+
+#alert-already-report .modal-dialog,#cancel-report .modal-dialog,#report-house-done .modal-dialog {
+    width: 442px
+}
+
+#alert-already-report .modal-header,#cancel-report .modal-header,#report-house-done .modal-header {
+    height: 58px;
+    text-align: center;
+    color: #1db177;
+    border-bottom-color: #1db177
+}
+
+#alert-already-report .modal-header h4,#cancel-report .modal-header h4,#report-house-done .modal-header h4 {
+    font-size: 18px;
+    line-height: 30px;
+    font-weight: 400
+}
+
+#alert-already-report .modal-body,#cancel-report .modal-body,#report-house-done .modal-body {
+    padding-top: 40px;
+    padding-bottom: 40px;
+    text-align: center
+}
+
+#alert-already-report .modal-footer,#cancel-report .modal-footer,#report-house-done .modal-footer {
+    padding: 0;
+    height: 58px
+}
+
+#alert-already-report .modal-footer button,#report-house-done .modal-footer button {
+    height: 100%;
+    background-color: transparent;
+    border: none;
+    border-right: 1px solid #eee;
+    border-radius: 0;
+    font-size: 16px;
+    margin: 0;
+    width: 100%;
+    color: #444
+}
+
+#cancel-report .modal-footer button {
+    height: 100%;
+    background-color: transparent;
+    border: none;
+    border-right: 1px solid #eee;
+    border-radius: 0;
+    font-size: 16px;
+    margin: 0;
+    width: 49%;
+    color: #444
+}
+
+#at4-share {
+    z-index: 1
+}
+
+.house-badge-wrapper {
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-align: center;
+    align-items: center;
+    margin: 15px 0 5px
+}
+
+.house-badge-wrapper.complain {
+    background: #fef2f2;
+    padding: 8px 16px
+}
+
+.house-badge-wrapper.complain img {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px
+}
+
+.house-badge {
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-pack: center;
+    justify-content: center;
+    -ms-flex-align: center;
+    align-items: center;
+    border-radius: 2px;
+    padding: 2px 10px;
+    margin-right: 9px
+}
+
+.house-badge__img {
+    width: 15px;
+    margin-right: 3px
+}
+
+.house-badge__label {
+    font-size: 13px;
+    font-weight: 500
+}
+
+.house-badge__text {
+    margin: 0
+}
+
+.house-badge__text small {
+    color: #929292
+}
+
+.house-badge--red {
+    color: #fff;
+    background: #ee4b61
+}
+
+.house-badge--discount-10,.house-badge--discount-20,.house-badge--discount-30,.house-badge--discount-40,.house-badge--discount-50,.house-badge--discount-60,.house-badge--discount-70,.house-badge--discount-80,.house-badge--discount-90,.house-badge--green {
+    background: #4961ca;
+    color: #fff
+}
+
+.house-badge--discount-100 {
+    background: #f55858;
+    color: #fff
+}
+
+.house-image-tag {
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: #fff;
+    width: -webkit-fit-content;
+    width: -moz-fit-content;
+    width: fit-content;
+    height: -webkit-fit-content;
+    height: -moz-fit-content;
+    height: fit-content;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    padding: 12px 16px
+}
+
+.house-image-tag.blue {
+    background: rgba(73,97,202,.85)
+}
+
+.footer-menu.clear>ul {
+    padding: 0 28px!important
+}
+
+.footer-link.clear>ul {
+    padding: 0 40px!important
+}
+
+div.info div.category-text-center {
+    text-align: center!important
+}
+
+p.in-banner-top-text {
+    line-height: 2rem;
+    display: block;
+    margin-top: .5rem;
+    font-size: 1.8rem
+}
+
+p.in-banner-main-text {
+    display: block;
+    line-height: 3rem;
+    font-size: 2.5rem;
+    font-weight: 700
+}
+
+@media screen and (max-width: 780px) {
+    div#infoQTag {
+        top:-9px;
+        left: 0;
+        padding-left: 3em
+    }
+
+    div#ch-plugin {
+        display: none
+    }
+}
+
+.pop_info,.pop_info .tooltip-wrapper {
+    top: 0;
+    left: 0;
+    z-index: 1;
+    position: absolute
+}
+
+.pop_info {
+    display: none
+}
+
+.pop_info .tooltip-wrapper {
+    width: 350px;
+    background: #fff;
+    border: 1px solid #ddd;
+    box-shadow: 1px 1px 1px #ccc;
+    padding: 5px 15px 20px
+}
+
+.pop_info .tooltip-wrapper .tooltip-arrow {
+    position: absolute;
+    top: -10px;
+    left: 7px;
+    display: inline-block;
+    width: 25px;
+    height: 25px;
+    font-size: 16px;
+    transform: scaleY(-1);
+    color: #fff;
+    z-index: 0;
+    text-shadow: 1px 1px 1px #ccc;
+    box-sizing: border-box
+}
+
+.m_element,.mobile-single-content {
+    display: none
+}
+
+.pop_info .tooltip-wrapper .tooltip-close {
+    position: absolute;
+    right: 10px;
+    top: 1px;
+    cursor: pointer
+}
+
+.pop_info .tooltip-wrapper .tooltip-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1db177;
+    margin-bottom: 10px
+}
+
+.pop_info .tooltip-wrapper .tooltip-description {
+    color: #444;
+    line-height: 19px;
+    text-indent: .2em
+}
+
+table.infos {
+    width: 100%;
+    text-align: center;
+    font-size: 15px
+}
+
+td.line_subject {
+    text-align: center;
+    text-indent: 10px;
+    font-weight: 700
+}
+
+table.infos,table.infos td {
+    border: 0;
+    background-color: #fff
+}
+
+table.infos tr.top_line {
+    padding: 1em;
+    border-top: 1px solid #ddd
+}
+
+table.infos thead td {
+    font-weight: 700;
+    border-top: 2px solid #888
+}
+
+table.infos td {
+    padding-top: 4px;
+    padding-bottom: 4px;
+    padding-left: 3px
+}
+
+.icon-question-1 {
+    color: #ddd;
+    cursor: pointer
+}
+
+.icon-question-1:hover {
+    color: #1db177
+}
+
+@media screen and (max-width: 500px) {
+    table.infos {
+        margin-top:2em
+    }
+
+    p.in-banner-main-text {
+        font-size: 1.5rem
+    }
+
+    p.in-banner-top-text {
+        font-size: .8rem
+    }
+}
+
+@media screen and (max-width: 740px) {
+    .m_element {
+        display:block
+    }
+
+    td.line_subject {
+        text-align: center;
+        text-indent: 0;
+        font-weight: 700
+    }
+
+    table.infos {
+        font-size: 12px
+    }
+
+    .pop_info .tooltip-wrapper {
+        width: 200px
+    }
+
+    .pop_info .tooltip-wrapper .tooltip-arrow {
+        display: none
+    }
+
+    .mobile-single-content {
+        display: block
+    }
+
+    .padding-bottom {
+        padding-bottom: 30px
+    }
+
+    .inbox-top-icon {
+        font-size: 1.2rem;
+        top: 4rem;
+        z-index: 1
+    }
+}
+
+.speed-house {
+    color: #fff;
+    background: #71ad47;
+    width: 9.5rem;
+    text-align: center
+}
+
+.layer-title {
+    position: relative;
+    width: 100%;
+    color: #fff;
+    text-align: left;
+    height: 45px;
+    font-size: 14px;
+    padding: 12px 16px;
+    font-weight: 400;
+    border: 1px solid #e5e5e5;
+    border-bottom: none
+}
+
+.layer-title img {
+    width: 20px;
+    height: 20px;
+    margin-right: 5px
+}
+
+.layer-title b {
+    margin-right: 8px;
+    font-weight: 500
+}
+
+.layer-title span {
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-align: center;
+    align-items: center
+}
+
+.layer-title.blue {
+    color: #4d65cb;
+    background: #f0f2fb
+}
+
+.layer-title.blue .category-text b {
+    color: #3750be
+}
+
+.layer-title.green {
+    color: #1db177;
+    background: #f4fbf8
+}
+
+.layer-title.green .category-text b {
+    color: #189966
+}
+
+.layer-title .category-text {
+    padding-left: .5rem
+}
+
+.layer-title>.mobile-category-text {
+    display: none
+}
+
+.zero-pink {
+    color: #f55858
+}
+
+.zero-blue {
+    color: #4961ca
+}
+
+.zero-bar {
+    position: absolute;
+    left: 12px;
+    top: 12px;
+    color: #fff;
+    width: 90px;
+    height: 80px;
+    line-height: 1;
+    text-align: center;
+    border-radius: 4px
+}
+
+.zero-bar__top {
+    padding: 5px 0;
+    height: 22px;
+    font-size: 11px;
+    color: #fff401;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px
+}
+
+.zero-bar.discount-10 .zero-bar__top,.zero-bar.discount-20 .zero-bar__top,.zero-bar.discount-30 .zero-bar__top,.zero-bar.discount-40 .zero-bar__top,.zero-bar.discount-50 .zero-bar__top,.zero-bar.discount-60 .zero-bar__top,.zero-bar.discount-70 .zero-bar__top,.zero-bar.discount-80 .zero-bar__top,.zero-bar.discount-90 .zero-bar__top {
+    background: #243063
+}
+
+.zero-bar.discount-100 .zero-bar__top {
+    background: #ac3e3e
+}
+
+.zero-bar.discount-10,.zero-bar.discount-20,.zero-bar.discount-30,.zero-bar.discount-40,.zero-bar.discount-50,.zero-bar.discount-60,.zero-bar.discount-70,.zero-bar.discount-80,.zero-bar.discount-90 {
+    background: #4961ca;
+    opacity: .95
+}
+
+.zero-bar.discount-100 {
+    background: #f55858;
+    opacity: .95
+}
+
+.zero-bar__right {
+    font-size: 0;
+    margin-top: 8px
+}
+
+.zero-bar__right span {
+    display: inline-block;
+    font-size: 18px;
+    font-weight: 700
+}
+
+.zero-bar__text {
+    font-size: 14px;
+    font-weight: 500;
+    padding: 7px 0 0
+}
+
+.zero-bar.type-direct {
+    background-color: #3750ac;
+    font-size: 16px;
+    width: 130px
+}
+
+.zero-bar.type-direct .zero-bar__top {
+    color: #fff
+}
+
+.zero-bar.type-direct .zero-bar__right span {
+    font-size: 20px
+}
+
+@media only screen and (max-width: 720px) {
+    .zero-bar {
+        top:auto;
+        left: 14px;
+        bottom: 14px;
+        width: auto;
+        height: auto;
+        padding: 8px;
+        font-size: 14px
+    }
+
+    .zero-bar__top {
+        background-color: transparent
+    }
+
+    .zero-bar__top span:after,.zero-bar__top span:before {
+        display: none
+    }
+
+    .zero-bar__right,.zero-bar__right span,.zero-bar__text,.zero-bar__top {
+        display: inline-block;
+        margin-top: 0;
+        padding: 0;
+        font-weight: 400;
+        font-size: inherit
+    }
+
+    .zero-bar__right,.zero-bar__text {
+        margin-left: 4px
+    }
+
+    .zero-bar.discount-10,.zero-bar.discount-20,.zero-bar.discount-30 {
+        background-color: rgba(29,177,119,.9)
+    }
+
+    .zero-bar.discount-40,.zero-bar.discount-50,.zero-bar.discount-60,.zero-bar.discount-70 {
+        background-color: rgba(63,95,128,.9)
+    }
+
+    .zero-bar.discount-100,.zero-bar.discount-80,.zero-bar.discount-90 {
+        background-color: rgba(254,105,103,.9)
+    }
+
+    .house-detail .indicator {
+        display: none
+    }
+
+    .house-detail .title.title--recommend {
+        display: block;
+        width: 100%
+    }
+
+    .house-detail .title.title--recommend .layer-title {
+        padding: 8px 14px;
+        text-indent: 4px;
+        font-size: 14px
+    }
+
+    .house-detail .title.title--recommend .icon-house {
+        width: 15px!important;
+        height: 15px!important;
+        background-size: 100%!important
+    }
+
+    .zero-bar.type-direct {
+        width: auto;
+        padding: 7px 10px;
+        background: rgba(55,80,172,.9);
+        font-size: 13px
+    }
+
+    .zero-bar.type-direct .zero-bar__top {
+        display: none
+    }
+
+    .zero-bar.type-direct .zero-bar__right,.zero-bar.type-direct .zero-bar__right span,.zero-bar.type-direct .zero-bar__text {
+        display: inline;
+        margin-left: 0;
+        font-size: 13px;
+        line-height: 1;
+        font-weight: lighter
+    }
+
+    .zero-bar.type-direct .zero-bar__right b {
+        font-weight: 400
+    }
+
+    .zero-bar.type-direct .zero-bar__right span {
+        font-size: 14px
+    }
+}
+
+@media (min-width: 320px) and (max-width:480px) {
+    #single_banner_area {
+        height:8rem
+    }
+
+    .carousel-indicators .active,.carousel-indicators li {
+        width: .8rem;
+        height: .8rem;
+        margin: 0
+    }
+
+    .layer-title>.category-text {
+        display: none
+    }
+
+    .layer-title>.mobile-category-text {
+        display: block
+    }
+}
+
+.flex-center {
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-pack: center;
+    justify-content: center;
+    -ms-flex-align: center;
+    align-items: center
+}
+
+.noto-13 {
+    font-size: 1.3rem
+}
+
+.noto-14 {
+    font-size: 1.4rem;
+    letter-spacing: -.46px
+}
+
+.privacy-policies-content {
+    overflow-y: scroll
+}
+
+.privacy-policies-content div,.privacy-policies-content li,.privacy-policies-content p {
+    color: #666!important;
+    text-align: left!important
+}
+
+.privacy-policies-content p,.privacy-policies-content ul {
+    margin-bottom: 10px!important
+}
+
+.description.hl .vaddr_info {
+    position: relative
+}
+
+.mobile-vaddr-info {
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-align: center;
+    align-items: center
+}
+
+.mobile-vaddr-info>.m-house-title {
+    padding: 0
+}
+
+.description.hl .detailTitleWrapper {
+    display: -ms-flexbox;
+    display: flex;
+    position: relative
+}
+
+.description.hl .detailTitleWrapper .vaddr_info {
+    margin-left: 5px
+}
+
+.description.hl .detailTitleWrapper .vaddr_info:hover::after {
+    content: '';
+    position: absolute;
+    left: -9rem;
+    bottom: -10rem;
+    z-index: 5000;
+    width: 20rem;
+    height: 9rem;
+    padding: 2rem 1rem;
+    font-size: 1rem;
+    color: #333;
+    background-position: center;
+    background-size: cover;
+    background-image: url("/images/img_notibox@2x.png")
+}
+
+.description.hl .detailTitleWrapper .vaddr_info.addr4-text:hover::after {
+    content: '택지 개발 등으로 지번이 부여되지 않거나, 도로명 주소, 블록 주소인 임시 주소 상태의 매물로 정확한 위치를 표시할 수 없습니다. 정확한 위치는 등록자에게 문의해주세요.'
+}
+
+.description.hl .detailTitleWrapper .vaddr_info.vaddr-text:hover::after {
+    content: '피터팬은 제휴 업체의 매물정보 기밀 유지를 위해 정확한 위치를 표시하지 않으나 지도 범위 내 매물이 위치해 있습니다. 정확한 위치는 등록자에게 문의해주세요.'
+}
+
+@media screen and (max-width: 48rem) {
+    .description.hl .detailTitleWrapper {
+        display:none
+    }
+
+    .mobile-single-content .mobile-vaddr-info>.vaddr_info {
+        position: relative;
+        margin-left: 10px;
+        background: 0 0;
+        border: 0;
+        padding: 0
+    }
+
+    .description.hl .detailTitleWrapper .vaddr_info.addr4-text:hover::after,.description.hl .detailTitleWrapper .vaddr_info.vaddr-text:hover::after {
+        position: absolute;
+        left: -7.5rem;
+        bottom: -9rem;
+        width: 19rem;
+        height: 9rem;
+        padding: 2rem 1rem;
+        font-size: 1rem;
+        color: #333;
+        z-index: 5000;
+        margin-left: -1rem;
+        background-position: center;
+        background-size: cover;
+        background-image: url("/images/img_notibox@2x.png")
+    }
+}
+
+.report-button-wrapper {
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-pack: center;
+    justify-content: center;
+    margin-top: 14px
+}
+
+.report-button {
+    font-size: 13px;
+    font-weight: 400;
+    color: #555558
+}
+
+.report-button span {
+    -webkit-text-decoration-line: underline;
+    text-decoration-line: underline
+}
+
+.report-button img {
+    width: 16px;
+    height: 16px;
+    margin-right: 1px
+}
+
+.thunder-toast-wrapper {
+    position: relative;
+    width: -webkit-fill-available
+}
+
+.thunder-toast-wrapper .thunder-toast {
+    animation-duration: .5s;
+    background: #323234;
+    color: #fff;
+    position: absolute;
+    padding: 8px 12px;
+    border-radius: 4px;
+    display: -ms-flexbox;
+    display: flex;
+    -ms-flex-align: center;
+    align-items: center;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: -48px;
+    height: 38px;
+    width: -webkit-max-content;
+    width: -moz-max-content;
+    width: max-content
+}
+
+.thunder-toast-wrapper .thunder-toast.fadeIn {
+    animation: fadeIn .5s forwards
+}
+
+.thunder-toast-wrapper .thunder-toast.fadeOut {
+    animation: fadeOut .5s forwards
+}
+
+.thunder-toast-wrapper .thunder-toast .triangle-icon {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: -6px;
+    width: 12px;
+    height: 6px
+}
+
+.thunder-toast-wrapper .thunder-toast .thunder-icon {
+    width: 16px;
+    margin-right: 4px
+}
+
+@keyframes fadeIn {
+    0% {
+        opacity: 0
+    }
+
+    100% {
+        opacity: 1
+    }
+}
+
+@keyframes fadeOut {
+    0% {
+        opacity: 1
+    }
+
+    100% {
+        opacity: 0
+    }
+}
+
+body {
+    overflow-x: auto
+}
+
+/* SPOTSYSTEM 모바일 가독성 개선 */
+@media (max-width: 768px) {
+  /* 사이드바 개선 */
+  .sidebar .sidebar-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-bottom: 15px;
+    padding: 20px 15px;
+  }
+  
+  .sidebar-container {
+    width: 100% !important;
+    position: relative !important;
+  }
+  
+  /* 버튼 터치 친화적 크기 - 구체적인 선택자 사용 */
+  .house-detail .sidebar button:not(.btn-close), 
+  .mb button:not(.btn-close) {
+    min-height: 48px !important;
+    font-size: 16px !important;
+    padding: 12px 20px !important;
+    border-radius: 8px !important;
+  }
+  
+  /* 텍스트 가독성 개선 */
+  .house-detail .content h1 {
+    font-size: 24px !important;
+    line-height: 1.3 !important;
+  }
+  
+  .house-detail .content h2 {
+    font-size: 20px !important;
+  }
+  
+  /* 테이블 반응형 */
+  #houseSaleInfo {
+    font-size: 14px !important;
+  }
+  
+  #houseSaleInfo td, #houseSaleInfo th {
+    padding: 12px 8px !important;
+  }
+  
+  /* 모달 개선 */
+  .modal-dialog {
+    margin: 10px !important;
+    max-width: calc(100% - 20px) !important;
+  }
+  
+  .modal-content {
+    border-radius: 12px !important;
+  }
+  
+  .modal-header {
+    padding: 20px !important;
+    border-bottom: 1px solid #eee !important;
+  }
+  
+  .modal-body {
+    padding: 20px !important;
+  }
+  
+  .modal-footer {
+    padding: 15px 20px !important;
+    border-top: 1px solid #eee !important;
+  }
+  
+  /* 입력 요소 개선 */
+  .contact-input {
+    height: 48px !important;
+    font-size: 16px !important;
+    padding: 12px 16px !important;
+    border-radius: 8px !important;
+  }
+  
+  /* 이미지 갤러리 개선 */
+  .fotorama {
+    width: 100% !important;
+    height: 300px !important;
+  }
+  
+  /* 카드 컴포넌트 개선 */
+  .card {
+    border-radius: 12px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+  }
+  
+  .card-body {
+    padding: 20px !important;
+  }
+  
+  /* 배지 개선 */
+  .badge-wrap {
+    padding: 15px 20px !important;
+  }
+  
+  .badge-wrap li {
+    font-size: 16px !important;
+    padding: 0 12px 0 4px !important;
+    margin-right: 12px !important;
+  }
+  
+  /* 팝오버 개선 */
+  .popover {
+    max-width: calc(100vw - 40px) !important;
+    font-size: 14px !important;
+  }
+  
+  /* 소셜 버튼 개선 */
+  .socialButton {
+    padding: 12px 24px !important;
+    margin: 5px !important;
+    font-size: 16px !important;
+    border-radius: 8px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  /* 아주 작은 화면용 추가 조정 */
+  .house-detail .content h1 {
+    font-size: 20px !important;
+  }
+  
+  .house-detail .content h2 {
+    font-size: 18px !important;
+  }
+  
+  .modal-header, .modal-body, .modal-footer {
+    padding: 15px !important;
+  }
+  
+  .house-detail .sidebar button:not(.btn-close), 
+  .mb button:not(.btn-close) {
+    font-size: 15px !important;
+    padding: 10px 16px !important;
+  }
+  
+  .fotorama {
+    height: 250px !important;
+  }
+  
+  .card-body {
+    padding: 15px !important;
+  }
+  
+  #houseSaleInfo {
+    font-size: 13px !important;
+  }
+  
+  #houseSaleInfo td, #houseSaleInfo th {
+    padding: 8px 6px !important;
+  }
+}
+
+/* 터치 스크린 최적화 */
+@media (hover: none) and (pointer: coarse) {
+  /* 터치 디바이스에서 호버 효과 개선 */
+  .house-detail .sidebar button:hover, .mb button:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  }
+  
+  .socialButton:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+  }
+  
+  .card:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+  }
+}
+
+/* 가로 방향 화면 최적화 */
+@media (max-width: 768px) and (orientation: landscape) {
+  .modal-dialog {
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+  }
+  
+  .fotorama {
+    height: 200px !important;
+  }
+}

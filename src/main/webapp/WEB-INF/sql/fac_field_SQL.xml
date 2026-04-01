@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sqls>
+	<sql id="fac.selectByBbox">
+		SELECT
+			gid,
+			code,
+			photo1,
+			project_code,
+			save,
+			dept_code,
+			use_yn,
+			ST_AsGeoJSON(ST_Transform(geometry, 4326)) AS geojson
+		FROM test.gis_a_layer
+		WHERE ST_Intersects(
+			geom,
+			ST_Transform(ST_MakeEnvelope(?, ?, ?, ?, 4326), ST_SRID(geometry))
+		)
+		LIMIT ${limit}
+	</sql>
+
+	<sql id="fac.insertFacAddItem">
+		INSERT INTO test.field (
+			code, survey, image, use_yn, project_code, group_index, user_id, photo_direction, reg_dt
+		) VALUES (
+			?, ?, ?, 'Y', ?, ?, ?, ?, now()
+		)
+	</sql>
+
+	<sql id="fac.selectFieldByCode">
+		SELECT
+			f.code,
+			f.project_code,
+			f.survey,
+			f.image,
+			f.group_index,
+			f.user_id,
+			f.photo_direction,
+			f.reg_dt,
+			u.name AS user_name
+		FROM test.field f
+		LEFT JOIN test."user" u ON f.user_id = u.id
+		WHERE f.code = ? AND f.use_yn = 'Y'
+		ORDER BY f.group_index ASC, f.reg_dt ASC
+	</sql>
+
+	<sql id="fac.updateFieldItem">
+		UPDATE test.field
+		SET
+			survey = ?,
+			project_code = ?,
+			group_index = ?,
+			photo_direction = ?
+		WHERE code = ? AND image = ?
+	</sql>
+
+	<sql id="fac.deleteFieldItem">
+		UPDATE test.field
+		SET use_yn = 'N', mod_dt = NOW()
+		WHERE code = ? AND image = ?
+	</sql>
+
+	<sql id="fac.deleteFieldByCode">
+		UPDATE test.field
+		SET use_yn = 'N', mod_dt = NOW()
+		WHERE code = ?
+	</sql>
+
+	<sql id="fac.deleteFieldByCodeAndGroupIndex">
+		UPDATE test.field
+		SET use_yn = 'N', mod_dt = NOW()
+		WHERE code = ? AND group_index = ?
+	</sql>
+
+	<sql id="fac.updateGroupCommentByCodeAndGroupIndex">
+		UPDATE test.field
+		SET survey = ?, mod_dt = NOW()
+		WHERE code = ? AND group_index = ? AND use_yn = 'Y'
+	</sql>
+
+	<sql id="fac.selectCodesWithFieldData">
+		SELECT DISTINCT code FROM test.field WHERE use_yn = 'Y' ORDER BY code
+	</sql>
+</sqls>

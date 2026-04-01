@@ -1,0 +1,32 @@
+<script src="@@webRoot/node_modules/simplebar/dist/simplebar.min.js"></script>
+<script src="@@webRoot/node_modules/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script src="@@webRoot/assets/js/theme/sidebarmenu-default.js"></script>
+
+<script>
+    function handleSidebar() {
+      document.querySelectorAll(".sidebartoggler").forEach(function (element) {
+        element.addEventListener("click", function () {
+          document.querySelectorAll(".sidebartoggler").forEach(function (el) {
+            el.checked = true;
+          });
+          document
+            .getElementById("main-wrapper")
+            .classList.toggle("show-sidebar");
+          document.querySelectorAll(".sidebarmenu").forEach(function (el) {
+            el.classList.toggle("close");
+          });
+          var dataTheme = document.body.getAttribute("data-sidebartype");
+          if (dataTheme === "full") {
+            document.body.setAttribute("data-sidebartype", "mini-sidebar");
+          } else {
+            document.body.setAttribute("data-sidebartype", "full");
+          }
+        });
+      });
+    }
+
+    handleSidebar();
+</script>
+
+<!-- solar icons -->
+<script src="https://cdn.jsdelivr.net/npm/iconify-icon@1.0.8/dist/iconify-icon.min.js"></script>

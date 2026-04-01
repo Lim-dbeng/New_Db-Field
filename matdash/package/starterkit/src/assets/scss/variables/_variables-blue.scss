@@ -1,0 +1,25 @@
+[data-bs-theme="light"][data-color-theme="Blue_Theme"] {
+  $primary: #635BFF;
+  $secondary: #14E9E2;
+
+  &:root {
+    --bs-primary: #{$primary};
+    --bs-primary-rgb: 99, 91, 255;
+    --bs-secondary: #{$secondary};
+    --bs-secondary-rgb: 20, 233, 226;
+
+    .btn-primary {
+      --bs-btn-bg: #{$primary};
+      --bs-btn-border-color: #{$primary};
+      --bs-btn-hover-bg: #5249fe;
+      --bs-btn-hover-border-color: #5249fe;
+    }
+
+    .btn-secondary {
+      --bs-btn-bg: #{$secondary};
+      --bs-btn-border-color: #{$secondary};
+      --bs-btn-hover-bg: #0dcbc5;
+      --bs-btn-hover-border-color: #0dcbc5;
+    }
+  }
+}

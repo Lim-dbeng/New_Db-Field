@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" data-bs-theme="light" data-color-theme="Blue_Theme" data-layout="vertical">
+
+<head>
+  @@include("partials/head.html")
+  <title>MatDash Bootstrap Admin</title>
+  <link rel="stylesheet" href="@@webRoot/node_modules/prismjs/themes/prism-okaidia.min.css">
+</head>
+
+<body>
+  <!-- Preloader -->
+  <div class="preloader">
+    <img src="@@webRoot/assets/images/logos/favicon.png" alt="loader" class="lds-ripple img-fluid" />
+  </div>
+  <div id="main-wrapper">
+    <!-- Sidebar Start -->
+    <aside class="side-mini-panel with-vertical">
+      <div>@@include("partials/sidebar.html", { "page": "dashboard", })</div>
+    </aside>
+    <!--  Sidebar End -->
+    <div class="page-wrapper">
+      <!--  Header Start -->
+      <header class="topbar">
+        <div class="with-vertical">@@include("partials/header.html")</div>
+        <div class="app-header with-horizontal">
+          @@include("partials/horizontal-header.html")
+        </div>
+      </header>
+      <!--  Header End -->
+
+      <aside class="left-sidebar with-horizontal">
+        @@include("partials/horizontal-sidebar.html", { "page": "dashboard",
+        })
+      </aside>
+
+      <div class="body-wrapper">
+        <div class="container-fluid">
+          @@include("partials/breadcrumb.html", {"title": "Table Dark", "subtitle": 'Home'})
+          <!-- start Inverse Table -->
+          <div class="card">
+            <div class="card-body">
+              <div class="d-flex mb-1 align-items-center">
+                <h4 class="card-title mb-0">Inverse Table</h4>
+                <div class="ms-auto flex-shrink-0">
+                  <button class="btn bg-primary-subtle text-primary  btn-sm" title="View Code"
+                    data-bs-toggle="modal" data-bs-target="#view-code1-modal">
+                    <i class="ti ti-code fs-5 d-flex"></i>
+                  </button>
+                  <!-- Code Modal -->
+                  <div id="view-code1-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+                      <div class="modal-content">
+                        <div class="modal-header border-bottom">
+                          <h5 class="modal-title" id="exampleModalLabel">
+                            Inverse Table - View Code
+                          </h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                          <pre class="language-html scrollable">
+<code>
+&lt;div class=&quot;table-responsive&quot;&gt;
+&lt;table class=&quot;table table-dark mb-0&quot;&gt;
+    &lt;thead&gt;
+        &lt;tr&gt;
+            &lt;th scope=&quot;col&quot;&gt;#&lt;/th&gt;
+            &lt;th scope=&quot;col&quot;&gt;First&lt;/th&gt;
+            &lt;th scope=&quot;col&quot;&gt;Last&lt;/th&gt;
+            &lt;th scope=&quot;col&quot;&gt;Handle&lt;/th&gt;
+        &lt;/tr&gt;
+    &lt;/thead&gt;
+    &lt;tbody&gt;
+        &lt;tr&gt;
+            &lt;th scope=&quot;row&quot;&gt;1&lt;/th&gt;
+            &lt;td&gt;Mark&lt;/td&gt;
+            &lt;td&gt;Otto&lt;/td&gt;
+            &lt;td&gt;@mdo&lt;/td&gt;
+        &lt;/tr&gt;
+        &lt;tr&gt;
+            &lt;th scope=&quot;row&quot;&gt;2&lt;/th&gt;
+            &lt;td&gt;Jacob&lt;/td&gt;
+            &lt;td&gt;Thornton&lt;/td&gt;
+            &lt;td&gt;@fat&lt;/td&gt;
+        &lt;/tr&gt;
+        &lt;tr&gt;
+            &lt;th scope=&quot;row&quot;&gt;3&lt;/th&gt;
+            &lt;td&gt;Larry&lt;/td&gt;
+            &lt;td&gt;the Bird&lt;/td&gt;
+            &lt;td&gt;@twitter&lt;/td&gt;
+        &lt;/tr&gt;
+    &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;/div&gt;
+</code>
+</pre>
+                        </div>
+                      </div>
+                      <!-- /.modal-content -->
+                    </div>
+                    <!-- /.modal-dialog -->
+                  </div>
+                  <!-- /.modal -->
+                </div>
+              </div>
+              <p class="card-subtitle mb-3">
+                You can also invert the colors—with light text on dark
+                backgrounds—with
+                <code> .table-inverse</code>.
+              </p>
+              <div class="table-responsive border rounded-1" data-bs-theme="dark">
+                <table class="table text-nowrap table-dark  mb-0 align-middle">
+                  <thead class="text-dark fs-4">
+                    <tr>
+                      <th>
+                        <h6 class="fs-4 fw-semibold text-white mb-0">User</h6>
+                      </th>
+                      <th>
+                        <h6 class="fs-4 fw-semibold text-white mb-0">Project Name</h6>
+                      </th>
+                      <th>
+                        <h6 class="fs-4 fw-semibold text-white mb-0">Team</h6>
+                      </th>
+                      <th>
+                        <h6 class="fs-4 fw-semibold text-white mb-0">Status</h6>
+                      </th>
+                      <th>
+                        <h6 class="fs-4 fw-semibold text-white mb-0">Budget</h6>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-10.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Olivia Rhye</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Xtreme admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-4.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-primary-subtle text-primary">active</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-3.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Barbara Steele</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Adminpro admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-5.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-3.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-danger-subtle text-danger">cancel</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-11.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Leonard Gordon</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Monster admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-3.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-primary-subtle text-primary">active</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-12.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Evelyn Pope</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Materialpro admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-3.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-5.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span
+                          class="badge bg-success-subtle text-success">pending</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-5.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Tommy Garza</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Elegant admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-5.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-6.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-danger-subtle text-danger">cancel</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-6.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">George Vasquez</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Modernize admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-4.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span
+                          class="badge bg-success-subtle text-success">pending</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <!-- end Inverse Table -->
+          <!-- start Striped with Inverse Table -->
+          <div class="card">
+            <div class="card-body">
+              <div class="d-flex mb-1 align-items-center">
+                <div>
+                  <h5 class="mb-0">Striped with Inverse Table</h5>
+                </div>
+                <div class="ms-auto flex-shrink-0">
+                  <button class="btn bg-primary-subtle text-primary btn-sm" title="View Code"
+                    data-bs-toggle="modal" data-bs-target="#view-code2-modal">
+                    <i class="ti ti-code fs-5 d-flex"></i>
+                  </button>
+                  <!-- Code Modal -->
+                  <div id="view-code2-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+                      <div class="modal-content">
+                        <div class="modal-header border-bottom">
+                          <h5 class="modal-title" id="exampleModalLabel">
+                            Striped with Inverse Table - View Code
+                          </h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                          <pre class="language-html scrollable">
+<code>
+&lt;div class=&quot;table-responsive&quot;&gt;
+&lt;table class=&quot;table table-striped table-dark mb-0&quot;&gt;
+  &lt;thead&gt;
+      &lt;tr&gt;
+          &lt;th scope=&quot;col&quot;&gt;#&lt;/th&gt;
+          &lt;th scope=&quot;col&quot;&gt;First&lt;/th&gt;
+          &lt;th scope=&quot;col&quot;&gt;Last&lt;/th&gt;
+          &lt;th scope=&quot;col&quot;&gt;Handle&lt;/th&gt;
+      &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+      &lt;tr&gt;
+          &lt;th scope=&quot;row&quot;&gt;1&lt;/th&gt;
+          &lt;td&gt;Mark&lt;/td&gt;
+          &lt;td&gt;Otto&lt;/td&gt;
+          &lt;td&gt;@mdo&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;th scope=&quot;row&quot;&gt;2&lt;/th&gt;
+          &lt;td&gt;Jacob&lt;/td&gt;
+          &lt;td&gt;Thornton&lt;/td&gt;
+          &lt;td&gt;@fat&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;th scope=&quot;row&quot;&gt;3&lt;/th&gt;
+          &lt;td&gt;Larry&lt;/td&gt;
+          &lt;td&gt;the Bird&lt;/td&gt;
+          &lt;td&gt;@twitter&lt;/td&gt;
+      &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;/div&gt;
+</code>
+</pre>
+                        </div>
+                      </div>
+                      <!-- /.modal-content -->
+                    </div>
+                    <!-- /.modal-dialog -->
+                  </div>
+                  <!-- /.modal -->
+                </div>
+              </div>
+              <p class="card-subtitle mb-3">
+                Use .table-striped to add zebra-striping to any table row
+                within the
+                <code>&lt;tbody&gt;</code>.
+              </p>
+              <div class="table-responsive border rounded-1" data-bs-theme="dark">
+                <table class="table table-striped table-dark border text-nowrap  mb-0 align-middle">
+                  <thead class="text-dark fs-4">
+                    <tr>
+                      <th>
+                        <h6 class="fs-4 fw-semibold mb-0">User</h6>
+                      </th>
+                      <th>
+                        <h6 class="fs-4 fw-semibold mb-0">Project Name</h6>
+                      </th>
+                      <th>
+                        <h6 class="fs-4 fw-semibold mb-0">Team</h6>
+                      </th>
+                      <th>
+                        <h6 class="fs-4 fw-semibold mb-0">Status</h6>
+                      </th>
+                      <th>
+                        <h6 class="fs-4 fw-semibold mb-0">Budget</h6>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-10.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Olivia Rhye</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Xtreme admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-4.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-primary-subtle text-primary">active</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-3.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Barbara Steele</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Adminpro admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-5.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-3.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-danger-subtle text-danger">cancel</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-11.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Leonard Gordon</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Monster admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-3.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-primary-subtle text-primary">active</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-12.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Evelyn Pope</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Materialpro admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-3.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-5.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span
+                          class="badge bg-success-subtle text-success">pending</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-5.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Tommy Garza</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Elegant admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-5.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-6.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-danger-subtle text-danger">cancel</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-6.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">George Vasquez</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Modernize admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-4.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span
+                          class="badge bg-success-subtle text-success">pending</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <!-- end Striped with Inverse Table -->
+          <!-- start Bordered with Inverse Table -->
+          <div class="card">
+            <div class="card-body">
+              <div class="d-flex mb-1 align-items-center">
+                <div>
+                  <h5 class="mb-0">Bordered with Inverse Table</h5>
+                </div>
+                <div class="ms-auto flex-shrink-0">
+                  <button class="btn bg-primary-subtle text-primary btn-sm" title="View Code"
+                    data-bs-toggle="modal" data-bs-target="#view-code3-modal">
+                    <i class="ti ti-code fs-5 d-flex"></i>
+                  </button>
+                  <!-- Code Modal -->
+                  <div id="view-code3-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+                      <div class="modal-content">
+                        <div class="modal-header border-bottom">
+                          <h5 class="modal-title" id="exampleModalLabel">
+                            Bordered with Inverse Table - View Code
+                          </h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                          <pre class="language-html scrollable">
+<code>
+&lt;div class=&quot;table-responsive&quot;&gt;
+&lt;table class=&quot;table table-bordered table-dark mb-0&quot;&gt;
+  &lt;thead&gt;
+      &lt;tr&gt;
+          &lt;th scope=&quot;col&quot;&gt;#&lt;/th&gt;
+          &lt;th scope=&quot;col&quot;&gt;First&lt;/th&gt;
+          &lt;th scope=&quot;col&quot;&gt;Last&lt;/th&gt;
+          &lt;th scope=&quot;col&quot;&gt;Handle&lt;/th&gt;
+      &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+      &lt;tr&gt;
+          &lt;th scope=&quot;row&quot;&gt;1&lt;/th&gt;
+          &lt;td&gt;Mark&lt;/td&gt;
+          &lt;td&gt;Otto&lt;/td&gt;
+          &lt;td&gt;@mdo&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;th scope=&quot;row&quot;&gt;2&lt;/th&gt;
+          &lt;td&gt;Jacob&lt;/td&gt;
+          &lt;td&gt;Thornton&lt;/td&gt;
+          &lt;td&gt;@fat&lt;/td&gt;
+      &lt;/tr&gt;
+      &lt;tr&gt;
+          &lt;th scope=&quot;row&quot;&gt;3&lt;/th&gt;
+          &lt;td colspan=&quot;2&quot;&gt;Larry the Bird&lt;/td&gt;
+          &lt;td&gt;@twitter&lt;/td&gt;
+      &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+&lt;/div&gt;
+</code>
+</pre>
+                        </div>
+                      </div>
+                      <!-- /.modal-content -->
+                    </div>
+                    <!-- /.modal-dialog -->
+                  </div>
+                  <!-- /.modal -->
+                </div>
+              </div>
+              <p class="card-subtitle mb-3">
+                Add <code>.table-bordered</code> for borders on all sides
+                of the table and cells.
+              </p>
+              <div class="table-responsive border rounded-1" data-bs-theme="dark">
+                <table class="table text-nowrap  table-bordered table-dark mb-0 align-middle">
+                  <thead class="text-dark fs-4">
+                    <tr>
+                      <th>
+                        <h6 class="fs-4 fw-semibold mb-0">User</h6>
+                      </th>
+                      <th>
+                        <h6 class="fs-4 fw-semibold mb-0">Project Name</h6>
+                      </th>
+                      <th>
+                        <h6 class="fs-4 fw-semibold mb-0">Team</h6>
+                      </th>
+                      <th>
+                        <h6 class="fs-4 fw-semibold mb-0">Status</h6>
+                      </th>
+                      <th>
+                        <h6 class="fs-4 fw-semibold mb-0">Budget</h6>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-10.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Olivia Rhye</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Xtreme admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-4.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-primary-subtle text-primary">active</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-3.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Barbara Steele</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Adminpro admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-5.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-3.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-danger-subtle text-danger">cancel</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-11.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Leonard Gordon</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Monster admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-3.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-primary-subtle text-primary">active</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-12.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Evelyn Pope</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Materialpro admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-3.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-5.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span
+                          class="badge bg-success-subtle text-success">pending</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-5.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">Tommy Garza</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Elegant admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-5.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-6.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-danger-subtle text-danger">cancel</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <img src="@@webRoot/assets/images/profile/user-6.jpg" class="rounded-circle" width="40"
+                            height="40" />
+                          <div class="ms-3">
+                            <h6 class="fs-4 fw-semibold mb-0">George Vasquez</h6>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p class="mb-0 fw-normal">Modernize admin</p>
+                      </td>
+                      <td>
+                        <div class="d-flex align-items-center">
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-2.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                          <a href="javascript:void(0)">
+                            <img src="@@webRoot/assets/images/profile/user-4.jpg"
+                              class="rounded-circle me-n2 card-hover border border-2 border-white" width="39"
+                              height="39">
+                          </a>
+                        </div>
+                      </td>
+                      <td>
+                        <span
+                          class="badge bg-success-subtle text-success">pending</span>
+                      </td>
+                      <td>
+                        <div class="dropdown dropstart">
+                          <a href="javascript:void(0)" class="text-muted" id="dropdownMenuButton" data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="ti ti-dots-vertical fs-6"></i>
+                          </a>
+                          <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-plus"></i>Add</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-edit"></i>Edit</a>
+                            </li>
+                            <li>
+                              <a class="dropdown-item d-flex align-items-center gap-3" href="javascript:void(0)"><i
+                                  class="fs-4 ti ti-trash"></i>Delete</a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <!-- send Bordered with Inverse Table -->
+        </div>
+      </div>
+      @@include("partials/customizer.html")
+    </div>
+
+    @@include("partials/header-components/dd-searchbar.html")
+
+  </div>
+  <div class="dark-transparent sidebartoggler"></div>
+  @@include("partials/scripts.html")
+  <script src="@@webRoot/node_modules/prismjs/prism.js"></script>
+</body>
+
+</html>
