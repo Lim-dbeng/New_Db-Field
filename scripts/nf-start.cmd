@@ -19,6 +19,7 @@ if errorlevel 1 exit /b 1
 
 set "TC_VERSION=9.0.80"
 set "TOMCAT_DIR=%ROOT_DIR%\.run\apache-tomcat-%TC_VERSION%"
+set "ENV_FILE=%ROOT_DIR%\.env"
 
 echo Starting Tomcat ...
 set "CATALINA_HOME=%TOMCAT_DIR%"
@@ -31,6 +32,23 @@ if exist "%JDK11_DIR%\bin\java.exe" (
     set "JRE_HOME=%JDK11_DIR%"
 )
 
+set "OPENAI_API_KEY_FROM_ENV="
+set "GOOGLE_MAPS_API_KEY_FROM_ENV="
+set "TMAP_API_KEY_FROM_ENV="
+if exist "%ENV_FILE%" (
+    for /f "usebackq tokens=1* delims==" %%A in ("%ENV_FILE%") do (
+        if /I "%%A"=="OPENAI_API_KEY" (
+            set "OPENAI_API_KEY_FROM_ENV=%%B"
+        )
+        if /I "%%A"=="GOOGLE_MAPS_API_KEY" (
+            set "GOOGLE_MAPS_API_KEY_FROM_ENV=%%B"
+        )
+        if /I "%%A"=="TMAP_API_KEY" (
+            set "TMAP_API_KEY_FROM_ENV=%%B"
+        )
+    )
+)
+
 REM Create/Update setenv.bat for UTF-8 encoding - force overwrite
 set "SETENV_FILE=%TOMCAT_DIR%\bin\setenv.bat"
 (
@@ -38,6 +56,15 @@ set "SETENV_FILE=%TOMCAT_DIR%\bin\setenv.bat"
     echo REM UTF-8 encoding settings for Korean language support
     echo set JAVA_OPTS=%%JAVA_OPTS%% -Dfile.encoding=UTF-8 -Duser.language=ko -Duser.country=KR -Dsun.jnu.encoding=UTF-8
     echo set JAVA_OPTS=%%JAVA_OPTS%% -Dconsole.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8
+    if defined OPENAI_API_KEY_FROM_ENV (
+        echo set "OPENAI_API_KEY=%OPENAI_API_KEY_FROM_ENV%"
+    )
+    if defined GOOGLE_MAPS_API_KEY_FROM_ENV (
+        echo set "GOOGLE_MAPS_API_KEY=%GOOGLE_MAPS_API_KEY_FROM_ENV%"
+    )
+    if defined TMAP_API_KEY_FROM_ENV (
+        echo set "TMAP_API_KEY=%TMAP_API_KEY_FROM_ENV%"
+    )
 ) > "%SETENV_FILE%"
 
 

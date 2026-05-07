@@ -592,7 +592,7 @@
 			return;
 		}
 
-		listContainer.style.display = "block";
+		listContainer.style.display = "flex";
 
 		var currentUserId = (window.USER_SESSION && window.USER_SESSION.userId) ? window.USER_SESSION.userId : "";
 		var html = "";
@@ -709,7 +709,7 @@
 	function showShpUpload() {
 		var section = document.getElementById("shpUploadSection");
 		if (section) {
-			section.style.display = "block";
+			section.style.display = "flex";
 		}
 		// 다른 섹션 숨기기 (한 번에 하나의 기능만 표시)
 		var searchSection = document.getElementById("facSearchSection");

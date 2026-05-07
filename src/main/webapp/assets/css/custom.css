@@ -408,6 +408,39 @@ html, body { height: 100%; margin: 0; }
 	transition: transform 0.3s ease;
 }
 .sidebar > .panel { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+/* 시설물 추가: 좌표 파일 영역이 잘리지 않도록 세로 스크롤 */
+.sidebar > #facAddSection.fac-add-section {
+	overflow-x: hidden;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+}
+.fac-import-points-wrap {
+	position: relative;
+	z-index: 1;
+	flex-shrink: 0;
+}
+.fac-import-points-file-hidden {
+	position: absolute !important;
+	width: 1px !important;
+	height: 1px !important;
+	padding: 0 !important;
+	margin: -1px !important;
+	overflow: hidden !important;
+	clip: rect(0, 0, 0, 0) !important;
+	border: 0 !important;
+	opacity: 0 !important;
+}
+.fac-import-file-btn {
+	border: 2px dashed rgba(0, 183, 165, 0.85) !important;
+	background: rgba(0, 183, 165, 0.08) !important;
+	color: #0f766e !important;
+	font-weight: 600;
+	padding: 10px 12px;
+	cursor: pointer;
+}
+.fac-import-file-btn:hover {
+	background: rgba(0, 183, 165, 0.15) !important;
+}
 .page:not(.sidebar-hidden) .sidebar {
 	transform: translateX(0);
 }
@@ -509,10 +542,10 @@ html, body { height: 100%; margin: 0; }
 	box-shadow: 0 0 0 2px rgba(0,183,165,0.1);
 }
 
-/* SHP 레이어 관리 패널 - SHP 버튼 왼쪽에 열림, 지도 선택창 펼침 여부에 따라 위치 가변 */
+/* SHP 레이어 관리 패널 - SHP 버튼 왼쪽에 열림 (지도 종류 펼침과 무관하게 고정) */
 .shp-layer-panel {
 	position: fixed;
-	right: calc(12px + 42px + 8px + 58px + 8px); /* 접힌 상태: SHP 버튼 왼쪽 - gap 8px */
+	right: calc(12px + 42px + 8px + 58px + 8px); /* SHP 버튼 왼쪽 - gap 8px */
 	left: auto;
 	top: 36px;
 	width: 420px;
@@ -523,10 +556,6 @@ html, body { height: 100%; margin: 0; }
 	box-shadow: 0 4px 12px rgba(0,0,0,0.12);
 	z-index: 101;
 	display: none;
-	transition: right 0.3s ease;
-}
-.page.maptype-expanded .shp-layer-panel {
-	right: calc(12px + 42px + 8px + 30px + 360px + 58px + 8px); /* 펼친 상태: SHP 버튼이 따라 간 위치 기준 */
 }
 .shp-layer-panel.show {
 	display: flex;
@@ -674,7 +703,7 @@ html, body { height: 100%; margin: 0; }
 	color: #111827;
 }
 
-/* SHP 패널 토글 버튼 - shp-panel-toggle-wrap 내부, 지도 선택 펼침 시에만 이동 */
+/* SHP 패널 토글 버튼 */
 .shp-panel-toggle-btn {
 	width: 58px;
 	height: 42px;
@@ -711,16 +740,12 @@ html, body { height: 100%; margin: 0; }
 	display: none !important;
 }
 
-/* SHP 목록 버튼만 이동: 접힘=메뉴바 옆, 펼침=썸네일 옆 따라감 (메뉴바는 고정) */
+/* SHP 목록 버튼: 메뉴바 왼쪽 고정 (지도 종류 펼침 시에도 이동하지 않음) */
 .shp-panel-toggle-wrap {
 	position: fixed;
-	right: calc(12px + 42px + 8px); /* 접힘: 메뉴바 왼쪽 - gap 8px */
+	right: calc(12px + 42px + 8px);
 	top: 36px;
 	z-index: 30;
-	transition: right 0.3s ease;
-}
-.page.maptype-expanded .shp-panel-toggle-wrap {
-	right: calc(12px + 42px + 8px + 30px + 360px);
 }
 
 /* 메뉴바: 항상 고정, 이동 안 함 */
@@ -752,13 +777,13 @@ html, body { height: 100%; margin: 0; }
 .nv-dropdown-item:not(:last-child) { border-bottom: 1px solid #e5e7eb; }
 .nv-dropdown-item iconify-icon { font-size: 18px; }
 .nv-maptype-item.active { background: rgba(0,183,165,0.12); color: var(--brand-teal); font-weight: 500; }
-/* 지도 선택 썸네일: 위치 고정, 변경 안 함 */
+/* 지도 선택 썸네일: #nv-maptype-btn 상단과 맞춤 (툴바 top + 사진GPS·간격·sep) */
 .nv-maptype-wrap { position: relative; }
 #maptypeDropdown {
 	display: none;
 	position: fixed;
 	right: 62px; /* 펼침 시 SHP 왼쪽에 고정 (SHP가 따라가서 썸네일↔SHP 사이 gap 8px) */
-	top: 36px;
+	top: calc(36px + 42px + 8px + 6px + 8px);
 	z-index: 31;
 }
 #maptypeDropdown.open {
@@ -1013,6 +1038,201 @@ html, body { height: 100%; margin: 0; }
 .fac-search-pagination .page-btn.active { background: var(--brand-teal); border-color: var(--brand-teal); color: #fff; }
 .fac-search-pagination .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .fac-search-pagination { flex-shrink: 0; }
+.route-section { display: flex; flex-direction: column; background: #fff; border: 1px solid rgba(0,183,165,0.35); border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
+.route-panel-body { display: flex; flex-direction: column; gap: 8px; }
+.route-mode-tabs { display: flex; gap: 6px; }
+.route-mode-tab {
+	flex: 1 1 0;
+	height: 34px;
+	border: 1px solid #e2e8f0;
+	background: #f8fafc;
+	border-radius: 8px;
+	font-size: 12px;
+	font-weight: 600;
+	color: #334155;
+}
+.route-mode-tab.active {
+	background: #1d4ed8;
+	border-color: #1d4ed8;
+	color: #fff;
+}
+.route-mode-tab.disabled { opacity: .5; cursor: not-allowed; }
+.route-input-box {
+	position: relative;
+	border: 1px solid #d1d5db;
+	border-radius: 8px;
+	background: #fff;
+	padding: 8px;
+}
+.route-input-row {
+	display: grid;
+	grid-template-columns: 46px 1fr 70px;
+	gap: 6px;
+	align-items: center;
+}
+.route-input-row + .route-input-row {
+	margin-top: 6px;
+	padding-top: 6px;
+	border-top: 1px solid #eef2f7;
+}
+.route-suggest-list {
+	position: relative;
+	z-index: 20;
+	margin: 4px 0 0 46px;
+	border: 1px solid #dbe3ee;
+	background: #fff;
+	border-radius: 8px;
+	max-height: 180px;
+	overflow-y: auto;
+}
+.route-suggest-item {
+	display: block;
+	padding: 7px 10px;
+	border-bottom: 1px solid #eef2f7;
+	cursor: pointer;
+}
+.route-suggest-item:last-child { border-bottom: 0; }
+.route-suggest-item:hover { background: #f8fafc; }
+.route-suggest-item.active { background: #eff6ff; }
+.route-suggest-item .t {
+	font-size: 12px;
+	color: #0f172a;
+	font-weight: 600;
+}
+.route-suggest-item .s {
+	font-size: 11px;
+	color: #64748b;
+	margin-top: 2px;
+}
+.route-input-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: #475569;
+}
+.route-input-row.is-selecting {
+	background: rgba(37, 99, 235, 0.06);
+	border-radius: 6px;
+}
+.route-section .form-control.route-input {
+	background: #fff;
+	border-color: #e2e8f0;
+	font-size: 12px;
+}
+.route-pick-btn { font-size: 11px; padding: 4px 6px; }
+.route-swap-btn {
+	position: absolute;
+	right: 84px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 24px;
+	height: 24px;
+	border: 1px solid #cbd5e1;
+	border-radius: 50%;
+	background: #fff;
+	color: #64748b;
+	line-height: 1;
+	font-size: 13px;
+	z-index: 1;
+}
+.route-action-row { display: flex; justify-content: space-between; }
+.route-action-row .btn { min-width: 96px; }
+.route-panel-summary {
+	font-size: 12px;
+	color: #1e40af;
+	background: #eff6ff;
+	border: 1px solid #bfdbfe;
+	border-radius: 8px;
+	padding: 7px 9px;
+	line-height: 1.45;
+}
+.route-section-hint {
+	font-size: 11px;
+	color: #0f766e;
+	background: rgba(20,184,166,0.08);
+	border: 1px solid rgba(20,184,166,0.22);
+	border-radius: 8px;
+	padding: 6px 8px;
+	line-height: 1.4;
+}
+.route-alt-list {
+	border: 1px solid #dbe3ee;
+	border-radius: 8px;
+	background: #fff;
+	padding: 6px;
+}
+.route-alt-item {
+	width: 100%;
+	text-align: left;
+	border: 1px solid #e5e7eb;
+	background: #fff;
+	border-radius: 7px;
+	padding: 6px 8px;
+	margin-bottom: 5px;
+	font-size: 11px;
+	color: #334155;
+}
+.route-alt-item:last-child { margin-bottom: 0; }
+.route-alt-item.active {
+	border-color: #1d4ed8;
+	background: #eff6ff;
+	color: #1e3a8a;
+}
+.route-alt-item .k {
+	font-weight: 700;
+	margin-right: 6px;
+}
+.route-recent-list {
+	border-top: 1px solid #e5e7eb;
+	padding-top: 8px;
+}
+.route-recent-title {
+	font-size: 12px;
+	color: #64748b;
+	margin-bottom: 6px;
+	font-weight: 600;
+}
+.route-recent-item {
+	display: block;
+	width: 100%;
+	text-align: left;
+	border: 1px solid #e5e7eb;
+	background: #fff;
+	border-radius: 6px;
+	padding: 5px 7px;
+	font-size: 11px;
+	color: #334155;
+	margin-bottom: 4px;
+}
+.fac-search-route-flow-controls {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+.fac-search-route-flow-controls #facSearchRouteFlowBtn {
+	flex: 1 1 auto;
+}
+.fac-search-route-flow-controls #facSearchRouteFlowMode {
+	flex: 0 0 88px;
+	min-width: 88px;
+}
+.fac-search-route-flow-hint {
+	font-size: 11px;
+	color: #0f766e;
+	background: rgba(20, 184, 166, 0.08);
+	border: 1px solid rgba(20, 184, 166, 0.22);
+	border-radius: 8px;
+	padding: 6px 8px;
+	line-height: 1.4;
+}
+.fac-search-route-flow-status {
+	font-size: 11px;
+	color: #334155;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 6px 8px;
+	line-height: 1.45;
+}
 
 /* 상세 보기 패널 */
 /* 시설물 상세: 스크롤 영역에 명시적 max-height → 무조건 스크롤바 생김. 저장/취소는 하단 고정 */
@@ -1069,7 +1289,7 @@ html, body { height: 100%; margin: 0; }
 .photo-slider.single-photo { justify-content: center; }
 .photo-track { display: flex; gap: 6px; overflow: hidden; scroll-behavior: smooth; flex: 1; }
 .photo-track.single-photo-track { justify-content: center; }
-.photo-track.multiple-photos-track { justify-content: flex-start; padding-right: 0; overflow-x: auto; overflow-y: hidden; }
+.photo-track.multiple-photos-track { justify-content: flex-start; padding-right: 0; padding-top: 8px; padding-bottom: 8px; overflow-x: auto; overflow-y: visible; }
 .photo-track.multiple-photos-track::-webkit-scrollbar { display: none; }
 .photo-track.multiple-photos-track { -ms-overflow-style: none; scrollbar-width: none; }
 .photo-slider.multiple-photos .photo-card:not(:last-child) { margin-right: 6px; }
@@ -1177,6 +1397,17 @@ html, body { height: 100%; margin: 0; }
 }
 .photo-card:hover img { opacity: 0.85; }
 .photo-card:hover .photo-zoom-icon { opacity: 1; }
+/* 지도 사진 GPS 클릭 후 사이드바로 스크롤했을 때 해당 카드 강조 (outline은 overflow에 잘림 → border+그림자) */
+.photo-card.photo-card--gps-focus {
+	border: 3px solid var(--brand-teal, #00b7a5);
+	outline: none;
+	border-radius: 10px;
+	background: rgba(0, 183, 165, 0.09);
+	box-shadow: 0 4px 18px rgba(0, 183, 165, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+	position: relative;
+	z-index: 2;
+	transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
 .photo-zoom-icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; background: rgba(0, 0, 0, 0.6); border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 20px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 2; }
 .photo-card-top-actions .photo-card-delete {
 	position: static;
@@ -1361,9 +1592,119 @@ body.photo-view-open #photoLightbox { opacity: 1; pointer-events: auto; }
 	border-top: 1px solid #e5e7eb;
 	font-size: 12px;
 	color: #475569;
-	text-align: center;
+	text-align: left;
 	user-select: text;
-	cursor: text;
+	cursor: default;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.point-popup-route-origin-row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	align-items: stretch;
+	width: 100%;
+}
+.point-popup-route-label {
+	font-size: 11px;
+	font-weight: 600;
+	color: #475569;
+	text-align: left;
+	margin: 0;
+	padding: 0;
+}
+.point-popup-route-origin-row .form-select {
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	font-size: 11px;
+	padding-right: 1.5rem;
+}
+.point-popup-route-dest-row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	align-items: stretch;
+	width: 100%;
+	margin-top: 4px;
+}
+.point-popup-route-dest-row .form-select {
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	font-size: 11px;
+	padding-right: 1.5rem;
+}
+.point-popup-route-status {
+	font-size: 10px;
+	color: #64748b;
+	line-height: 1.3;
+}
+.point-popup-route-pick-hint {
+	font-size: 10px;
+	color: #0d9488;
+	background: rgba(20, 184, 166, 0.07);
+	border: 1px solid rgba(20, 184, 166, 0.2);
+	border-radius: 6px;
+	padding: 4px 6px;
+	margin-top: 4px;
+	line-height: 1.35;
+}
+.point-popup-route-actions {
+	display: flex;
+	gap: 4px;
+}
+.point-popup-route-actions .btn {
+	flex: 1 1 auto;
+	font-size: 10px;
+	padding: 3px 4px;
+}
+.point-popup-route-row {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+.point-popup-route-row .form-select {
+	flex: 0 0 74px;
+	min-width: 74px;
+}
+.point-popup-route-row .btn {
+	flex: 1 1 auto;
+}
+.point-popup-route-summary {
+	font-size: 11px;
+	color: #0f766e;
+	background: rgba(20, 184, 166, 0.08);
+	border: 1px solid rgba(20, 184, 166, 0.2);
+	padding: 4px 6px;
+	border-radius: 6px;
+}
+.point-popup-meta {
+	padding: 8px 10px;
+	background: #fff;
+	border-top: 1px solid #e5e7eb;
+	font-size: 11px;
+	color: #334155;
+	line-height: 1.45;
+	max-height: 140px;
+	overflow-y: auto;
+	text-align: left;
+	user-select: text;
+}
+.point-popup-meta-inner .point-popup-meta-row {
+	margin-bottom: 4px;
+}
+.point-popup-meta-inner .point-popup-meta-row:last-child {
+	margin-bottom: 0;
+}
+.point-popup-meta-inner .k {
+	color: #64748b;
+	font-weight: 600;
+	margin-right: 4px;
+}
+.point-popup-meta-inner .v {
+	word-break: break-word;
 }
 
 /* SHP 그리기 모달 */
@@ -1648,6 +1989,238 @@ body.photo-view-open #photoLightbox { opacity: 1; pointer-events: auto; }
 .shp-edit-modal.modal,
 #shpEditModal.modal {
 	z-index: 10090 !important;
+}
+
+/* 조사 보고서 양식 모달 — 사이드바(.sidebar z-index:10050) 위 */
+#modalSurveyReport.modal {
+	z-index: 10090 !important;
+}
+/* 모달 백드롭 기본(~1050)도 사이드바보다 낮아 반투명 배경이 패널 뒤로 깔림 */
+body.modal-open > .modal-backdrop {
+	z-index: 10088 !important;
+}
+
+/* ─── 조사 보고서 모달 UI ─── */
+.fac-survey-report-modal .fac-survey-report-modal-shell {
+	border: none;
+	border-radius: 14px;
+	box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+	overflow: hidden;
+}
+.fac-survey-report-modal .fac-survey-report-modal-header {
+	flex-wrap: nowrap;
+	gap: 0.75rem 1rem;
+	align-items: flex-start;
+	background: linear-gradient(165deg, #f8fafc 0%, #eef2ff 55%, #f1f5f9 100%);
+	border-bottom: 1px solid #e2e8f0;
+	padding: 1rem 1.25rem;
+}
+/* Bootstrap 5 btn-close — 구버전 .close+&times; 대비 표준 X 아이콘 */
+.fac-survey-report-modal .fac-survey-report-modal-header .btn-close {
+	flex-shrink: 0;
+	margin: 0;
+	padding: 0.5rem;
+	opacity: 0.55;
+}
+.fac-survey-report-modal .fac-survey-report-modal-header .btn-close:hover {
+	opacity: 0.9;
+}
+.fac-survey-report-modal .fac-survey-report-modal-header .btn-close:focus {
+	box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+}
+.fac-survey-report-modal .fac-survey-report-modal-header .modal-title {
+	font-weight: 700;
+	font-size: 1.125rem;
+	color: #0f172a;
+	letter-spacing: -0.02em;
+}
+.fac-survey-report-modal .fac-survey-report-modal-sub {
+	font-size: 0.8125rem;
+	color: #64748b;
+	margin-top: 0.25rem;
+}
+.fac-survey-report-modal .fac-survey-report-modal-body {
+	padding: 1.25rem 1.35rem 1.5rem;
+	background: #f8fafc;
+}
+.fac-survey-report-modal .fac-survey-report-modal-root {
+	min-height: 2rem;
+}
+.fac-survey-report-modal .fac-survey-report-modal-footer {
+	border-top: 1px solid #e5e7eb;
+	background: #fff;
+	padding: 0.65rem 1.25rem;
+}
+.fac-survey-report-modal .fac-survey-section {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+	padding: 1rem 1.15rem;
+	margin-bottom: 1rem;
+	box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+.fac-survey-report-modal .fac-survey-section:last-child {
+	margin-bottom: 0;
+}
+.fac-survey-report-modal .fac-survey-section-title {
+	font-size: 0.7rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #64748b;
+	margin-bottom: 0.65rem;
+}
+.fac-survey-report-modal .fac-survey-meta-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35rem 1rem;
+	padding: 0.65rem 0.85rem;
+	background: #fff;
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	font-size: 0.875rem;
+	color: #475569;
+	margin-bottom: 1rem;
+	line-height: 1.45;
+}
+.fac-survey-report-modal .fac-survey-meta-bar .fac-survey-meta-k {
+	color: #94a3b8;
+	font-weight: 500;
+}
+.fac-survey-report-modal .fac-survey-meta-bar strong {
+	color: #0f172a;
+	font-weight: 600;
+}
+.fac-survey-report-modal .fac-survey-fields-grid {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	overflow: hidden;
+}
+.fac-survey-report-modal .fac-survey-fields-grid .fac-survey-field {
+	padding: 0.65rem 0.85rem;
+	margin: 0 !important;
+	border-bottom: 1px solid #f1f5f9;
+}
+.fac-survey-report-modal .fac-survey-fields-grid .fac-survey-field:last-child {
+	border-bottom: none;
+}
+.fac-survey-report-modal .fac-survey-fields-grid label.form-label {
+	font-weight: 600;
+	font-size: 0.8125rem;
+	color: #334155;
+	margin-bottom: 0.35rem;
+	line-height: 1.4;
+}
+@media (min-width: 768px) {
+	.fac-survey-report-modal .fac-survey-fields-grid label.form-label {
+		margin-bottom: 0;
+		padding-top: 0.4rem;
+	}
+}
+.fac-survey-report-modal .fac-survey-fields-grid .form-control {
+	border-radius: 8px;
+	border-color: #cbd5e1;
+	font-size: 0.875rem;
+}
+.fac-survey-report-modal .fac-survey-fields-grid .form-control:focus {
+	border-color: #6366f1;
+	box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+.fac-survey-report-modal .fac-survey-prompt-card {
+	border-radius: 12px;
+	border: 1px solid #e5e7eb;
+	background: #fff;
+	overflow: hidden;
+	margin-bottom: 1rem;
+}
+.fac-survey-report-modal .fac-survey-prompt-card .card-body {
+	padding: 1rem 1.1rem;
+}
+.fac-survey-report-modal .fac-survey-upload-grid {
+	display: grid;
+	grid-template-columns: 7.5rem 1fr;
+	gap: 0.5rem 0.75rem;
+	align-items: center;
+	margin-bottom: 0.65rem;
+}
+@media (max-width: 576px) {
+	.fac-survey-report-modal .fac-survey-upload-grid {
+		grid-template-columns: 1fr;
+	}
+}
+.fac-survey-report-modal .fac-survey-upload-grid > span {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: #475569;
+}
+.fac-survey-report-modal .fac-survey-upload-grid .form-control {
+	min-width: 0;
+}
+.fac-survey-report-modal .fac-survey-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: center;
+}
+.fac-survey-report-modal .fac-survey-actions-stack {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 0.5rem;
+}
+.fac-survey-report-modal .fac-survey-actions-stack .btn {
+	width: 100%;
+}
+@media (min-width: 576px) {
+	.fac-survey-report-modal .fac-survey-actions-stack {
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: center;
+	}
+	.fac-survey-report-modal .fac-survey-actions-stack .btn {
+		width: auto;
+	}
+}
+.fac-survey-report-modal .fac-survey-ref-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.fac-survey-report-modal .fac-survey-ref-list li {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 0.75rem;
+	padding: 0.5rem 0.65rem;
+	border: 1px solid #f1f5f9;
+	border-radius: 8px;
+	background: #fafafa;
+	margin-bottom: 0.35rem;
+	font-size: 0.8125rem;
+}
+.fac-survey-report-modal .fac-survey-ref-list li:last-child {
+	margin-bottom: 0;
+}
+.fac-survey-report-modal .fac-survey-draft-preview ul,
+.fac-survey-report-modal .fac-survey-draft-preview .alert {
+	border-radius: 8px;
+}
+.fac-survey-report-modal .fac-survey-split-heading {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-bottom: 0.75rem;
+	padding-bottom: 0.5rem;
+	border-bottom: 1px solid #f1f5f9;
+	font-size: 0.8125rem;
+	font-weight: 700;
+	color: #334155;
+}
+.fac-survey-report-modal .fac-survey-label-strong {
+	color: #334155;
+	font-weight: 600;
 }
 
 /* SHP 그리기 완료 버튼 (권한 요청 알림 위로 배치) */
@@ -2685,4 +3258,46 @@ body.admin-mode .project-management-modal.project-modal-init-hidden { display: f
 	background-color: rgba(0, 183, 165, 0.2) !important;
 	border: 2px solid rgba(0, 183, 165, 0.95) !important;
 	box-shadow: 0 2px 10px rgba(0, 183, 165, 0.35) !important;
+}
+
+/* 시설 상세: 조사 보고서 HWP 패널 */
+.fac-survey-report-panel {
+	border: 1px solid #e5e7eb;
+	border-radius: 10px;
+	padding: 12px 14px;
+	background: #fafbfc;
+}
+.fac-survey-report-intro {
+	min-width: 0;
+}
+.fac-survey-report-summary {
+	display: block;
+	line-height: 1.55;
+	word-break: keep-all;
+	overflow-wrap: break-word;
+	hyphens: auto;
+}
+.fac-survey-report-open-btn {
+	white-space: nowrap;
+}
+.fac-survey-report-head {
+	margin-bottom: 10px;
+}
+.fac-survey-report-title {
+	font-size: 15px;
+	font-weight: 600;
+	margin: 0 0 4px 0;
+	color: #1e293b;
+}
+.fac-survey-report-body {
+	font-size: 13px;
+}
+.fac-survey-report-meta {
+	line-height: 1.5;
+}
+.fac-survey-draft-preview ul {
+	margin-bottom: 0;
+}
+.fac-survey-field .form-label {
+	color: #475569;
 }

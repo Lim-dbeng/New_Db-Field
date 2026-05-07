@@ -20,6 +20,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -42,12 +43,45 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import javax.servlet.http.Part;
 
+import com.newdbfield.core.AppConfig;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import com.newdbfield.util.ClientIpUtils;
 import com.newdbfield.util.ProjectDeptAccessUtil;
 
 @MultipartConfig(maxFileSize = 50 * 1024 * 1024, maxRequestSize = 100 * 1024 * 1024)
 public class ShpUploadController extends HttpServlet {
 	private static final long serialVersionUID = 1L;
+
+	/** GeoJSON 병합(다운로드·디스크 동기화) — Jackson (nf-build 가 WEB-INF/lib 에 jackson-* 를 둠) */
+	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+
+	/** PostGIS: coerce geometry to MultiLineString 4326 for public.shp_layer. @param g subquery alias */
+	private static String sqlGeometryExprToMultiLineString4326(String g) {
+		String gv = "ST_Force2D(ST_MakeValid(" + g + "))";
+		return "ST_Multi(CASE "
+				+ "WHEN " + g + " IS NULL THEN NULL "
+				+ "WHEN ST_IsEmpty(" + gv + ") THEN NULL "
+				+ "WHEN ST_GeometryType(" + gv + ") = 'ST_MultiLineString' THEN " + gv + " "
+				+ "WHEN ST_GeometryType(" + gv + ") = 'ST_LineString' THEN " + gv + " "
+				+ "WHEN ST_GeometryType(" + gv + ") = 'ST_Point' THEN ST_MakeLine(" + gv + ", ST_Translate(" + gv + ", 1e-8::double precision, 0::double precision)) "
+				+ "WHEN ST_GeometryType(" + gv + ") = 'ST_MultiPoint' THEN (CASE WHEN ST_NumGeometries(" + gv + ") >= 2 "
+				+ "THEN ST_LineFromMultiPoint(" + gv + ") ELSE ST_MakeLine(ST_GeometryN(" + gv + ", 1), ST_Translate(ST_GeometryN(" + gv + ", 1), 1e-8::double precision, 0::double precision)) END) "
+				+ "WHEN ST_GeometryType(" + gv + ") IN ('ST_Polygon','ST_MultiPolygon') THEN ST_Boundary(" + gv + ") "
+				+ "WHEN ST_GeometryType(" + gv + ") = 'ST_GeometryCollection' THEN (CASE "
+				+ "WHEN NOT ST_IsEmpty(ST_CollectionExtract(" + gv + ", 2)) THEN ST_CollectionExtract(" + gv + ", 2) "
+				+ "WHEN NOT ST_IsEmpty(ST_CollectionExtract(" + gv + ", 3)) THEN ST_Boundary(ST_CollectionExtract(" + gv + ", 3)) "
+				+ "WHEN NOT ST_IsEmpty(ST_CollectionExtract(" + gv + ", 1)) THEN (CASE "
+				+ "WHEN ST_NumGeometries(ST_CollectionExtract(" + gv + ", 1)) >= 2 THEN ST_LineFromMultiPoint(ST_CollectionExtract(" + gv + ", 1)) "
+				+ "ELSE ST_MakeLine(ST_GeometryN(ST_CollectionExtract(" + gv + ", 1), 1), ST_Translate(ST_GeometryN(ST_CollectionExtract(" + gv + ", 1), 1), 1e-8::double precision, 0::double precision)) END) "
+				+ "ELSE ST_MakeLine(ST_Centroid(" + gv + "), ST_Translate(ST_Centroid(" + gv + "), 1e-8::double precision, 0::double precision)) END) "
+				+ "ELSE ST_MakeLine(ST_Centroid(" + gv + "), ST_Translate(ST_Centroid(" + gv + "), 1e-8::double precision, 0::double precision)) "
+				+ "END)::geometry(MultiLineString,4326)";
+	}
 
 	@Override
 	protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -67,6 +101,8 @@ public class ShpUploadController extends HttpServlet {
 				handleUpdate(req, resp);
 			} else if ("/updateGeometry".equals(pathInfo)) {
 				handleUpdateGeometry(req, resp);
+			} else if ("/updateFeatureProperty".equals(pathInfo)) {
+				handleUpdateFeatureProperty(req, resp);
 			} else if ("/preferences".equals(pathInfo)) {
 				handlePreferences(req, resp);
 			} else if ("/draw".equals(pathInfo)) {
@@ -292,7 +328,7 @@ public class ShpUploadController extends HttpServlet {
 	}
 
 	/**
-	 * SHP 자유곡선 그리기 저장 - test.free_shp_layer에 메타데이터 저장, 원본 GeoJSON 파일 저장
+	 * SHP 자유곡선 그리기 저장 - public.free_shp_layer에 메타데이터 저장, 원본 GeoJSON 파일 저장
 	 * DB에는 geometry 없음, 파일만 저장. 경로: uploadDir/free_shp/idx/fileName (SHP 업로드와 동일 base 경로)
 	 * POST /api/shp/draw/freehand
 	 */
@@ -349,7 +385,7 @@ public class ShpUploadController extends HttpServlet {
 		try {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-			String sql = "INSERT INTO test.free_shp_layer (user_id, project_code, dept_code, use_yn, file_name, color, reg_dt) " +
+			String sql = "INSERT INTO public.free_shp_layer (user_id, project_code, dept_code, use_yn, file_name, color, reg_dt) " +
 					"VALUES (?, ?, ?, 'Y', ?, ?, NOW()) RETURNING idx";
 			pstmt = conn.prepareStatement(sql);
 			pstmt.setString(1, userInfo.userId);
@@ -410,7 +446,7 @@ public class ShpUploadController extends HttpServlet {
 		try {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-			String sql = "SELECT file_name, user_id FROM test.free_shp_layer WHERE idx = ? AND (use_yn = 'Y' OR use_yn IS NULL)";
+			String sql = "SELECT file_name, user_id FROM public.free_shp_layer WHERE idx = ? AND (use_yn = 'Y' OR use_yn IS NULL)";
 			pstmt = conn.prepareStatement(sql);
 			pstmt.setInt(1, idx);
 			rs = pstmt.executeQuery();
@@ -473,7 +509,7 @@ public class ShpUploadController extends HttpServlet {
 		try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
 			Class.forName("org.postgresql.Driver");
 			int updated = 0;
-			try (PreparedStatement ps = conn.prepareStatement("UPDATE test.free_shp_layer SET use_yn = 'N', mod_dt = NOW() WHERE idx = ? AND user_id = ?")) {
+			try (PreparedStatement ps = conn.prepareStatement("UPDATE public.free_shp_layer SET use_yn = 'N', mod_dt = NOW() WHERE idx = ? AND user_id = ?")) {
 				ps.setInt(1, idx);
 				ps.setString(2, userInfo.userId);
 				updated = ps.executeUpdate();
@@ -488,7 +524,7 @@ public class ShpUploadController extends HttpServlet {
 	}
 
 	/**
-	 * 자유곡선 SHP 레이어 목록 조회 (test.free_shp_layer, 파일 저장 방식)
+	 * 자유곡선 SHP 레이어 목록 조회 (public.free_shp_layer, 파일 저장 방식)
 	 * GET /api/shp/free/list?projectCode=XXX
 	 */
 	private void handleFreehandList(HttpServletRequest req, HttpServletResponse resp) throws Exception {
@@ -518,8 +554,8 @@ public class ShpUploadController extends HttpServlet {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 			String sql = "SELECT l.idx, l.user_id, l.project_code, l.dept_code, l.file_name, l.reg_dt, l.use_yn, l.color, u.name as user_name " +
-					"FROM test.free_shp_layer l " +
-					"LEFT JOIN test.\"user\" u ON l.user_id = u.id WHERE (l.use_yn = 'Y' OR l.use_yn IS NULL)";
+					"FROM public.free_shp_layer l " +
+					"LEFT JOIN public.\"user\" u ON l.user_id = u.id WHERE (l.use_yn = 'Y' OR l.use_yn IS NULL)";
 			if (requestedProjectCode != null && !requestedProjectCode.isEmpty()) {
 				sql += " AND l.project_code = ?";
 			} else {
@@ -1565,6 +1601,21 @@ public class ShpUploadController extends HttpServlet {
 		return sb.toString();
 	}
 
+	/**
+	 * DB 인코딩(EUC_KR)에서 표현 불가한 문자를 '?'로 치환한다.
+	 * PostgreSQL JDBC 파라미터 전송 시 "UTF8 -> EUC_KR" 매핑 실패를 방지한다.
+	 */
+	private static String toDbTextCompatible(String s) {
+		if (s == null || s.isEmpty()) return s;
+		String cleaned = stripCharsIllegalForPostgresText(s);
+		try {
+			Charset euckr = Charset.forName("EUC-KR");
+			return new String(cleaned.getBytes(euckr), euckr);
+		} catch (Exception ignore) {
+			return cleaned;
+		}
+	}
+
 	/** DB·파일시스템용 파일명: NUL/경로 문자 완화, 길이 제한, 유니코드 정규화 */
 	private static String sanitizeShpLayerFileName(String name) {
 		if (name == null) return "unknown";
@@ -1595,11 +1646,11 @@ public class ShpUploadController extends HttpServlet {
 		try {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-			geometryWKT = stripCharsIllegalForPostgresText(geometryWKT);
+			geometryWKT = toDbTextCompatible(geometryWKT);
 			fileName = sanitizeShpLayerFileName(fileName);
-			userId = stripCharsIllegalForPostgresText(userId);
-			projectCode = stripCharsIllegalForPostgresText(projectCode);
-			deptCode = stripCharsIllegalForPostgresText(deptCode);
+			userId = toDbTextCompatible(userId);
+			projectCode = toDbTextCompatible(projectCode);
+			deptCode = toDbTextCompatible(deptCode);
 
 			String finalColor;
 			if (color != null && !color.trim().isEmpty() && color.matches("^#[0-9A-Fa-f]{6}$")) {
@@ -1616,16 +1667,20 @@ public class ShpUploadController extends HttpServlet {
 					throw new Exception("FCJSON_S 형식이 올바르지 않습니다.");
 				}
 				int srid = Integer.parseInt(m.group(1));
-				String fcJson = m.group(2);
-				sql = "INSERT INTO test.shp_layer (geometry, user_id, project_code, dept_code, use_yn, file_name, color, reg_dt) " +
+				String fcJson = toDbTextCompatible(m.group(2));
+				String toMlsG = sqlGeometryExprToMultiLineString4326("raw.g");
+				sql = "INSERT INTO public.shp_layer (geometry, user_id, project_code, dept_code, use_yn, file_name, color, reg_dt) " +
 						"VALUES (" +
-						"(SELECT ST_Force2D(CASE " +
-						"WHEN ST_GeometryType(ST_Collect(geom)) = 'ST_MultiLineString' THEN ST_Collect(geom) " +
-						"WHEN ST_GeometryType(ST_Collect(geom)) = 'ST_GeometryCollection' THEN ST_CollectionExtract(ST_Collect(geom), 2)::geometry(MultiLineString,4326) " +
-						"ELSE ST_Collect(geom)::geometry(MultiLineString,4326) " +
-						"END) " +
-						"FROM (SELECT ST_Force2D(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(feat->>'geometry'), ?), 4326)) as geom " +
-						"FROM jsonb_array_elements(?::jsonb->'features') AS feat) AS geoms), ?, ?, ?, 'Y', ?, ?, NOW()) RETURNING idx";
+						"(WITH raw AS (" +
+						"SELECT ST_Force2D(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(feat->>'geometry'), ?), 4326)) AS g " +
+						"FROM jsonb_array_elements(?::jsonb->'features') AS feat" +
+						"), norm AS (" +
+						"SELECT ST_Force2D(" + toMlsG + ")::geometry(MultiLineString,4326) AS geom FROM raw" +
+						"), agg AS (" +
+						"SELECT ST_Collect(geom) AS c FROM norm" +
+						") " +
+						"SELECT ST_Force2D(ST_Multi(ST_LineMerge(ST_UnaryUnion(c)))::geometry(MultiLineString,4326)) FROM agg" +
+						"), ?, ?, ?, 'Y', ?, ?, NOW()) RETURNING idx";
 				pstmt = conn.prepareStatement(sql);
 				pstmt.setInt(1, srid);
 				pstmt.setString(2, fcJson);
@@ -1635,16 +1690,20 @@ public class ShpUploadController extends HttpServlet {
 				pstmt.setString(6, fileName);
 				pstmt.setString(7, finalColor);
 			} else if (geometryWKT.startsWith("FCJSON:")) {
-				String fcJson = geometryWKT.substring("FCJSON:".length());
-				sql = "INSERT INTO test.shp_layer (geometry, user_id, project_code, dept_code, use_yn, file_name, color, reg_dt) " +
+				String fcJson = toDbTextCompatible(geometryWKT.substring("FCJSON:".length()));
+				String toMlsGfc = sqlGeometryExprToMultiLineString4326("raw.g");
+				sql = "INSERT INTO public.shp_layer (geometry, user_id, project_code, dept_code, use_yn, file_name, color, reg_dt) " +
 						"VALUES (" +
-						"(SELECT ST_Force2D(CASE " +
-						"WHEN ST_GeometryType(ST_Collect(geom)) = 'ST_MultiLineString' THEN ST_Collect(geom) " +
-						"WHEN ST_GeometryType(ST_Collect(geom)) = 'ST_GeometryCollection' THEN ST_CollectionExtract(ST_Collect(geom), 2)::geometry(MultiLineString,4326) " +
-						"ELSE ST_Collect(geom)::geometry(MultiLineString,4326) " +
-						"END) " +
-						"FROM (SELECT ST_Force2D(ST_GeomFromGeoJSON(feat->>'geometry')) as geom " +
-						"FROM jsonb_array_elements(?::jsonb->'features') AS feat) AS geoms), ?, ?, ?, 'Y', ?, ?, NOW()) RETURNING idx";
+						"(WITH raw AS (" +
+						"SELECT ST_Force2D(ST_GeomFromGeoJSON(feat->>'geometry')) AS g " +
+						"FROM jsonb_array_elements(?::jsonb->'features') AS feat" +
+						"), norm AS (" +
+						"SELECT ST_Force2D(" + toMlsGfc + ")::geometry(MultiLineString,4326) AS geom FROM raw" +
+						"), agg AS (" +
+						"SELECT ST_Collect(geom) AS c FROM norm" +
+						") " +
+						"SELECT ST_Force2D(ST_Multi(ST_LineMerge(ST_UnaryUnion(c)))::geometry(MultiLineString,4326)) FROM agg" +
+						"), ?, ?, ?, 'Y', ?, ?, NOW()) RETURNING idx";
 				pstmt = conn.prepareStatement(sql);
 				pstmt.setString(1, fcJson);
 				pstmt.setString(2, userId);
@@ -1658,15 +1717,13 @@ public class ShpUploadController extends HttpServlet {
 					throw new Exception("GEOJSON_S 형식이 올바르지 않습니다.");
 				}
 				int srid = Integer.parseInt(m.group(1));
-				String geoJson = m.group(2);
-				sql = "INSERT INTO test.shp_layer (geometry, user_id, project_code, dept_code, use_yn, file_name, color, reg_dt) " +
+				String geoJson = toDbTextCompatible(m.group(2));
+				String toMlsG = sqlGeometryExprToMultiLineString4326("g");
+				sql = "INSERT INTO public.shp_layer (geometry, user_id, project_code, dept_code, use_yn, file_name, color, reg_dt) " +
 						"VALUES (" +
-						"(SELECT ST_Force2D(CASE " +
-						"WHEN ST_GeometryType(g) = 'ST_MultiLineString' THEN g " +
-						"WHEN ST_GeometryType(g) = 'ST_LineString' THEN g::geometry(MultiLineString,4326) " +
-						"WHEN ST_GeometryType(g) = 'ST_GeometryCollection' THEN ST_CollectionExtract(g, 2)::geometry(MultiLineString,4326) " +
-						"ELSE g::geometry(MultiLineString,4326) " +
-						"END) FROM (SELECT ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?), ?), 4326) AS g) AS x), ?, ?, ?, 'Y', ?, ?, NOW()) RETURNING idx";
+						"(SELECT ST_Force2D(" + toMlsG + ") FROM (" +
+						"SELECT ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?), ?), 4326) AS g" +
+						") AS _x), ?, ?, ?, 'Y', ?, ?, NOW()) RETURNING idx";
 				pstmt = conn.prepareStatement(sql);
 				pstmt.setString(1, geoJson);
 				pstmt.setInt(2, srid);
@@ -1676,50 +1733,34 @@ public class ShpUploadController extends HttpServlet {
 				pstmt.setString(6, fileName);
 				pstmt.setString(7, finalColor);
 			} else if (geometryWKT.startsWith("GEOJSON:")) {
-				String geoJson = geometryWKT.substring("GEOJSON:".length());
-				sql = "INSERT INTO test.shp_layer (geometry, user_id, project_code, dept_code, use_yn, file_name, color, reg_dt) " +
+				String geoJson = toDbTextCompatible(geometryWKT.substring("GEOJSON:".length()));
+				String toMlsG2 = sqlGeometryExprToMultiLineString4326("g");
+				sql = "INSERT INTO public.shp_layer (geometry, user_id, project_code, dept_code, use_yn, file_name, color, reg_dt) " +
 						"VALUES (" +
-						"ST_Force2D(CASE " +
-						"WHEN ST_GeometryType(ST_GeomFromGeoJSON(?)) = 'ST_MultiLineString' THEN ST_GeomFromGeoJSON(?) " +
-						"WHEN ST_GeometryType(ST_GeomFromGeoJSON(?)) = 'ST_LineString' THEN ST_GeomFromGeoJSON(?)::geometry(MultiLineString,4326) " +
-						"WHEN ST_GeometryType(ST_GeomFromGeoJSON(?)) = 'ST_GeometryCollection' THEN ST_CollectionExtract(ST_GeomFromGeoJSON(?), 2)::geometry(MultiLineString,4326) " +
-						"ELSE ST_GeomFromGeoJSON(?)::geometry(MultiLineString,4326) " +
-						"END), ?, ?, ?, 'Y', ?, ?, NOW()) RETURNING idx";
+						"(SELECT ST_Force2D(" + toMlsG2 + ") FROM (" +
+						"SELECT ST_GeomFromGeoJSON(?) AS g" +
+						") AS _x), ?, ?, ?, 'Y', ?, ?, NOW()) RETURNING idx";
 				pstmt = conn.prepareStatement(sql);
 				pstmt.setString(1, geoJson);
-				pstmt.setString(2, geoJson);
-				pstmt.setString(3, geoJson);
-				pstmt.setString(4, geoJson);
-				pstmt.setString(5, geoJson);
-				pstmt.setString(6, geoJson);
-				pstmt.setString(7, geoJson);
-				pstmt.setString(8, userId);
-				pstmt.setString(9, projectCode);
-				pstmt.setString(10, deptCode);
-				pstmt.setString(11, fileName);
-				pstmt.setString(12, finalColor);
+				pstmt.setString(2, userId);
+				pstmt.setString(3, projectCode);
+				pstmt.setString(4, deptCode);
+				pstmt.setString(5, fileName);
+				pstmt.setString(6, finalColor);
 			} else {
-				sql = "INSERT INTO test.shp_layer (geometry, user_id, project_code, dept_code, use_yn, file_name, color, reg_dt) " +
+				String toMlsG3 = sqlGeometryExprToMultiLineString4326("g");
+				sql = "INSERT INTO public.shp_layer (geometry, user_id, project_code, dept_code, use_yn, file_name, color, reg_dt) " +
 						"VALUES (" +
-						"ST_Force2D(CASE " +
-						"WHEN ST_GeometryType(ST_GeomFromText(?, 4326)) = 'ST_MultiLineString' THEN ST_GeomFromText(?, 4326) " +
-						"WHEN ST_GeometryType(ST_GeomFromText(?, 4326)) = 'ST_LineString' THEN ST_GeomFromText(?, 4326)::geometry(MultiLineString,4326) " +
-						"WHEN ST_GeometryType(ST_GeomFromText(?, 4326)) = 'ST_GeometryCollection' THEN ST_CollectionExtract(ST_GeomFromText(?, 4326), 2)::geometry(MultiLineString,4326) " +
-						"ELSE ST_GeomFromText(?, 4326)::geometry(MultiLineString,4326) " +
-						"END), ?, ?, ?, 'Y', ?, ?, NOW()) RETURNING idx";
+						"(SELECT ST_Force2D(" + toMlsG3 + ") FROM (" +
+						"SELECT ST_GeomFromText(?, 4326) AS g" +
+						") AS _x), ?, ?, ?, 'Y', ?, ?, NOW()) RETURNING idx";
 				pstmt = conn.prepareStatement(sql);
 				pstmt.setString(1, geometryWKT);
-				pstmt.setString(2, geometryWKT);
-				pstmt.setString(3, geometryWKT);
-				pstmt.setString(4, geometryWKT);
-				pstmt.setString(5, geometryWKT);
-				pstmt.setString(6, geometryWKT);
-				pstmt.setString(7, geometryWKT);
-				pstmt.setString(8, userId);
-				pstmt.setString(9, projectCode);
-				pstmt.setString(10, deptCode);
-				pstmt.setString(11, fileName);
-				pstmt.setString(12, finalColor);
+				pstmt.setString(2, userId);
+				pstmt.setString(3, projectCode);
+				pstmt.setString(4, deptCode);
+				pstmt.setString(5, fileName);
+				pstmt.setString(6, finalColor);
 			}
 
 			rs = pstmt.executeQuery();
@@ -1785,9 +1826,9 @@ public class ShpUploadController extends HttpServlet {
 				System.err.println("[ShpUploadController] handleList: diagnostic query failed: " + e.getMessage());
 			}
 			try (java.sql.Statement diag2 = conn.createStatement();
-				 java.sql.ResultSet cntRs = diag2.executeQuery("SELECT COUNT(*) AS cnt FROM test.shp_layer WHERE use_yn = 'Y'")) {
+				 java.sql.ResultSet cntRs = diag2.executeQuery("SELECT COUNT(*) AS cnt FROM public.shp_layer WHERE use_yn = 'Y'")) {
 				if (cntRs.next()) {
-					System.out.println("[ShpUploadController] handleList: test.shp_layer(use_yn=Y) 전체 건수=" + cntRs.getLong("cnt"));
+					System.out.println("[ShpUploadController] handleList: public.shp_layer(use_yn=Y) 전체 건수=" + cntRs.getLong("cnt"));
 				}
 			} catch (Exception e) {
 				System.err.println("[ShpUploadController] handleList: shp_layer count failed: " + e.getMessage());
@@ -1799,8 +1840,8 @@ public class ShpUploadController extends HttpServlet {
 					"ST_XMin(l.geometry) as xmin, ST_YMin(l.geometry) as ymin, " +
 					"ST_XMax(l.geometry) as xmax, ST_YMax(l.geometry) as ymax, " +
 					"u.name as user_name " +
-					"FROM test.shp_layer l " +
-					"LEFT JOIN test.\"user\" u ON l.user_id = u.id " +
+					"FROM public.shp_layer l " +
+					"LEFT JOIN public.\"user\" u ON l.user_id = u.id " +
 					"WHERE l.use_yn = 'Y'";
 			
 			if (requestedProjectCode != null && !requestedProjectCode.isEmpty()) {
@@ -1926,7 +1967,7 @@ public class ShpUploadController extends HttpServlet {
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 
 			// 본인 소유 레이어만 삭제 가능하도록 체크
-			String sql = "UPDATE test.shp_layer SET use_yn = 'N', mod_dt = NOW() WHERE idx = ? AND user_id = ?";
+			String sql = "UPDATE public.shp_layer SET use_yn = 'N', mod_dt = NOW() WHERE idx = ? AND user_id = ?";
 			pstmt = conn.prepareStatement(sql);
 			pstmt.setInt(1, idx);
 			pstmt.setString(2, userId);
@@ -2069,7 +2110,7 @@ public class ShpUploadController extends HttpServlet {
 			String filename = originalFilename;
 			int counter = 0;
 			while (counter < 1000) {
-				String sql = "SELECT COUNT(*) FROM test.shp_layer WHERE use_yn = 'Y' AND file_name = ?"
+				String sql = "SELECT COUNT(*) FROM public.shp_layer WHERE use_yn = 'Y' AND file_name = ?"
 						+ (excludeIdx != null ? " AND idx <> ?" : "");
 				try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
 					pstmt.setString(1, filename);
@@ -2158,7 +2199,7 @@ public class ShpUploadController extends HttpServlet {
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 			
 			// 기존 레이어 확인 (본인 소유인지 확인)
-			String checkSql = "SELECT user_id FROM test.shp_layer WHERE idx = ?";
+			String checkSql = "SELECT user_id FROM public.shp_layer WHERE idx = ?";
 			PreparedStatement checkPstmt = conn.prepareStatement(checkSql);
 			checkPstmt.setInt(1, idx);
 			ResultSet checkRs = checkPstmt.executeQuery();
@@ -2213,7 +2254,7 @@ public class ShpUploadController extends HttpServlet {
 					if (geometryWKT == null || geometryWKT.trim().isEmpty()) {
 						throw new Exception("유효한 geometry 정보를 찾을 수 없습니다.");
 					}
-					geometryWKT = stripCharsIllegalForPostgresText(geometryWKT);
+					geometryWKT = toDbTextCompatible(geometryWKT);
 
 					String updateSql;
 					if (geometryWKT.startsWith("FCJSON_S:")) {
@@ -2222,20 +2263,36 @@ public class ShpUploadController extends HttpServlet {
 							throw new Exception("FCJSON_S 형식이 올바르지 않습니다.");
 						}
 						int srid = Integer.parseInt(m.group(1));
-						String fcJson = m.group(2);
-						updateSql = "UPDATE test.shp_layer SET geometry = (" +
-								"SELECT ST_Force2D(ST_Collect(ST_Force2D(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(feat->>'geometry'), ?), 4326)))) " +
+						String fcJson = toDbTextCompatible(m.group(2));
+						String toMlsGu = sqlGeometryExprToMultiLineString4326("raw.g");
+						updateSql = "UPDATE public.shp_layer SET geometry = (" +
+								"WITH raw AS (" +
+								"SELECT ST_Force2D(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(feat->>'geometry'), ?), 4326)) AS g " +
 								"FROM jsonb_array_elements(?::jsonb->'features') AS feat" +
+								"), norm AS (" +
+								"SELECT ST_Force2D(" + toMlsGu + ")::geometry(MultiLineString,4326) AS geom FROM raw" +
+								"), agg AS (" +
+								"SELECT ST_Collect(geom) AS c FROM norm" +
+								") " +
+								"SELECT ST_Force2D(ST_Multi(ST_LineMerge(ST_UnaryUnion(c)))::geometry(MultiLineString,4326)) FROM agg" +
 								"), mod_dt = NOW() WHERE idx = ?";
 						pstmt = conn.prepareStatement(updateSql);
 						pstmt.setInt(1, srid);
 						pstmt.setString(2, fcJson);
 						pstmt.setInt(3, idx);
 					} else if (geometryWKT.startsWith("FCJSON:")) {
-						String fcJson = geometryWKT.substring("FCJSON:".length());
-						updateSql = "UPDATE test.shp_layer SET geometry = (" +
-								"SELECT ST_Force2D(ST_Collect(ST_Force2D(ST_GeomFromGeoJSON(feat->>'geometry')))) " +
+						String fcJson = toDbTextCompatible(geometryWKT.substring("FCJSON:".length()));
+						String toMlsGfcU = sqlGeometryExprToMultiLineString4326("raw.g");
+						updateSql = "UPDATE public.shp_layer SET geometry = (" +
+								"WITH raw AS (" +
+								"SELECT ST_Force2D(ST_GeomFromGeoJSON(feat->>'geometry')) AS g " +
 								"FROM jsonb_array_elements(?::jsonb->'features') AS feat" +
+								"), norm AS (" +
+								"SELECT ST_Force2D(" + toMlsGfcU + ")::geometry(MultiLineString,4326) AS geom FROM raw" +
+								"), agg AS (" +
+								"SELECT ST_Collect(geom) AS c FROM norm" +
+								") " +
+								"SELECT ST_Force2D(ST_Multi(ST_LineMerge(ST_UnaryUnion(c)))::geometry(MultiLineString,4326)) FROM agg" +
 								"), mod_dt = NOW() WHERE idx = ?";
 						pstmt = conn.prepareStatement(updateSql);
 						pstmt.setString(1, fcJson);
@@ -2246,20 +2303,32 @@ public class ShpUploadController extends HttpServlet {
 							throw new Exception("GEOJSON_S 형식이 올바르지 않습니다.");
 						}
 						int srid = Integer.parseInt(m.group(1));
-						String geoJson = m.group(2);
-						updateSql = "UPDATE test.shp_layer SET geometry = ST_Force2D(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?), ?), 4326)), mod_dt = NOW() WHERE idx = ?";
+						String geoJson = toDbTextCompatible(m.group(2));
+						String toMlsGu = sqlGeometryExprToMultiLineString4326("g");
+						updateSql = "UPDATE public.shp_layer SET geometry = (" +
+								"SELECT ST_Force2D(" + toMlsGu + ") FROM (" +
+								"SELECT ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?), ?), 4326) AS g) AS _xu" +
+								"), mod_dt = NOW() WHERE idx = ?";
 						pstmt = conn.prepareStatement(updateSql);
 						pstmt.setString(1, geoJson);
 						pstmt.setInt(2, srid);
 						pstmt.setInt(3, idx);
 					} else if (geometryWKT.startsWith("GEOJSON:")) {
-						String geoJson = geometryWKT.substring("GEOJSON:".length());
-						updateSql = "UPDATE test.shp_layer SET geometry = ST_Force2D(ST_GeomFromGeoJSON(?)), mod_dt = NOW() WHERE idx = ?";
+						String geoJson = toDbTextCompatible(geometryWKT.substring("GEOJSON:".length()));
+						String toMlsGu2 = sqlGeometryExprToMultiLineString4326("g");
+						updateSql = "UPDATE public.shp_layer SET geometry = (" +
+								"SELECT ST_Force2D(" + toMlsGu2 + ") FROM (" +
+								"SELECT ST_GeomFromGeoJSON(?) AS g) AS _xu" +
+								"), mod_dt = NOW() WHERE idx = ?";
 						pstmt = conn.prepareStatement(updateSql);
 						pstmt.setString(1, geoJson);
 						pstmt.setInt(2, idx);
 					} else {
-						updateSql = "UPDATE test.shp_layer SET geometry = ST_Force2D(ST_GeomFromText(?, 4326)), mod_dt = NOW() WHERE idx = ?";
+						String toMlsGu3 = sqlGeometryExprToMultiLineString4326("g");
+						updateSql = "UPDATE public.shp_layer SET geometry = (" +
+								"SELECT ST_Force2D(" + toMlsGu3 + ") FROM (" +
+								"SELECT ST_GeomFromText(?, 4326) AS g) AS _xu" +
+								"), mod_dt = NOW() WHERE idx = ?";
 						pstmt = conn.prepareStatement(updateSql);
 						pstmt.setString(1, geometryWKT);
 						pstmt.setInt(2, idx);
@@ -2269,7 +2338,7 @@ public class ShpUploadController extends HttpServlet {
 					saveShpLayerFeatureTexts(idx, rawGeoJsonForFeatureTexts, geometryWKT, featureTextColumn);
 
 					// file_name = 중복 방지된 파일명
-					String fileNameSql = "UPDATE test.shp_layer SET file_name = ?, mod_dt = NOW() WHERE idx = ?";
+					String fileNameSql = "UPDATE public.shp_layer SET file_name = ?, mod_dt = NOW() WHERE idx = ?";
 					pstmt = conn.prepareStatement(fileNameSql);
 					pstmt.setString(1, uniqueFilename);
 					pstmt.setInt(2, idx);
@@ -2326,7 +2395,7 @@ public class ShpUploadController extends HttpServlet {
 				updates.add("mod_dt = NOW()");
 				params.add(idx);
 				
-				String updateSql = "UPDATE test.shp_layer SET " + String.join(", ", updates) + " WHERE idx = ?";
+				String updateSql = "UPDATE public.shp_layer SET " + String.join(", ", updates) + " WHERE idx = ?";
 				pstmt = conn.prepareStatement(updateSql);
 				for (int i = 0; i < params.size() - 1; i++) {
 					pstmt.setObject(i + 1, params.get(i));
@@ -2396,7 +2465,7 @@ public class ShpUploadController extends HttpServlet {
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 
 			// 기존 레이어 확인 (본인 소유인지 확인)
-			String checkSql = "SELECT user_id FROM test.shp_layer WHERE idx = ?";
+			String checkSql = "SELECT user_id FROM public.shp_layer WHERE idx = ?";
 			PreparedStatement checkPstmt = conn.prepareStatement(checkSql);
 			checkPstmt.setInt(1, idx);
 			ResultSet checkRs = checkPstmt.executeQuery();
@@ -2417,7 +2486,7 @@ public class ShpUploadController extends HttpServlet {
 			checkPstmt.close();
 
 			// 기존 파일명 가져오기
-			String getFileSql = "SELECT file_name FROM test.shp_layer WHERE idx = ?";
+			String getFileSql = "SELECT file_name FROM public.shp_layer WHERE idx = ?";
 			PreparedStatement getFilePstmt = conn.prepareStatement(getFileSql);
 			getFilePstmt.setInt(1, idx);
 			ResultSet fileRs = getFilePstmt.executeQuery();
@@ -2434,22 +2503,32 @@ public class ShpUploadController extends HttpServlet {
 			
 			String geomTrim = geometryJson.trim();
 			String updateSql;
+			String toMlsGug = sqlGeometryExprToMultiLineString4326("g");
 			if (geoJsonCoordinatesAppearProjected(geomTrim)) {
 				Integer srid = parseEpsgSridFromAssumeCrs(resolveGeoJsonAssumeCrs());
 				if (srid != null) {
-					updateSql = "UPDATE test.shp_layer SET geometry = ST_Force2D(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?), ?), 4326)), mod_dt = NOW() WHERE idx = ?";
+					updateSql = "UPDATE public.shp_layer SET geometry = (" +
+							"SELECT ST_Force2D(" + toMlsGug + ") FROM (" +
+							"SELECT ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(?), ?), 4326) AS g) AS _xug" +
+							"), mod_dt = NOW() WHERE idx = ?";
 					pstmt = conn.prepareStatement(updateSql);
 					pstmt.setString(1, geomTrim);
 					pstmt.setInt(2, srid);
 					pstmt.setInt(3, idx);
 				} else {
-					updateSql = "UPDATE test.shp_layer SET geometry = ST_Force2D(ST_GeomFromGeoJSON(?)), mod_dt = NOW() WHERE idx = ?";
+					updateSql = "UPDATE public.shp_layer SET geometry = (" +
+							"SELECT ST_Force2D(" + toMlsGug + ") FROM (" +
+							"SELECT ST_GeomFromGeoJSON(?) AS g) AS _xug" +
+							"), mod_dt = NOW() WHERE idx = ?";
 					pstmt = conn.prepareStatement(updateSql);
 					pstmt.setString(1, geomTrim);
 					pstmt.setInt(2, idx);
 				}
 			} else {
-				updateSql = "UPDATE test.shp_layer SET geometry = ST_Force2D(ST_GeomFromGeoJSON(?)), mod_dt = NOW() WHERE idx = ?";
+				updateSql = "UPDATE public.shp_layer SET geometry = (" +
+						"SELECT ST_Force2D(" + toMlsGug + ") FROM (" +
+						"SELECT ST_GeomFromGeoJSON(?) AS g) AS _xug" +
+						"), mod_dt = NOW() WHERE idx = ?";
 				pstmt = conn.prepareStatement(updateSql);
 				pstmt.setString(1, geomTrim);
 				pstmt.setInt(2, idx);
@@ -2469,20 +2548,40 @@ public class ShpUploadController extends HttpServlet {
 							originalFile.getParentFile().mkdirs();
 						}
 						// DB에서 업데이트된 geometry를 GeoJSON으로 가져오기
-						String getGeoJsonSql = "SELECT ST_AsGeoJSON(geometry) as geojson FROM test.shp_layer WHERE idx = ?";
+						String getGeoJsonSql = "SELECT ST_AsGeoJSON(geometry) as geojson FROM public.shp_layer WHERE idx = ?";
 						PreparedStatement getGeoJsonPstmt = conn.prepareStatement(getGeoJsonSql);
 						getGeoJsonPstmt.setInt(1, idx);
 						ResultSet geoJsonRs = getGeoJsonPstmt.executeQuery();
 						
 						if (geoJsonRs.next()) {
 							String geoJsonStr = geoJsonRs.getString("geojson");
-							
-							// FeatureCollection 형식으로 변환
-							String featureCollection = "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":" + geoJsonStr + ",\"properties\":{}}]}";
-							
-							// 파일에 쓰기
+							String rawFromDisk = null;
+							if (originalFile.exists() && originalFile.isFile()) {
+								try {
+									rawFromDisk = readTextFileUtf8(originalFile);
+								} catch (Exception ignore) {
+									rawFromDisk = null;
+								}
+							}
+							String overridesJson = "{}";
+							String ovSql = "SELECT COALESCE(display_meta->'featurePropOverrides','{}'::jsonb)::text FROM public.shp_layer WHERE idx = ?";
+							try (PreparedStatement ovPstmt = conn.prepareStatement(ovSql)) {
+								ovPstmt.setInt(1, idx);
+								try (ResultSet ovRs = ovPstmt.executeQuery()) {
+									if (ovRs.next()) {
+										String o = ovRs.getString(1);
+										if (o != null && !o.trim().isEmpty()) {
+											overridesJson = o;
+										}
+									}
+								}
+							}
+							String merged = buildShpLayerDownloadGeoJson(rawFromDisk, geoJsonStr, overridesJson);
+							if (merged == null) {
+								merged = "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":" + geoJsonStr + ",\"properties\":{}}]}";
+							}
 							try (FileOutputStream fos = new FileOutputStream(originalFile)) {
-								fos.write(featureCollection.getBytes(StandardCharsets.UTF_8));
+								fos.write(merged.getBytes(StandardCharsets.UTF_8));
 								fos.flush();
 							}
 						}
@@ -2513,6 +2612,257 @@ public class ShpUploadController extends HttpServlet {
 	}
 
 	/**
+	 * SHP 레이어 Feature 속성 단건 수정 (말풍선 인라인 수정용)
+	 * POST /api/shp/updateFeatureProperty
+	 * Body: { "idx": 1, "featureX": 126.7, "featureY": 37.5, "propertyKey": "Text", "propertyValue": "..." }
+	 * - DB: public.shp_layer.display_meta.featurePropOverrides 에 저장
+	 * - 원본파일: .geojson/.json 인 경우 파일 내 해당 feature properties도 직접 갱신
+	 */
+	private void handleUpdateFeatureProperty(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null) {
+			resp.setStatus(401);
+			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			return;
+		}
+
+		StringBuilder body = new StringBuilder();
+		try (BufferedReader reader = req.getReader()) {
+			String line;
+			while ((line = reader.readLine()) != null) body.append(line);
+		}
+		String bodyStr = body.toString();
+		String idxStr = extractJsonValue(bodyStr, "idx");
+		String featureXStr = extractJsonValue(bodyStr, "featureX");
+		String featureYStr = extractJsonValue(bodyStr, "featureY");
+		String propertyKey = extractJsonValue(bodyStr, "propertyKey");
+		String propertyValue = extractJsonValue(bodyStr, "propertyValue");
+
+		if (idxStr == null || idxStr.trim().isEmpty() ||
+			featureXStr == null || featureXStr.trim().isEmpty() ||
+			featureYStr == null || featureYStr.trim().isEmpty() ||
+			propertyKey == null || propertyKey.trim().isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"idx, featureX, featureY, propertyKey가 필요합니다.\"}");
+			return;
+		}
+
+		int idx;
+		double featureX;
+		double featureY;
+		try {
+			idx = Integer.parseInt(idxStr.trim());
+			featureX = Double.parseDouble(featureXStr.trim());
+			featureY = Double.parseDouble(featureYStr.trim());
+		} catch (Exception e) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"idx/featureX/featureY 형식이 올바르지 않습니다.\"}");
+			return;
+		}
+		propertyKey = stripCharsIllegalForPostgresText(propertyKey).trim();
+		if (propertyKey.isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"propertyKey가 비어 있습니다.\"}");
+			return;
+		}
+		if (propertyKey.length() > 120) propertyKey = propertyKey.substring(0, 120);
+		String nextValue = propertyValue == null ? "" : stripCharsIllegalForPostgresText(propertyValue);
+		if (nextValue.length() > 3000) nextValue = nextValue.substring(0, 3000);
+
+		String dbUrl = getServletContext().getInitParameter("DB_URL");
+		String dbUser = getServletContext().getInitParameter("DB_USER");
+		String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
+		Connection conn = null;
+		PreparedStatement pstmt = null;
+		ResultSet rs = null;
+
+		try {
+			Class.forName("org.postgresql.Driver");
+			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
+
+			String checkSql = "SELECT file_name, user_id FROM public.shp_layer WHERE idx = ? AND use_yn = 'Y'";
+			pstmt = conn.prepareStatement(checkSql);
+			pstmt.setInt(1, idx);
+			rs = pstmt.executeQuery();
+			if (!rs.next()) {
+				resp.setStatus(404);
+				writeJson(resp, "{\"success\":false,\"message\":\"레이어를 찾을 수 없습니다.\"}");
+				return;
+			}
+			String ownerUserId = rs.getString("user_id");
+			String fileName = rs.getString("file_name");
+			if (!userInfo.userId.equals(ownerUserId)) {
+				resp.setStatus(403);
+				writeJson(resp, "{\"success\":false,\"message\":\"수정 권한이 없습니다.\"}");
+				return;
+			}
+			rs.close();
+			pstmt.close();
+
+			String featureKey = normalizeCoordKey(featureX) + "|" + normalizeCoordKey(featureY);
+			String upsertSql =
+				"UPDATE public.shp_layer SET " +
+				"display_meta = jsonb_set(" +
+				"COALESCE(display_meta, '{}'::jsonb), " +
+				"'{featurePropOverrides}', " +
+				"COALESCE(display_meta->'featurePropOverrides', '{}'::jsonb) || " +
+				"jsonb_build_object(?, COALESCE(display_meta->'featurePropOverrides'->?, '{}'::jsonb) || jsonb_build_object(?, ?::text)), " +
+				"true), " +
+				"mod_dt = NOW() WHERE idx = ?";
+			pstmt = conn.prepareStatement(upsertSql);
+			pstmt.setString(1, featureKey);
+			pstmt.setString(2, featureKey);
+			pstmt.setString(3, propertyKey);
+			pstmt.setString(4, nextValue);
+			pstmt.setInt(5, idx);
+			pstmt.executeUpdate();
+			pstmt.close();
+
+			boolean fileUpdated = false;
+			String fileExt = getFileExtension(fileName).toLowerCase();
+			if ("geojson".equals(fileExt) || "json".equals(fileExt)) {
+				String uploadDir = resolveUploadDir();
+				File file = resolveShpLayerFile(uploadDir, idx, fileName);
+				if (file != null && file.exists() && file.isFile()) {
+					String raw = readTextFileUtf8(file);
+					String patched = patchGeoJsonPropertyByFeatureXY(raw, featureX, featureY, propertyKey, nextValue);
+					if (patched != null && !patched.equals(raw)) {
+						try (OutputStream os = new FileOutputStream(file)) {
+							os.write(patched.getBytes(StandardCharsets.UTF_8));
+						}
+						fileUpdated = true;
+					}
+				}
+			}
+
+			writeJson(resp, "{\"success\":true,\"message\":\"속성이 저장되었습니다.\",\"fileUpdated\":" + (fileUpdated ? "true" : "false") + "}");
+		} finally {
+			if (rs != null) try { rs.close(); } catch (Exception ignore) {}
+			if (pstmt != null) try { pstmt.close(); } catch (Exception ignore) {}
+			if (conn != null) try { conn.close(); } catch (Exception ignore) {}
+		}
+	}
+
+	/**
+	 * FeatureCollection 내 모든 feature의 properties를 하나의 객체로 병합(동일 키는 후행 feature가 우선).
+	 */
+	private JsonNode mergeAllFeatureProperties(JsonNode featureCollection) {
+		ObjectNode acc = JSON_MAPPER.createObjectNode();
+		if (featureCollection == null || !featureCollection.has("features") || featureCollection.get("features").isNull()) {
+			return acc;
+		}
+		JsonNode arr = featureCollection.get("features");
+		if (!arr.isArray()) {
+			return acc;
+		}
+		for (JsonNode feat : arr) {
+			if (feat == null || !feat.has("properties") || feat.get("properties").isNull()) {
+				continue;
+			}
+			JsonNode p = feat.get("properties");
+			if (!p.isObject()) {
+				continue;
+			}
+			p.fields().forEachRemaining(e -> acc.set(e.getKey(), e.getValue()));
+		}
+		return acc;
+	}
+
+	/**
+	 * display_meta.featurePropOverrides 하위 맵들을 properties에 평탄 병합(말풍선 속성 수정 반영).
+	 */
+	private JsonNode flattenFeaturePropOverridesInto(JsonNode baseProps, JsonNode overridesRoot) {
+		ObjectNode b = JSON_MAPPER.createObjectNode();
+		if (baseProps != null && baseProps.isObject()) {
+			baseProps.fields().forEachRemaining(e -> b.set(e.getKey(), e.getValue()));
+		}
+		if (overridesRoot == null || !overridesRoot.isObject() || overridesRoot.size() == 0) {
+			return b;
+		}
+		overridesRoot.fields().forEachRemaining(outer -> {
+			JsonNode inner = outer.getValue();
+			if (inner != null && inner.isObject()) {
+				inner.fields().forEachRemaining(e -> b.set(e.getKey(), e.getValue()));
+			}
+		});
+		return b;
+	}
+
+	/**
+	 * 다운로드·디스크 동기화용: DB geometry + 원본 GeoJSON 속성 + featurePropOverrides 를 한 FeatureCollection 으로 직렬화.
+	 * 레이어가 ZIP/CAD 등이어도 rawGeoJsonOptional 에 추출된 FC 문자열이 있으면 속성을 유지한다.
+	 */
+	private String buildShpLayerDownloadGeoJson(String rawGeoJsonOptional, String dbGeometryJson, String propOverridesJsonText) {
+		if (dbGeometryJson == null || dbGeometryJson.trim().isEmpty()) {
+			return null;
+		}
+		JsonNode geometry;
+		try {
+			geometry = JSON_MAPPER.readTree(dbGeometryJson.trim());
+		} catch (Exception e) {
+			return null;
+		}
+		if (!geometry.isObject()) {
+			return null;
+		}
+
+		JsonNode mergedProps = JSON_MAPPER.createObjectNode();
+		if (rawGeoJsonOptional != null && !rawGeoJsonOptional.trim().isEmpty()) {
+			try {
+				String normalizedRaw = rawGeoJsonOptional;
+				String n = normalizeGeoJsonStringToEpsg4326(normalizedRaw);
+				if (n != null && !n.trim().isEmpty()) {
+					normalizedRaw = n;
+				}
+				String wrapped = wrapGeoJsonAsFeatureCollectionIfNeeded(normalizedRaw);
+				if (wrapped == null || wrapped.trim().isEmpty()) {
+					wrapped = normalizedRaw;
+				}
+				JsonNode root = JSON_MAPPER.readTree(wrapped.trim());
+				String tp = root.has("type") && !root.get("type").isNull() ? root.get("type").asText() : "";
+				if ("FeatureCollection".equals(tp)) {
+					mergedProps = mergeAllFeatureProperties(root);
+				} else if ("Feature".equals(tp) && root.has("properties") && !root.get("properties").isNull()) {
+					mergedProps = root.get("properties");
+					if (mergedProps == null || !mergedProps.isObject()) {
+						mergedProps = JSON_MAPPER.createObjectNode();
+					}
+				}
+			} catch (Exception ignore) {
+				// 속성 파싱 실패 시 빈 properties + overrides 만 반영
+			}
+		}
+
+		JsonNode overridesRoot = JSON_MAPPER.createObjectNode();
+		if (propOverridesJsonText != null && !propOverridesJsonText.trim().isEmpty()
+				&& !"null".equalsIgnoreCase(propOverridesJsonText.trim())) {
+			try {
+				overridesRoot = JSON_MAPPER.readTree(propOverridesJsonText.trim());
+			} catch (Exception ignore) {
+				overridesRoot = JSON_MAPPER.createObjectNode();
+			}
+		}
+		mergedProps = flattenFeaturePropOverridesInto(mergedProps, overridesRoot);
+
+		ObjectNode feature = JSON_MAPPER.createObjectNode();
+		feature.put("type", "Feature");
+		feature.set("geometry", geometry);
+		feature.set("properties", mergedProps);
+
+		ObjectNode fc = JSON_MAPPER.createObjectNode();
+		fc.put("type", "FeatureCollection");
+		ArrayNode features = JSON_MAPPER.createArrayNode();
+		features.add(feature);
+		fc.set("features", features);
+
+		try {
+			return JSON_MAPPER.writeValueAsString(fc);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
 	 * SHP 파일 다운로드
 	 * GET /api/shp/download?idx=1
 	 */
@@ -2524,8 +2874,6 @@ public class ShpUploadController extends HttpServlet {
 			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
 			return;
 		}
-
-		String userId = userInfo.userId;
 
 		String idxStr = req.getParameter("idx");
 		if (idxStr == null || idxStr.trim().isEmpty()) {
@@ -2557,8 +2905,10 @@ public class ShpUploadController extends HttpServlet {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 
-			// 레이어 정보 가져오기
-			String sql = "SELECT file_name, user_id, ST_AsGeoJSON(geometry) as geojson FROM test.shp_layer WHERE idx = ? AND use_yn = 'Y'";
+			// 레이어 정보 가져오기 (다운로드는 DB geometry + 속성 오버라이드를 반영)
+			String sql = "SELECT file_name, user_id, project_code, ST_AsGeoJSON(geometry) as geojson, " +
+					"COALESCE(display_meta->'featurePropOverrides','{}'::jsonb)::text AS prop_overrides " +
+					"FROM public.shp_layer WHERE idx = ? AND use_yn = 'Y'";
 			pstmt = conn.prepareStatement(sql);
 			pstmt.setInt(1, idx);
 			rs = pstmt.executeQuery();
@@ -2574,10 +2924,15 @@ public class ShpUploadController extends HttpServlet {
 				fileName = "layer.geojson";
 			}
 			String ownerUserId = rs.getString("user_id");
+			String layerProjectCode = rs.getString("project_code");
 			String geoJsonStr = rs.getString("geojson");
+			String propOverridesJson = rs.getString("prop_overrides");
+			if (propOverridesJson == null || propOverridesJson.trim().isEmpty()) {
+				propOverridesJson = "{}";
+			}
 
-			// 권한 확인 (본인 소유 또는 공개 파일)
-			if (!userId.equals(ownerUserId)) {
+			// 업로더 본인 · Super(1) · 해당 사업번호 프로젝트 접근 권한 (list와 동일 사업 단위)
+			if (!canAccessShpLayerForRead(req, conn, userInfo, ownerUserId, layerProjectCode)) {
 				resp.setStatus(403);
 				writeJson(resp, "{\"success\":false,\"message\":\"다운로드 권한이 없습니다.\"}");
 				return;
@@ -2594,14 +2949,43 @@ public class ShpUploadController extends HttpServlet {
 			if (lastDot > 0) {
 				baseName = fileName.substring(0, lastDot);
 			}
-			String featureCollection = null;
+
+			String rawForMergedExport = null;
+			if (hasOriginalFile) {
+				if ("geojson".equals(fileExt) || "json".equals(fileExt)) {
+					try {
+						rawForMergedExport = readTextFileUtf8(file);
+					} catch (Exception ignore) {
+						rawForMergedExport = null;
+					}
+				} else {
+					try {
+						rawForMergedExport = readRawFeatureCollectionGeoJsonFromStoredFile(file, fileName, uploadDir);
+					} catch (Exception ignore) {
+						rawForMergedExport = null;
+					}
+				}
+			}
+
+			String mergedDownloadGeoJson = null;
 			if (hasGeoJson) {
-				featureCollection = "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":" + geoJsonStr + ",\"properties\":{}}]}";
+				mergedDownloadGeoJson = buildShpLayerDownloadGeoJson(rawForMergedExport, geoJsonStr, propOverridesJson);
+				if (mergedDownloadGeoJson == null) {
+					mergedDownloadGeoJson = "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":" + geoJsonStr + ",\"properties\":{}}]}";
+				}
 			}
 
 			// 원본이 GeoJSON이면 단일 파일만 다운로드
 			if ("geojson".equals(fileExt) || "json".equals(fileExt)) {
-				if (hasOriginalFile) {
+				if (hasGeoJson && mergedDownloadGeoJson != null) {
+					byte[] content = mergedDownloadGeoJson.getBytes(StandardCharsets.UTF_8);
+					resp.setContentType("application/geo+json");
+					resp.setHeader("Content-Disposition", "attachment; filename=\"" + java.net.URLEncoder.encode(fileName, "UTF-8") + "\"");
+					resp.setCharacterEncoding("UTF-8");
+					resp.setContentLength(content.length);
+					resp.getOutputStream().write(content);
+					resp.getOutputStream().flush();
+				} else if (hasOriginalFile) {
 					File originalFile = file;
 					if (originalFile == null) {
 						resp.setStatus(404);
@@ -2618,20 +3002,6 @@ public class ShpUploadController extends HttpServlet {
 					while ((bytesRead = fis.read(buffer)) != -1) {
 						resp.getOutputStream().write(buffer, 0, bytesRead);
 					}
-					resp.getOutputStream().flush();
-				} else if (hasGeoJson) {
-					String geoJsonFeatureCollection = featureCollection;
-					if (geoJsonFeatureCollection == null) {
-						resp.setStatus(404);
-						writeJson(resp, "{\"success\":false,\"message\":\"Geometry 정보를 찾을 수 없습니다.\"}");
-						return;
-					}
-					byte[] content = geoJsonFeatureCollection.getBytes(StandardCharsets.UTF_8);
-					resp.setContentType("application/geo+json");
-					resp.setHeader("Content-Disposition", "attachment; filename=\"" + java.net.URLEncoder.encode(baseName + ".geojson", "UTF-8") + "\"");
-					resp.setCharacterEncoding("UTF-8");
-					resp.setContentLength(content.length);
-					resp.getOutputStream().write(content);
 					resp.getOutputStream().flush();
 				} else {
 					resp.setStatus(404);
@@ -2666,20 +3036,19 @@ public class ShpUploadController extends HttpServlet {
 				}
 
 				if (hasGeoJson) {
-					String geoJsonFeatureCollection = featureCollection;
-					if (geoJsonFeatureCollection == null) {
+					if (mergedDownloadGeoJson == null) {
 						resp.setStatus(404);
 						writeJson(resp, "{\"success\":false,\"message\":\"Geometry 정보를 찾을 수 없습니다.\"}");
 						return;
 					}
-					byte[] geoJsonBytes = geoJsonFeatureCollection.getBytes(StandardCharsets.UTF_8);
+					byte[] geoJsonBytes = mergedDownloadGeoJson.getBytes(StandardCharsets.UTF_8);
 					zos.putNextEntry(new ZipEntry(baseName + "_modified.geojson"));
 					zos.write(geoJsonBytes);
 					zos.closeEntry();
 
 					if (isCadFile) {
 						try {
-							byte[] dxfBytes = callGeoJsonToDxfProxy(geoJsonFeatureCollection, "4326");
+							byte[] dxfBytes = callGeoJsonToDxfProxy(mergedDownloadGeoJson, "4326");
 							zos.putNextEntry(new ZipEntry(baseName + "_modified.dxf"));
 							zos.write(dxfBytes);
 							zos.closeEntry();
@@ -2712,7 +3081,7 @@ public class ShpUploadController extends HttpServlet {
 	/**
 	 * 지도 속성 팝업 복원용: 원본에서 FeatureCollection GeoJSON만 반환 (ZIP/DXF도 속성 포함).
 	 * GET /api/shp/featureCollection?idx=1
-	 * 인증·소유권은 /api/shp/download 와 동일.
+	 * 인증·접근 규칙은 /api/shp/download 와 동일.
 	 */
 	private void handleFeatureCollection(HttpServletRequest req, HttpServletResponse resp) throws Exception {
 		UserInfo userInfo = getUserInfo(req);
@@ -2721,7 +3090,6 @@ public class ShpUploadController extends HttpServlet {
 			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
 			return;
 		}
-		String userId = userInfo.userId;
 		String idxStr = req.getParameter("idx");
 		if (idxStr == null || idxStr.trim().isEmpty()) {
 			resp.setStatus(400);
@@ -2745,7 +3113,7 @@ public class ShpUploadController extends HttpServlet {
 		try {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-			String sql = "SELECT file_name, user_id FROM test.shp_layer WHERE idx = ? AND use_yn = 'Y'";
+			String sql = "SELECT file_name, user_id, project_code FROM public.shp_layer WHERE idx = ? AND use_yn = 'Y'";
 			pstmt = conn.prepareStatement(sql);
 			pstmt.setInt(1, idx);
 			rs = pstmt.executeQuery();
@@ -2759,7 +3127,8 @@ public class ShpUploadController extends HttpServlet {
 				fileName = "layer.geojson";
 			}
 			String ownerUserId = rs.getString("user_id");
-			if (!userId.equals(ownerUserId)) {
+			String layerProjectCode = rs.getString("project_code");
+			if (!canAccessShpLayerForRead(req, conn, userInfo, ownerUserId, layerProjectCode)) {
 				resp.setStatus(403);
 				writeJson(resp, "{\"success\":false,\"message\":\"다운로드 권한이 없습니다.\"}");
 				return;
@@ -2832,7 +3201,7 @@ public class ShpUploadController extends HttpServlet {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 			
-			String sql = "UPDATE test.shp_layer SET color = ?, mod_dt = NOW() WHERE idx = ?";
+			String sql = "UPDATE public.shp_layer SET color = ?, mod_dt = NOW() WHERE idx = ?";
 			pstmt = conn.prepareStatement(sql);
 			pstmt.setString(1, color);
 			pstmt.setInt(2, idx);
@@ -2850,6 +3219,47 @@ public class ShpUploadController extends HttpServlet {
 			if (pstmt != null) try { pstmt.close(); } catch (Exception ignore) {}
 			if (conn != null) try { conn.close(); } catch (Exception ignore) {}
 		}
+	}
+
+	/** PostgreSQL 오류 시 콘솔 인코딩 깨짐 대비, SQLState는 영문으로 로깅 */
+	private static void logPostgresFailure(String context, Throwable e) {
+		Throwable root = e;
+		while (root.getCause() != null && root.getCause() != root) {
+			root = root.getCause();
+		}
+		if (root instanceof SQLException) {
+			SQLException se = (SQLException) root;
+			System.err.println("[ShpUploadController] " + context + " — SQLException SQLState=" + se.getSQLState()
+					+ " errorCode=" + se.getErrorCode()
+					+ " (check DB_URL/DB_USER/DB_PASSWORD, pg_hba.conf, network)");
+		} else {
+			System.err.println("[ShpUploadController] " + context + ": " + e.getMessage());
+		}
+		e.printStackTrace();
+	}
+
+	private static String preferencesDbErrorJsonMessage(Throwable e) {
+		Throwable root = e;
+		while (root.getCause() != null && root.getCause() != root) {
+			root = root.getCause();
+		}
+		if (root instanceof SQLException) {
+			SQLException se = (SQLException) root;
+			String sqlState = se.getSQLState();
+			if ("28P01".equals(sqlState)) {
+				return "PostgreSQL login failed (wrong password or user). Set DB_USER/DB_PASSWORD in WEB-INF/web.xml to match the server.";
+			}
+			if ("3D000".equals(sqlState)) {
+				return "PostgreSQL database in DB_URL does not exist.";
+			}
+			if ("08001".equals(sqlState) || "08003".equals(sqlState) || "08006".equals(sqlState)) {
+				return "Cannot reach PostgreSQL (host/port/firewall). Check DB_URL.";
+			}
+		}
+		if (e instanceof IllegalStateException) {
+			return e.getMessage() != null ? e.getMessage() : "DB not configured.";
+		}
+		return "Database error. See server log for SQLState.";
 	}
 
 	/**
@@ -2873,21 +3283,16 @@ public class ShpUploadController extends HttpServlet {
 				return;
 			}
 			
-			String dbUrl = getServletContext().getInitParameter("DB_URL");
-			String dbUser = getServletContext().getInitParameter("DB_USER");
-			String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
-			
 			Connection conn = null;
 			PreparedStatement pstmt = null;
 			ResultSet rs = null;
 			
 			try {
-				Class.forName("org.postgresql.Driver");
-				conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
+				conn = AppConfig.getConnection();
 				
 				// 모든 사용자 설정 조회 (프로젝트 필터, 전체 표시/숨김, 맵 타입, WMS 레이어 등)
 				Map<String, String> userPrefs = new HashMap<>();
-				String userPrefSql = "SELECT preference_key, preference_value FROM test.user_preference WHERE user_id = ?";
+				String userPrefSql = "SELECT preference_key, preference_value FROM public.user_preference WHERE user_id = ?";
 				PreparedStatement userPrefPstmt = conn.prepareStatement(userPrefSql);
 				userPrefPstmt.setString(1, userId);
 				ResultSet userPrefRs = userPrefPstmt.executeQuery();
@@ -2906,7 +3311,7 @@ public class ShpUploadController extends HttpServlet {
 				
 				// 레이어별 설정 조회 (project_code 포함)
 				String sql = "SELECT shp_layer_idx, project_code, visible, color " +
-						"FROM test.shp_layer_user_preference " +
+						"FROM public.shp_layer_user_preference " +
 						"WHERE user_id = ?";
 				pstmt = conn.prepareStatement(sql);
 				pstmt.setString(1, userId);
@@ -2984,6 +3389,10 @@ public class ShpUploadController extends HttpServlet {
 				json.append("]}");
 				
 				writeJson(resp, json.toString());
+			} catch (Exception e) {
+				logPostgresFailure("handlePreferences GET", e);
+				resp.setStatus(503);
+				writeJson(resp, "{\"success\":false,\"message\":\"" + escapeJson(preferencesDbErrorJsonMessage(e)) + "\"}");
 			} finally {
 				if (rs != null) try { rs.close(); } catch (Exception ignore) {}
 				if (pstmt != null) try { pstmt.close(); } catch (Exception ignore) {}
@@ -3090,29 +3499,24 @@ public class ShpUploadController extends HttpServlet {
 				}
 			}
 			
-			String dbUrl = getServletContext().getInitParameter("DB_URL");
-			String dbUser = getServletContext().getInitParameter("DB_USER");
-			String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
-			
 			Connection conn = null;
 			PreparedStatement pstmt = null;
 			PreparedStatement pstmtDelete = null;
 			PreparedStatement userPrefPstmt = null;
 			
 			try {
-				Class.forName("org.postgresql.Driver");
-				conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
+				conn = AppConfig.getConnection();
 				conn.setAutoCommit(false);
 				
 				// 기존 레이어 설정 삭제 (프로젝트별 설정 포함)
-				String deleteSql = "DELETE FROM test.shp_layer_user_preference WHERE user_id = ?";
+				String deleteSql = "DELETE FROM public.shp_layer_user_preference WHERE user_id = ?";
 				pstmtDelete = conn.prepareStatement(deleteSql);
 				pstmtDelete.setString(1, userId);
 				pstmtDelete.executeUpdate();
 				
 				// 존재하는 shp_layer_idx만 필터링
 				Set<Integer> validShpLayerIndices = new HashSet<>();
-				String checkSql = "SELECT idx FROM test.shp_layer WHERE idx = ?";
+				String checkSql = "SELECT idx FROM public.shp_layer WHERE idx = ?";
 				PreparedStatement checkPstmt = conn.prepareStatement(checkSql);
 				for (PreferenceItem pref : prefs) {
 					checkPstmt.setInt(1, pref.shpLayerIdx);
@@ -3125,7 +3529,7 @@ public class ShpUploadController extends HttpServlet {
 				checkPstmt.close();
 				
 				// 새 레이어 설정 저장 (project_code 포함, 존재하는 레이어만)
-				String insertSql = "INSERT INTO test.shp_layer_user_preference (user_id, shp_layer_idx, project_code, visible, color, reg_dt) " +
+				String insertSql = "INSERT INTO public.shp_layer_user_preference (user_id, shp_layer_idx, project_code, visible, color, reg_dt) " +
 						"VALUES (?, ?, ?, ?, ?, NOW()) " +
 						"ON CONFLICT (user_id, shp_layer_idx, project_code) DO UPDATE SET " +
 						"visible = EXCLUDED.visible, color = EXCLUDED.color, mod_dt = NOW()";
@@ -3154,7 +3558,7 @@ public class ShpUploadController extends HttpServlet {
 				}
 				
 				// 사용자 전체 설정 저장 (프로젝트 필터, 전체 표시/숨김, 맵 타입, WMS 레이어)
-				String userPrefSql = "INSERT INTO test.user_preference (user_id, preference_key, preference_value, reg_dt) " +
+				String userPrefSql = "INSERT INTO public.user_preference (user_id, preference_key, preference_value, reg_dt) " +
 						"VALUES (?, ?, ?, NOW()) " +
 						"ON CONFLICT (user_id, preference_key) DO UPDATE SET " +
 						"preference_value = EXCLUDED.preference_value, mod_dt = NOW()";
@@ -3214,13 +3618,12 @@ public class ShpUploadController extends HttpServlet {
 				
 				writeJson(resp, "{\"success\":true,\"message\":\"Preferences saved\",\"count\":" + prefs.size() + "}");
 			} catch (Exception e) {
-				System.err.println("[ShpUploadController] Error saving preferences: " + e.getMessage());
-				e.printStackTrace();
+				logPostgresFailure("handlePreferences POST", e);
 				if (conn != null) {
 					try { conn.rollback(); } catch (Exception ignore) {}
 				}
-				resp.setStatus(500);
-				writeJson(resp, "{\"success\":false,\"message\":\"Error saving preferences: " + escapeJson(e.getMessage()) + "\"}");
+				resp.setStatus(503);
+				writeJson(resp, "{\"success\":false,\"message\":\"" + escapeJson(preferencesDbErrorJsonMessage(e)) + "\"}");
 				return;
 			} finally {
 				if (pstmt != null) try { pstmt.close(); } catch (Exception ignore) {}
@@ -3295,6 +3698,142 @@ public class ShpUploadController extends HttpServlet {
 		}
 	}
 
+	private String normalizeCoordKey(double v) {
+		return String.format(java.util.Locale.US, "%.12f", v);
+	}
+
+	private String patchGeoJsonPropertyByFeatureXY(String rawGeoJson, double featureX, double featureY, String propertyKey, String propertyValue) {
+		if (rawGeoJson == null || rawGeoJson.trim().isEmpty()) return rawGeoJson;
+		String marker = "\"properties\"";
+		int cursor = 0;
+		int bestObjStart = -1;
+		int bestObjEnd = -1;
+		double bestD2 = Double.POSITIVE_INFINITY;
+
+		while (true) {
+			int mk = rawGeoJson.indexOf(marker, cursor);
+			if (mk < 0) break;
+			int colon = rawGeoJson.indexOf(":", mk + marker.length());
+			if (colon < 0) break;
+			int objStart = -1;
+			for (int i = colon + 1; i < rawGeoJson.length(); i++) {
+				char c = rawGeoJson.charAt(i);
+				if (Character.isWhitespace(c)) continue;
+				if (c == '{') objStart = i;
+				break;
+			}
+			if (objStart < 0) {
+				cursor = colon + 1;
+				continue;
+			}
+			int objEnd = findMatchingBrace(rawGeoJson, objStart);
+			if (objEnd < 0) {
+				cursor = objStart + 1;
+				continue;
+			}
+			String obj = rawGeoJson.substring(objStart, objEnd + 1);
+			String fxStr = extractJsonValue(obj, "feature_x");
+			String fyStr = extractJsonValue(obj, "feature_y");
+			if (fxStr != null && fyStr != null) {
+				try {
+					double fx = Double.parseDouble(fxStr.trim());
+					double fy = Double.parseDouble(fyStr.trim());
+					double dx = fx - featureX;
+					double dy = fy - featureY;
+					double d2 = dx * dx + dy * dy;
+					if (d2 < bestD2) {
+						bestD2 = d2;
+						bestObjStart = objStart;
+						bestObjEnd = objEnd;
+					}
+				} catch (Exception ignore) { }
+			}
+			cursor = objEnd + 1;
+		}
+
+		if (bestObjStart < 0 || bestObjEnd < bestObjStart) return rawGeoJson;
+		String targetObj = rawGeoJson.substring(bestObjStart, bestObjEnd + 1);
+		String patchedObj = upsertJsonObjectStringField(targetObj, propertyKey, propertyValue);
+		if (patchedObj == null || patchedObj.equals(targetObj)) return rawGeoJson;
+		return rawGeoJson.substring(0, bestObjStart) + patchedObj + rawGeoJson.substring(bestObjEnd + 1);
+	}
+
+	private int findMatchingBrace(String s, int braceStart) {
+		boolean inString = false;
+		boolean escaped = false;
+		int depth = 0;
+		for (int i = braceStart; i < s.length(); i++) {
+			char c = s.charAt(i);
+			if (inString) {
+				if (escaped) {
+					escaped = false;
+				} else if (c == '\\') {
+					escaped = true;
+				} else if (c == '"') {
+					inString = false;
+				}
+				continue;
+			}
+			if (c == '"') {
+				inString = true;
+				continue;
+			}
+			if (c == '{') depth++;
+			if (c == '}') {
+				depth--;
+				if (depth == 0) return i;
+			}
+		}
+		return -1;
+	}
+
+	private String upsertJsonObjectStringField(String jsonObject, String key, String value) {
+		if (jsonObject == null || jsonObject.length() < 2) return jsonObject;
+		String k = "\"" + key + "\"";
+		int keyIdx = jsonObject.indexOf(k);
+		String encodedVal = "\"" + escapeJson(value).replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "\"";
+		if (keyIdx < 0) {
+			int end = jsonObject.lastIndexOf('}');
+			if (end < 0) return jsonObject;
+			String before = jsonObject.substring(0, end).trim();
+			boolean hasAny = before.length() > 1 && before.charAt(before.length() - 1) != '{';
+			String insert = (hasAny ? "," : "") + k + ":" + encodedVal;
+			return jsonObject.substring(0, end) + insert + jsonObject.substring(end);
+		}
+
+		int colon = jsonObject.indexOf(":", keyIdx + k.length());
+		if (colon < 0) return jsonObject;
+		int valStart = colon + 1;
+		while (valStart < jsonObject.length() && Character.isWhitespace(jsonObject.charAt(valStart))) valStart++;
+		if (valStart >= jsonObject.length()) return jsonObject;
+
+		int valEnd = valStart;
+		char c0 = jsonObject.charAt(valStart);
+		if (c0 == '"') {
+			boolean escaped = false;
+			valEnd = valStart + 1;
+			while (valEnd < jsonObject.length()) {
+				char c = jsonObject.charAt(valEnd);
+				if (escaped) {
+					escaped = false;
+				} else if (c == '\\') {
+					escaped = true;
+				} else if (c == '"') {
+					valEnd++;
+					break;
+				}
+				valEnd++;
+			}
+		} else {
+			while (valEnd < jsonObject.length()) {
+				char c = jsonObject.charAt(valEnd);
+				if (c == ',' || c == '}') break;
+				valEnd++;
+			}
+		}
+		return jsonObject.substring(0, valStart) + encodedVal + jsonObject.substring(valEnd);
+	}
+
 	private String extractRepresentativeTextFromLayerConfig(String layerConfigJson) {
 		if (layerConfigJson == null || layerConfigJson.trim().isEmpty()) return null;
 		try {
@@ -3322,7 +3861,7 @@ public class ShpUploadController extends HttpServlet {
 		try {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-			String upsert = "UPDATE test.shp_layer " +
+			String upsert = "UPDATE public.shp_layer " +
 					"SET display_meta = COALESCE(display_meta, '{}'::jsonb) || jsonb_build_object('representativeText', ?::text) " +
 					"WHERE idx = ?";
 			pstmt = conn.prepareStatement(upsert);
@@ -3386,7 +3925,9 @@ public class ShpUploadController extends HttpServlet {
 		if (sourceGeoJson == null || sourceGeoJson.trim().isEmpty()) {
 			sourceGeoJson = extractFeatureCollectionJsonFromGeometryPayload(geometryWKT);
 		}
+		sourceGeoJson = toDbTextCompatible(sourceGeoJson);
 		String col = (featureTextColumn == null || featureTextColumn.trim().isEmpty()) ? "Text" : featureTextColumn.trim();
+		col = toDbTextCompatible(col);
 		int sourceSrid = resolveFeatureTextSourceSrid(sourceGeoJson);
 
 		Connection conn = null;
@@ -3394,7 +3935,7 @@ public class ShpUploadController extends HttpServlet {
 		try {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-			String sql = "UPDATE test.shp_layer SET display_meta = COALESCE(display_meta, '{}'::jsonb) || jsonb_build_object(" +
+			String sql = "UPDATE public.shp_layer SET display_meta = COALESCE(display_meta, '{}'::jsonb) || jsonb_build_object(" +
 					"'featureTexts', COALESCE(( " +
 					"SELECT jsonb_agg(jsonb_build_object(" +
 					"'text', x.txt, " +
@@ -3457,10 +3998,75 @@ public class ShpUploadController extends HttpServlet {
 	/**
 	 * 사용자에게 부여된 프로젝트 코드 리스트 가져오기 (새로운 권한 시스템)
 	 * 1. Super User/부서관리자: VIEW_PROJ_INFO에서 조회 (부서 있으면 CHARGE_DEPT_NM 필터)
-	 * 2. Common User/Guest: test.project + project_members 조회
+	 * 2. Common User/Guest: public.project + project_members 조회
 	 */
+	private Integer getSessionUserAuthority(HttpServletRequest req) {
+		HttpSession session = req.getSession(false);
+		if (session == null) return null;
+		Object a = session.getAttribute("userAuthority");
+		if (a instanceof Integer) return (Integer) a;
+		if (a instanceof Number) return ((Number) a).intValue();
+		if (a != null) {
+			try {
+				return Integer.parseInt(a.toString().trim());
+			} catch (NumberFormatException ignored) {}
+		}
+		return null;
+	}
+
 	/**
-	 * 단일 프로젝트에 대한 접근 권한 확인 (test.project 기준, list-all과 동일 조건).
+	 * SHP 원본·속성 조회·다운로드: 업로더 본인, 또는 세션 authority=1(Super),
+	 * 또는 레이어의 {@code project_code}에 대해 {@link #hasAccessToProject}가 참일 때 허용.
+	 */
+	private boolean canAccessShpLayerForRead(HttpServletRequest req, Connection conn, UserInfo userInfo,
+			String ownerUserId, String layerProjectCode) {
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			return false;
+		}
+		if (ownerUserId != null && ownerUserId.equals(userInfo.userId)) {
+			return true;
+		}
+		Integer auth = getSessionUserAuthority(req);
+		if (auth != null && auth.intValue() == 1) {
+			return true;
+		}
+		if (layerProjectCode == null || layerProjectCode.trim().isEmpty()) {
+			return false;
+		}
+		hydrateUserDeptNameFromDb(conn, userInfo);
+		String dept = userInfo.deptName;
+		if (dept != null) {
+			dept = dept.trim();
+			if (dept.isEmpty()) dept = null;
+		}
+		return hasAccessToProject(conn, userInfo.userId, dept, layerProjectCode.trim());
+	}
+
+	/** 세션/토큰에 부서명이 비어 있으면 DB에서 채워 기술연구소·권한 판별이 되게 함 */
+	private void hydrateUserDeptNameFromDb(Connection conn, UserInfo userInfo) {
+		if (conn == null || userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			return;
+		}
+		if (userInfo.deptName != null && !userInfo.deptName.trim().isEmpty()) {
+			return;
+		}
+		try (PreparedStatement ps = conn.prepareStatement("SELECT dept_name FROM public.\"user\" WHERE id = ?")) {
+			ps.setString(1, userInfo.userId.trim());
+			try (ResultSet rs = ps.executeQuery()) {
+				if (rs.next()) {
+					String d = rs.getString("dept_name");
+					if (d != null && !d.trim().isEmpty()) {
+						userInfo.deptName = d.trim();
+					}
+				}
+			}
+		} catch (Exception e) {
+			System.err.println("[ShpUploadController] hydrateUserDeptNameFromDb: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * 단일 프로젝트에 대한 접근 권한 확인 (public.project 기준, list-all과 동일 조건).
 	 * conn은 호출 측에서 이미 열려 있는 PostgreSQL 연결 사용.
 	 */
 	private boolean hasAccessToProject(Connection conn, String userId, String userDeptName, String projectCode) {
@@ -3470,24 +4076,34 @@ public class ShpUploadController extends HttpServlet {
 		String code = projectCode.trim();
 		if (ProjectDeptAccessUtil.isUnrestrictedResearchDept(userDeptName)) {
 			try (PreparedStatement ps = conn.prepareStatement(
-					"SELECT 1 FROM test.project p WHERE p.project_code = ? AND (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL)")) {
+					"SELECT 1 FROM public.project p WHERE p.project_code = ? AND (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL)")) {
+				ps.setString(1, code);
+				try (ResultSet rs = ps.executeQuery()) {
+					if (rs.next()) return true;
+				}
+			} catch (Exception e) {
+				System.err.println("[ShpUploadController] hasAccessToProject (dept full access / project) error: " + e.getMessage());
+			}
+			// public.project 에 아직 없거나 상태가 다른 사업이어도, /api/shp/list 과 같이 shp_layer 에 데이터가 있으면 동일 사업으로 열람 허용
+			try (PreparedStatement ps = conn.prepareStatement(
+					"SELECT 1 FROM public.shp_layer WHERE project_code = ? AND use_yn = 'Y' LIMIT 1")) {
 				ps.setString(1, code);
 				try (ResultSet rs = ps.executeQuery()) {
 					return rs.next();
 				}
 			} catch (Exception e) {
-				System.err.println("[ShpUploadController] hasAccessToProject (dept full access) error: " + e.getMessage());
+				System.err.println("[ShpUploadController] hasAccessToProject (dept full access / shp_layer fallback) error: " + e.getMessage());
 				return false;
 			}
 		}
 		String uid = userId.trim();
 		String dept = (userDeptName != null && !userDeptName.trim().isEmpty()) ? userDeptName.trim() : null;
-		String sql = "SELECT 1 FROM test.project p WHERE p.project_code = ? AND (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL) " +
-				"AND (EXISTS (SELECT 1 FROM test.project_members pm WHERE pm.project_code = p.project_code AND pm.user_id = ? AND pm.status = 'ACTIVE') " +
+		String sql = "SELECT 1 FROM public.project p WHERE p.project_code = ? AND (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL) " +
+				"AND (EXISTS (SELECT 1 FROM public.project_members pm WHERE pm.project_code = p.project_code AND pm.user_id = ? AND pm.status = 'ACTIVE') " +
 				(dept != null ? "OR p.main_dept_name = ? " : "") +
-				(dept != null ? "OR EXISTS (SELECT 1 FROM test.project_members pm2 INNER JOIN test.\"user\" u ON pm2.user_id = u.id WHERE pm2.project_code = p.project_code AND pm2.status = 'ACTIVE' AND pm2.role = 'PM' AND u.dept_name = ?) " : "") +
-				"OR EXISTS (SELECT 1 FROM test.project_admin pa WHERE pa.project_code = p.project_code AND pa.admin_user_id = ? AND pa.use_yn = 'Y') " +
-				"OR (p.pm_id = ? AND NOT EXISTS (SELECT 1 FROM test.project_admin pa2 WHERE pa2.project_code = p.project_code AND pa2.use_yn = 'Y')))";
+				(dept != null ? "OR EXISTS (SELECT 1 FROM public.project_members pm2 INNER JOIN public.\"user\" u ON pm2.user_id = u.id WHERE pm2.project_code = p.project_code AND pm2.status = 'ACTIVE' AND pm2.role = 'PM' AND u.dept_name = ?) " : "") +
+				"OR EXISTS (SELECT 1 FROM public.project_admin pa WHERE pa.project_code = p.project_code AND pa.admin_user_id = ? AND pa.use_yn = 'Y') " +
+				"OR (p.pm_id = ? AND NOT EXISTS (SELECT 1 FROM public.project_admin pa2 WHERE pa2.project_code = p.project_code AND pa2.use_yn = 'Y')))";
 		try (PreparedStatement ps = conn.prepareStatement(sql)) {
 			int idx = 1;
 			ps.setString(idx++, code);
@@ -3536,7 +4152,7 @@ public class ShpUploadController extends HttpServlet {
 			pgConn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 			
 			if ((userDeptName == null || userDeptName.trim().isEmpty()) && userId != null) {
-				try (PreparedStatement ps = pgConn.prepareStatement("SELECT dept_name FROM test.\"user\" WHERE id = ?")) {
+				try (PreparedStatement ps = pgConn.prepareStatement("SELECT dept_name FROM public.\"user\" WHERE id = ?")) {
 					ps.setString(1, userId.trim());
 					try (ResultSet rsd = ps.executeQuery()) {
 						if (rsd.next()) {
@@ -3550,7 +4166,7 @@ public class ShpUploadController extends HttpServlet {
 			}
 			boolean deptFullAccess = ProjectDeptAccessUtil.isUnrestrictedResearchDept(userDeptName);
 			
-			// Authority 1: VIEW_PROJ_INFO + test.project 병합 (부서 필터 없이 전체 조회)
+			// Authority 1: VIEW_PROJ_INFO + public.project 병합 (부서 필터 없이 전체 조회)
 			if (userAuthority == 1 || deptFullAccess) {
 				// VIEW_PROJ_INFO에서 조회 (부서 필터 없이 전체)
 				if (dbViewUrl != null && dbViewUser != null && dbViewPassword != null) {
@@ -3572,8 +4188,8 @@ public class ShpUploadController extends HttpServlet {
 						if (msConn != null) try { msConn.close(); } catch (Exception ignore) {}
 					}
 				}
-				// test.project에서도 조회하여 병합 (VIEW에 없는 프로젝트 추가, list-all과 동일하게 사전기획 포함)
-				String sql = "SELECT project_code FROM test.project WHERE (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL)";
+				// public.project에서도 조회하여 병합 (VIEW에 없는 프로젝트 추가, list-all과 동일하게 사전기획 포함)
+				String sql = "SELECT project_code FROM public.project WHERE (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL)";
 				pstmt = pgConn.prepareStatement(sql);
 				rs = pstmt.executeQuery();
 				while (rs.next()) {
@@ -3628,14 +4244,14 @@ public class ShpUploadController extends HttpServlet {
 					}
 				}
 				
-				// 2. test.project: 내가 속한 프로젝트(project_members) + 내 부서가 담당하는 프로젝트(main_dept_name) — 지도 필터와 동일
+				// 2. public.project: 내가 속한 프로젝트(project_members) + 내 부서가 담당하는 프로젝트(main_dept_name) — 지도 필터와 동일
 				StringBuilder sqlBuilder = new StringBuilder();
 				sqlBuilder.append("SELECT DISTINCT project_code ");
-				sqlBuilder.append("FROM test.project ");
+				sqlBuilder.append("FROM public.project ");
 				sqlBuilder.append("WHERE (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL) ");
 				sqlBuilder.append("AND (");
-				sqlBuilder.append("EXISTS (SELECT 1 FROM test.project_members pm ");
-				sqlBuilder.append("WHERE pm.project_code = test.project.project_code AND pm.user_id = ? AND pm.status = 'ACTIVE') ");
+				sqlBuilder.append("EXISTS (SELECT 1 FROM public.project_members pm ");
+				sqlBuilder.append("WHERE pm.project_code = public.project.project_code AND pm.user_id = ? AND pm.status = 'ACTIVE') ");
 				if (userDeptName != null && !userDeptName.trim().isEmpty()) {
 					sqlBuilder.append("OR main_dept_name = ? ");
 				}
@@ -3661,12 +4277,12 @@ public class ShpUploadController extends HttpServlet {
 				pstmt.close();
 			}
 			
-			// 3. test.project에만 있는 새 프로젝트: 본인이 PM인 경우 추가 (list-all과 동일)
+			// 3. public.project에만 있는 새 프로젝트: 본인이 PM인 경우 추가 (list-all과 동일)
 			//    - project_admin에 지정된 PM
-			//    - test.project.pm_id = 현재 사용자 (project_admin에 PM이 없는 경우)
+			//    - public.project.pm_id = 현재 사용자 (project_admin에 PM이 없는 경우)
 			try {
 				try (PreparedStatement paPstmt = pgConn.prepareStatement(
-						"SELECT DISTINCT project_code FROM test.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'")) {
+						"SELECT DISTINCT project_code FROM public.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'")) {
 					paPstmt.setString(1, userId.trim());
 					try (ResultSet paRs = paPstmt.executeQuery()) {
 						while (paRs.next()) {
@@ -3678,8 +4294,8 @@ public class ShpUploadController extends HttpServlet {
 					}
 				}
 				try (PreparedStatement ptPstmt = pgConn.prepareStatement(
-						"SELECT project_code FROM test.project p WHERE p.pm_id = ? AND (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL) " +
-						"AND NOT EXISTS (SELECT 1 FROM test.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')")) {
+						"SELECT project_code FROM public.project p WHERE p.pm_id = ? AND (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL) " +
+						"AND NOT EXISTS (SELECT 1 FROM public.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')")) {
 					ptPstmt.setString(1, userId.trim());
 					try (ResultSet ptRs = ptPstmt.executeQuery()) {
 						while (ptRs.next()) {

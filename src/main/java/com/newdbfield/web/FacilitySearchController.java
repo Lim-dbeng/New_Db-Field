@@ -199,7 +199,7 @@ public class FacilitySearchController extends HttpServlet {
 				pstmt.close();
 
 				// VIEW_PROJ_INFO에 없어도 allowedProjectCodes에 있고 사업번호 필터에 맞으면 추가
-				// (PostgreSQL test.gis_a_layer에는 있지만 SQL Server에는 아직 반영 안 된 경우 대응)
+				// (PostgreSQL public.gis_a_layer에는 있지만 SQL Server에는 아직 반영 안 된 경우 대응)
 				if (projectCodeFilter != null && !projectCodeFilter.trim().isEmpty()) {
 					String filter = projectCodeFilter.trim().toLowerCase();
 					for (String code : allowedProjectCodes) {
@@ -256,7 +256,7 @@ public class FacilitySearchController extends HttpServlet {
 			StringBuilder countSql = new StringBuilder();
 			if (!projectCodes.isEmpty()) {
 				// 사업번호 필터가 있는 경우 (사용자가 조회 가능한 프로젝트 리스트 내에서만)
-				countSql.append("SELECT COUNT(DISTINCT code) FROM test.gis_a_layer WHERE project_code IN (");
+				countSql.append("SELECT COUNT(DISTINCT code) FROM public.gis_a_layer WHERE project_code IN (");
 				for (int i = 0; i < projectCodes.size(); i++) {
 					if (i > 0) countSql.append(",");
 					countSql.append("?");
@@ -264,7 +264,7 @@ public class FacilitySearchController extends HttpServlet {
 				countSql.append(")");
 			} else {
 				// 조사일자 필터만 사용하는 경우 (사용자가 조회 가능한 프로젝트 리스트 내에서만)
-				countSql.append("SELECT COUNT(DISTINCT code) FROM test.gis_a_layer WHERE project_code IN (");
+				countSql.append("SELECT COUNT(DISTINCT code) FROM public.gis_a_layer WHERE project_code IN (");
 				for (int i = 0; i < allowedProjectCodes.size(); i++) {
 					if (i > 0) countSql.append(",");
 					countSql.append("?");
@@ -302,7 +302,7 @@ public class FacilitySearchController extends HttpServlet {
 			listSql.append("ST_X(geometry) as lng, ");
 			listSql.append("ST_Y(geometry) as lat ");
 			if (!projectCodes.isEmpty()) {
-				listSql.append("FROM test.gis_a_layer WHERE project_code IN (");
+				listSql.append("FROM public.gis_a_layer WHERE project_code IN (");
 				for (int i = 0; i < projectCodes.size(); i++) {
 					if (i > 0) listSql.append(",");
 					listSql.append("?");
@@ -310,7 +310,7 @@ public class FacilitySearchController extends HttpServlet {
 				listSql.append(")");
 			} else {
 				// 필터가 없을 때는 사용자가 조회 가능한 프로젝트 리스트 사용
-				listSql.append("FROM test.gis_a_layer WHERE project_code IN (");
+				listSql.append("FROM public.gis_a_layer WHERE project_code IN (");
 				for (int i = 0; i < allowedProjectCodes.size(); i++) {
 					if (i > 0) listSql.append(",");
 					listSql.append("?");
@@ -475,7 +475,7 @@ public class FacilitySearchController extends HttpServlet {
 
 		if ((userDeptName == null || userDeptName.trim().isEmpty()) && userId != null) {
 			try (Connection c = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
-				try (PreparedStatement ps = c.prepareStatement("SELECT dept_name FROM test.\"user\" WHERE id = ?")) {
+				try (PreparedStatement ps = c.prepareStatement("SELECT dept_name FROM public.\"user\" WHERE id = ?")) {
 					ps.setString(1, userId.trim());
 					try (ResultSet rsd = ps.executeQuery()) {
 						if (rsd.next()) {
@@ -543,8 +543,8 @@ public class FacilitySearchController extends HttpServlet {
 			try {
 				if (!(userAuthority == 1 || deptFullAccess)) {
 					StringBuilder sql = new StringBuilder();
-					sql.append("SELECT DISTINCT project_code FROM test.project WHERE (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL) ");
-					sql.append("AND (EXISTS (SELECT 1 FROM test.project_members pm WHERE pm.project_code = test.project.project_code AND pm.user_id = ? AND pm.status = 'ACTIVE') ");
+					sql.append("SELECT DISTINCT project_code FROM public.project WHERE (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL) ");
+					sql.append("AND (EXISTS (SELECT 1 FROM public.project_members pm WHERE pm.project_code = public.project.project_code AND pm.user_id = ? AND pm.status = 'ACTIVE') ");
 					if (userDeptName != null && !userDeptName.trim().isEmpty())
 						sql.append("OR main_dept_name = ? ");
 					sql.append(")");
@@ -562,7 +562,7 @@ public class FacilitySearchController extends HttpServlet {
 						}
 					}
 
-					try (PreparedStatement paPstmt = pgConn.prepareStatement("SELECT DISTINCT project_code FROM test.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'")) {
+					try (PreparedStatement paPstmt = pgConn.prepareStatement("SELECT DISTINCT project_code FROM public.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'")) {
 						paPstmt.setString(1, userId.trim());
 						try (ResultSet paRs = paPstmt.executeQuery()) {
 							while (paRs.next()) {
@@ -573,8 +573,8 @@ public class FacilitySearchController extends HttpServlet {
 						}
 					}
 					try (PreparedStatement ptPstmt = pgConn.prepareStatement(
-							"SELECT project_code FROM test.project p WHERE p.pm_id = ? AND (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL) " +
-							"AND NOT EXISTS (SELECT 1 FROM test.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')")) {
+							"SELECT project_code FROM public.project p WHERE p.pm_id = ? AND (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL) " +
+							"AND NOT EXISTS (SELECT 1 FROM public.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')")) {
 						ptPstmt.setString(1, userId.trim());
 						try (ResultSet ptRs = ptPstmt.executeQuery()) {
 							while (ptRs.next()) {
@@ -585,7 +585,7 @@ public class FacilitySearchController extends HttpServlet {
 						}
 					}
 				} else {
-					try (PreparedStatement pstmt = pgConn.prepareStatement("SELECT project_code FROM test.project WHERE (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL)")) {
+					try (PreparedStatement pstmt = pgConn.prepareStatement("SELECT project_code FROM public.project WHERE (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL)")) {
 						try (ResultSet rs = pstmt.executeQuery()) {
 							while (rs.next()) {
 								String code = rs.getString("project_code");
@@ -596,7 +596,7 @@ public class FacilitySearchController extends HttpServlet {
 					}
 				}
 			} catch (Exception e) {
-				System.err.println("[FacilitySearchController] test.project 조회 실패: " + e.getMessage());
+				System.err.println("[FacilitySearchController] public.project 조회 실패: " + e.getMessage());
 			}
 		}
 

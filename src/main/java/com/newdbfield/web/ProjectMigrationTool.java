@@ -335,7 +335,7 @@ public class ProjectMigrationTool {
         String sql;
         if (updateExisting) {
             // 기존 데이터 업데이트
-            sql = "INSERT INTO test.project (" +
+            sql = "INSERT INTO public.project (" +
                     "project_code, project_name, main_dept_code, main_dept_name, " +
                     "project_status, pm_id, pm_name, reg_dt, mod_dt, start_dt, end_dt" +
                     ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
@@ -350,7 +350,7 @@ public class ProjectMigrationTool {
                     "end_dt = EXCLUDED.end_dt";
         } else {
             // 기존 데이터는 유지하고 새 항목만 추가
-            sql = "INSERT INTO test.project (" +
+            sql = "INSERT INTO public.project (" +
                     "project_code, project_name, main_dept_code, main_dept_name, " +
                     "project_status, pm_id, pm_name, reg_dt, mod_dt, start_dt, end_dt" +
                     ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
@@ -419,16 +419,16 @@ public class ProjectMigrationTool {
     
     /**
      * PostgreSQL에 프로젝트 멤버 정보 삽입
-     * test.user 테이블에 존재하는 user_id만 삽입
+     * public.user 테이블에 존재하는 user_id만 삽입
      */
     public static void insertProjectMembersToPostgres(List<ProjectMemberInfo> members, String dbUrl, String dbUser, String dbPassword) throws Exception {
-        // 먼저 test.user 테이블에서 user_id와 dept_code, dept_name 조회
+        // 먼저 public.user 테이블에서 user_id와 dept_code, dept_name 조회
         Set<String> existingUserIds = new HashSet<>();
         java.util.Map<String, String> userDeptCodeMap = new java.util.HashMap<>();
         java.util.Map<String, String> userDeptNameMap = new java.util.HashMap<>();
         
         try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-             PreparedStatement pstmt = conn.prepareStatement("SELECT id, dept_code, dept_name FROM test.\"user\"");
+             PreparedStatement pstmt = conn.prepareStatement("SELECT id, dept_code, dept_name FROM public.\"user\"");
              ResultSet rs = pstmt.executeQuery()) {
             while (rs.next()) {
                 String userId = rs.getString("id");
@@ -445,7 +445,7 @@ public class ProjectMigrationTool {
                 }
             }
         }
-        System.out.println("[ProjectMigrationTool] Found " + existingUserIds.size() + " existing users in test.user table");
+        System.out.println("[ProjectMigrationTool] Found " + existingUserIds.size() + " existing users in public.user table");
         
         // 존재하는 user_id만 필터링하고 dept_code, dept_name 매핑
         List<ProjectMemberInfo> validMembers = new ArrayList<>();
@@ -461,7 +461,7 @@ public class ProjectMigrationTool {
             } else {
                 skippedCount++;
                 if (skippedCount <= 10) { // 처음 10개만 로그 출력
-                    System.out.println("[ProjectMigrationTool] Skipping project member - user_id not found in test.user: " + userId + " (project: " + info.projectCode + ")");
+                    System.out.println("[ProjectMigrationTool] Skipping project member - user_id not found in public.user: " + userId + " (project: " + info.projectCode + ")");
                 }
             }
         }
@@ -496,7 +496,7 @@ public class ProjectMigrationTool {
         }
         
         // SQL 동적 구성
-        StringBuilder sqlBuilder = new StringBuilder("INSERT INTO test.project_members (");
+        StringBuilder sqlBuilder = new StringBuilder("INSERT INTO public.project_members (");
         sqlBuilder.append("project_code, user_id, role, status, invited_by, ");
         sqlBuilder.append("joined_at, updated_at, dept_code, dept_name");
         if (hasUserName) sqlBuilder.append(", user_name");
@@ -571,13 +571,13 @@ public class ProjectMigrationTool {
     }
     
     /**
-     * test.gis_a_layer의 project_code를 기준으로 VIEW_PROJ_INFO에서 프로젝트 정보 조회
+     * public.gis_a_layer의 project_code를 기준으로 VIEW_PROJ_INFO에서 프로젝트 정보 조회
      */
     public static List<String> getProjectCodesFromGisALayer(String dbUrl, String dbUser, String dbPassword) throws Exception {
         List<String> projectCodes = new ArrayList<>();
         
         String sql = "SELECT DISTINCT project_code " +
-                    "FROM test.gis_a_layer " +
+                    "FROM public.gis_a_layer " +
                     "WHERE project_code IS NOT NULL AND project_code != '' " +
                     "ORDER BY project_code";
         
@@ -700,7 +700,7 @@ public class ProjectMigrationTool {
         Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
         
         // 1. gis_a_layer에서 project_code 목록 조회
-        System.out.println("[ProjectMigrationTool] Fetching project codes from test.gis_a_layer...");
+        System.out.println("[ProjectMigrationTool] Fetching project codes from public.gis_a_layer...");
         List<String> projectCodes = getProjectCodesFromGisALayer(dbUrl, dbUser, dbPassword);
         System.out.println("[ProjectMigrationTool] Found " + projectCodes.size() + " unique project codes in gis_a_layer");
         
@@ -745,7 +745,7 @@ public class ProjectMigrationTool {
     
     /**
      * 증분 마이그레이션: gis_a_layer에 새로 추가된 project_code만 마이그레이션
-     * 이미 test.project에 있는 프로젝트는 건너뜀
+     * 이미 public.project에 있는 프로젝트는 건너뜀
      */
     public static void migrateIncrementalFromGisALayer(String dbViewUrl, String dbViewUser, String dbViewPassword,
                                                        String dbUrl, String dbUser, String dbPassword) throws Exception {
@@ -758,7 +758,7 @@ public class ProjectMigrationTool {
         Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
         
         // 1. gis_a_layer에서 project_code 목록 조회
-        System.out.println("[ProjectMigrationTool] Fetching project codes from test.gis_a_layer...");
+        System.out.println("[ProjectMigrationTool] Fetching project codes from public.gis_a_layer...");
         List<String> allProjectCodes = getProjectCodesFromGisALayer(dbUrl, dbUser, dbPassword);
         System.out.println("[ProjectMigrationTool] Found " + allProjectCodes.size() + " unique project codes in gis_a_layer");
         
@@ -767,9 +767,9 @@ public class ProjectMigrationTool {
             return;
         }
         
-        // 2. 이미 test.project에 있는 project_code 조회
+        // 2. 이미 public.project에 있는 project_code 조회
         List<String> existingProjectCodes = getExistingProjectCodes(dbUrl, dbUser, dbPassword);
-        System.out.println("[ProjectMigrationTool] Found " + existingProjectCodes.size() + " existing projects in test.project");
+        System.out.println("[ProjectMigrationTool] Found " + existingProjectCodes.size() + " existing projects in public.project");
         
         // 3. 새로운 project_code만 필터링
         List<String> newProjectCodes = new ArrayList<>();
@@ -804,12 +804,12 @@ public class ProjectMigrationTool {
     }
     
     /**
-     * test.project에 이미 존재하는 project_code 목록 조회
+     * public.project에 이미 존재하는 project_code 목록 조회
      */
     private static List<String> getExistingProjectCodes(String dbUrl, String dbUser, String dbPassword) throws Exception {
         List<String> projectCodes = new ArrayList<>();
         
-        String sql = "SELECT project_code FROM test.project";
+        String sql = "SELECT project_code FROM public.project";
         
         try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
              PreparedStatement pstmt = conn.prepareStatement(sql);
@@ -827,13 +827,13 @@ public class ProjectMigrationTool {
     }
     
     /**
-     * VIEW → test.project / test.project_members 자동 마이그레이션 사용 안 함.
-     * test.project: 관리자 생성 프로젝트만 저장. VIEW_PROJ_INFO는 조회 전용.
-     * test.project_members: 권한 요청 승인으로 추가된 멤버만 저장. VIEW_PROJ_MAN_INFO는 조회 전용.
+     * VIEW → public.project / public.project_members 자동 마이그레이션 사용 안 함.
+     * public.project: 관리자 생성 프로젝트만 저장. VIEW_PROJ_INFO는 조회 전용.
+     * public.project_members: 권한 요청 승인으로 추가된 멤버만 저장. VIEW_PROJ_MAN_INFO는 조회 전용.
      */
     public static void migrate(String dbViewUrl, String dbViewUser, String dbViewPassword,
                                String dbUrl, String dbUser, String dbPassword) throws Exception {
-        System.out.println("[ProjectMigrationTool] VIEW→test.project/test.project_members 마이그레이션은 사용하지 않습니다. test.project·project_members는 각각 관리자 생성·권한 승인 데이터만 저장합니다.");
+        System.out.println("[ProjectMigrationTool] VIEW→public.project/public.project_members 마이그레이션은 사용하지 않습니다. public.project·project_members는 각각 관리자 생성·권한 승인 데이터만 저장합니다.");
     }
     
     /**
@@ -846,7 +846,7 @@ public class ProjectMigrationTool {
             String dbViewUser = "dbinfo";
             String dbViewPassword = "1q2w3e@@";
             
-            String dbUrl = "jdbc:postgresql://localhost:5433/postgresLocal";
+            String dbUrl = "jdbc:postgresql://172.21.15.134:5433/dbfieldDB";
             String dbUser = "postgres";
             String dbPassword = "postgres";
             

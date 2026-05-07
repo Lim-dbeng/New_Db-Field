@@ -510,6 +510,52 @@ fetch('/api/fac/detail?code=' + encodeURIComponent(code), { credentials: 'includ
 
 ---
 
+### 2.1.1 좌표 파일 파싱 (일괄 추가용)
+
+시설물 추가 패널에서 업로드해 지도상 일괄 저장하기 전에, 서버가 파일에서 경위도만 추출할 때 사용한다.
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/fac/import-points/parse` |
+| Method | `POST` |
+| Content-Type | `multipart/form-data` |
+| 인증 | 세션·토큰 (`AuthFilter`) |
+
+**FormData 필드**
+
+| 이름 | 필수 | 설명 |
+| --- | --- | --- |
+| file | O | `.zip`(SHP 세트 또는 GeoJSON), `.geojson`/`.json`, `.dxf`, `.xlsx`/`.xls` |
+
+**지원 형식 요약**
+
+| 형식 | 처리 |
+| --- | --- |
+| ZIP | 내부 `.geojson`/`.json` 우선, 없으면 `.shp`(+.shx, .dbf 등 동반). GeoTools로 EPSG:4326 정규화 후 좌표 추출 |
+| GeoJSON | `FeatureCollection`/`Feature`/geometry — Point·MultiPoint는 각 정점, LineString·Polygon·나머지는 대표점(중심) 위주 |
+| DXF | `POINT` 엔티티 그룹 코드 10(x), 20(y) 조합 |
+| Excel | **1행 헤더** 필수: 열 이름이 경도·위도, lon/lat, longitude/latitude, x/y, easting/northing 등으로 매칭. 값이 한국 평면좌표(거리·값 범위)면 EPSG:5186→4326 근사 변환 시도(**Apache POI `poi-ooxml`** JAR 필요). |
+
+**Response (Success)**
+
+```json
+{
+  "success": true,
+  "count": 12,
+  "points": [{ "lon": 127.12, "lat": 37.56, "label": "선택 속성이 있으면 포함" }],
+  "warnings": ["좌표계 관련 참고 문자열 배열"]
+}
+```
+
+**Response (Failure)**
+
+- **401**: 미인증  
+- **400**: `{ "success": false, "message": "..." }` — 형식 오류·파싱 실패·필수 열 없음 등  
+
+실제 DB 반영은 클라이언트가 반환된 `points`로 OpenLayers WFS-T(`gis_a_layer` Insert)를 순차 호출한다.
+
+---
+
 ### 2.2 시설물 조사 저장
 
 | 항목 | 내용 |
@@ -795,6 +841,121 @@ fetch(`/api/fac/point/geometry?code=${encodeURIComponent(code)}&lon=127.0&lat=37
 | 이름 | 필수 | 설명 |
 | --- | --- | --- |
 | code | O | 관리번호 |
+
+---
+
+### 2.12 조사 보고서 양식 (HWP 업로드 · JSONB)
+
+시설 포인트(`code`)당 **하나의 보고서 양식 행**(`test.facility_survey_report`). 필드 정의·입력값은 **JSONB** (`draft_field_schema`, `field_schema`, `answers`). HWP 자동 파싱(kordoc)은 후속 연동; 현재는 업로드 파일 저장 및 `draft_field_schema`에 `parseStatus: pending` 플레이스홀더만 설정.
+
+| 항목 | 내용 |
+| --- | --- |
+| 인증 | 세션·토큰 |
+| 권한 | `test.gis_a_layer`의 해당 `code`의 `project_code`가 사용자 **허용 사업 목록**에 포함될 때만 |
+
+#### GET 조회
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/fac/survey-report` |
+| Method | `GET` |
+| Query | `code` (필수) 시설 관리번호 |
+
+**Response**
+
+- 행 없음: `{ "success": true, "exists": false, "code": "...", "project_code": "..." }`
+- 행 있음: `{ "success": true, "exists": true, "id", "code", "project_code", "source_filename", "stored_path", "review_status", "schema_version", "created_by", "draft_field_schema", "field_schema", "answers" }` (JSON 필드는 객체)
+
+#### POST HWP 업로드
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/fac/survey-report/upload` |
+| Method | `POST` |
+| Content-Type | `multipart/form-data` |
+| Part | `code` (폼 필드), `file` (`.hwp` / `.hwpx`) |
+
+**Response (Success)**
+
+```json
+{ "success": true, "id": 1, "code": "...", "stored_path": "SURVEY_HWP/...", "review_status": "pending_review", "parseStatus": "ok" }
+```
+
+- `parseStatus`: kordoc(Node) 파싱 결과 — `ok` | `pending` | `failed` 등 (`draft_field_schema`의 `parseStatus`와 동일).
+- 파일은 웹앱 루트 기준 `SURVEY_HWP/` 아래 저장. 서버에 Node·kordoc(`KORDOC_HOME` 또는 `dist/cli.js` 탐색)이 없으면 초안은 `pending`일 수 있음.
+
+#### PUT 검수 후 필드 스키마 확정
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/fac/survey-report/schema` |
+| Method | `PUT` |
+| Content-Type | `application/json` |
+
+**Request Body**
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| code | string | O | 시설 관리번호 |
+| field_schema | object | O | 검수 반영된 필드 정의 JSON |
+| review_status | string | N | `approved`(기본) 또는 `pending_review` |
+
+#### PUT 입력값 저장
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/fac/survey-report/answers` |
+| Method | `PUT` |
+| Content-Type | `application/json` |
+
+**Request Body**
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| code | string | O | 시설 관리번호 |
+| answers | object | O | 필드 id → 값 맵 |
+
+#### POST AI 초안 생성 (LLM)
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/fac/survey-report/generate-draft` |
+| Method | `POST` |
+| Content-Type | `application/json` |
+
+**설명**
+
+- `review_status`가 `pending_review`이면 `draft_field_schema.fields`, `approved`이면 `field_schema.fields`를 기준으로 OpenAI 호환 Chat Completions API를 호출하고, 응답 JSON을 `answers`에 병합 저장한다.
+- 서버 `web.xml` 컨텍스트 파라미터: `SURVEY_LLM_API_URL`(필수, 전체 URL 예: `https://api.openai.com/v1/chat/completions`), `SURVEY_LLM_API_KEY`(선택), `SURVEY_LLM_MODEL`(선택, 기본 `gpt-4o-mini`).
+- 컨텍스트로 `gis_a_layer`의 좌표·사업번호, `field` 조사 그룹별 코멘트·사진 파일명·촬영방향 등을 전달한다 (이미지 바이너리 미전송).
+
+**Request Body**
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| code | string | O | 시설 관리번호 |
+
+**Response**
+
+- 성공: `{ "success": true, "message": "…" }`
+- 설정 누락·LLM 오류: `503` 등과 함께 `{ "success": false, "message": "…" }`
+
+#### GET 작성 초안 파일 내보내기 (HWPX / Markdown 폴백)
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/fac/survey-report/export` |
+| Method | `GET` |
+| Query | `code` (필수) 시설 관리번호 |
+
+**설명**
+
+- `field_schema.fields`가 있으면 우선 사용, 비어 있으면 `draft_field_schema.fields`로 필드 목록을 구성한다.
+- `answers`와 필드 라벨을 모아 마크다운을 만든 뒤, 서버의 **kordoc**(`KORDOC_HOME` 등, `md-to-hwpx.mjs` + `dist/index.js`)으로 **HWPX** 변환을 시도한다.
+- Node/kordoc 실패 시 동일 내용의 **`.md`** 파일로 내려준다.
+- 성공 시 `Content-Disposition: attachment`, 본문은 바이너리(HWPX) 또는 UTF-8 마크다운.
+
+**담당 컨트롤러·메서드**: `FacCommController` — `handleSurveyReportGet`, `handleSurveyReportUpload`, `handleSurveyReportSchemaPut`, `handleSurveyReportAnswersPut`, `handleSurveyReportGenerateDraft`, `handleSurveyReportExport`
 
 ---
 
@@ -1811,7 +1972,8 @@ fetch('/api/shp/updateColor', {
 | URL | `/api/shp/download` |
 | Method | `GET` |
 | 인증 | 세션·토큰 |
-| 설명 | 원본/GeoJSON 등 파일 응답 |
+| 접근 조건 | 레이어 **업로더 본인**, 또는 세션 **`userAuthority` = 1**(Super), 또는 해당 레이어의 **`project_code` 사업**에 대한 프로젝트 접근 권한(`hasAccessToProject`). 부서명이 비어 있으면 DB `user`에서 보완. **기술연구소/R&D**는 `public.project`에 없어도 `shp_layer`에 해당 사업번호 데이터가 있으면 열람 허용(`/api/shp/list`와 정합). |
+| 설명 | **DB에 저장된 geometry**(지도·WFS와 동일)와 **원본에서 읽은 속성**·`display_meta.featurePropOverrides`(말풍선 속성 수정)를 병합한 GeoJSON을 내려준다. 단일 `.geojson`/`.json`은 위 내용이 담긴 파일로 응답한다. `.zip`/CAD 등은 업로드 **원본 바이너리는 그대로** 포함하고, 동일 병합 결과를 `basename_modified.geojson`(및 가능 시 `_modified.dxf`)으로 추가한다. geometry가 DB에 없고 파일만 있으면 기존처럼 원본 파일 스트림을 반환한다. |
 
 **Query Params**
 
@@ -1831,7 +1993,7 @@ window.open('/api/shp/download?idx=' + idx);
 | --- | --- |
 | URL | `/api/shp/featureCollection` |
 | Method | `GET` |
-| 인증 | 세션·토큰 (소유자만, 규칙은 `/api/shp/download` 와 동일) |
+| 인증 | 세션·토큰 (접근 조건은 `/api/shp/download` 와 동일: 업로더 · Super(1) · 해당 `project_code` 사업 접근 권한) |
 | Content-Type | `application/geo+json` |
 | 설명 | 원본 파일에서 **속성이 포함된** FeatureCollection GeoJSON만 반환. `.zip`(내부 geojson/shp/cad), 단일 `.geojson`/`.json`, `.dxf`/`.dwg`/`.dgn` 지원. 지도에서 WFS로는 속성이 비어 있을 때 클라이언트가 이 API로 속성을 맞춤. `/api/shp/download` 는 ZIP 등 바이너리일 수 있어 JSON 파싱용으로 부적합. |
 
@@ -1842,6 +2004,37 @@ window.open('/api/shp/download?idx=' + idx);
 | idx | O | `test.shp_layer.idx` |
 
 오류 시 `application/json` 본문 `{ "success": false, "message": "..." }` 및 적절한 HTTP 상태.
+
+---
+
+### 5.7b SHP Feature 속성 단건 저장 (말풍선 인라인 수정)
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/shp/updateFeatureProperty` |
+| Method | `POST` |
+| Content-Type | `application/json` |
+| 인증 | 세션·토큰 (소유자만) |
+| 설명 | 말풍선에서 변경한 단일 속성값을 즉시 저장. `display_meta.featurePropOverrides`(DB) 에 저장하며, 원본이 `.geojson/.json`이면 파일도 함께 갱신 시도 |
+
+**Request Body**
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| idx | number | O | `test.shp_layer.idx` |
+| featureX | number | O | 원본 feature 식별용 `properties.feature_x` |
+| featureY | number | O | 원본 feature 식별용 `properties.feature_y` |
+| propertyKey | string | O | 수정할 속성 키 |
+| propertyValue | string | O | 수정할 값 (빈 문자열 허용) |
+
+**Response 예시**
+
+```json
+{ "success": true, "message": "속성이 저장되었습니다.", "fileUpdated": true }
+```
+
+- `fileUpdated=true`: 원본 `.geojson/.json` 파일까지 갱신됨
+- `fileUpdated=false`: DB만 저장되었거나(비-GeoJSON 원본), 파일 갱신 대상이 아님
 
 ---
 
@@ -1958,6 +2151,44 @@ fetch('/api/shp/preferences', {
 
 ```javascript
 fetch('/api/config', { credentials: 'include' }).then(r => r.json());
+```
+
+---
+
+### 6.1.1 Tmap 길찾기 (경로 안내 프록시)
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/tmap/directions` |
+| Method | `GET` |
+| Content-Type | `application/json` |
+| 인증 | 세션·토큰 (`AuthFilter`) |
+| 설명 | 서버가 [Tmap Open API](https://openapi.sk.com) 자동차·보행자 경로를 호출하고, 클라이언트가 쓰는 Directions 호환 형식(`routes[0].overview_polyline.points` 등)으로 변환해 반환. 서버 환경변수 **`TMAP_API_KEY`** (앱키) 필요. Tomcat은 `nf-start.cmd`가 `.env`에서 `TMAP_API_KEY`를 읽어 `setenv.bat`로 전달한다. |
+
+**Query Params**
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| originLat | number | O | 출발 위도 |
+| originLng | number | O | 출발 경도 |
+| destinationLat | number | O | 목적 위도 |
+| destinationLng | number | O | 목적 경도 |
+| mode | string | N | `walking`(도보) 또는 `driving`(자동차). 기본 `driving` |
+
+**Response (Success)** — 기존 Google Directions 대체용. `status`가 `OK`일 때 `routes[0].overview_polyline.points`는 Google 인코딩 폴리라인 문자열이며, `effectiveTravelMode`는 `walking` 또는 `driving`. `provider`는 `"tmap"`.
+
+**Response (Failure)**
+
+- **400**: `{"error":"tmapKeyMissing"}` — 키 미설정  
+- **400**: `{"error":"params"}` — 좌표 누락  
+- 본문 `status`: `ZERO_RESULTS`(경로 없음), `ERROR`(티맵 HTTP 오류·`error_message`)
+
+**사용 예시**
+
+```javascript
+const qs = '?originLat=' + lat1 + '&originLng=' + lng1
+  + '&destinationLat=' + lat2 + '&destinationLng=' + lng2 + '&mode=walking';
+fetch('/api/tmap/directions' + qs, { credentials: 'include' }).then(r => r.json());
 ```
 
 ---

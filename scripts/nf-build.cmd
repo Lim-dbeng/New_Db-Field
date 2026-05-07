@@ -39,6 +39,16 @@ if exist "%ROOT_DIR%\pom.xml" (
 	popd
 )
 
+REM Maven 없을 때 javac가 Jackson을 찾지 못하는 문제: 최소 Jackson 3개를 Maven Central에서 내려받음 (ShpUploadController 등)
+if not exist "%LIB_DIR%\jackson-databind-2.13.2.jar" (
+	echo [nf-build] Fetching Jackson 2.13.2 JARs for compile classpath...
+	powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%nf-fetch-jackson.ps1" -RootDir "%ROOT_DIR%"
+	if errorlevel 1 (
+		echo [nf-build] Jackson download failed. Install Maven or copy jackson-*.jar into WEB-INF\lib manually.
+		exit /b 1
+	)
+)
+
 REM Resolve javac
 set "JAVAC=javac"
 if not exist "%JAVA_HOME%\bin\javac.exe" (

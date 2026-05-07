@@ -10,7 +10,7 @@
 			dept_code,
 			use_yn,
 			ST_AsGeoJSON(ST_Transform(geometry, 4326)) AS geojson
-		FROM test.gis_a_layer
+		FROM public.gis_a_layer
 		WHERE ST_Intersects(
 			geom,
 			ST_Transform(ST_MakeEnvelope(?, ?, ?, ?, 4326), ST_SRID(geometry))
@@ -19,7 +19,7 @@
 	</sql>
 
 	<sql id="fac.insertFacAddItem">
-		INSERT INTO test.field (
+		INSERT INTO public.field (
 			code, survey, image, use_yn, project_code, group_index, user_id, photo_direction, reg_dt
 		) VALUES (
 			?, ?, ?, 'Y', ?, ?, ?, ?, now()
@@ -37,14 +37,14 @@
 			f.photo_direction,
 			f.reg_dt,
 			u.name AS user_name
-		FROM test.field f
-		LEFT JOIN test."user" u ON f.user_id = u.id
+		FROM public.field f
+		LEFT JOIN public."user" u ON f.user_id = u.id
 		WHERE f.code = ? AND f.use_yn = 'Y'
 		ORDER BY f.group_index ASC, f.reg_dt ASC
 	</sql>
 
 	<sql id="fac.updateFieldItem">
-		UPDATE test.field
+		UPDATE public.field
 		SET
 			survey = ?,
 			project_code = ?,
@@ -54,30 +54,40 @@
 	</sql>
 
 	<sql id="fac.deleteFieldItem">
-		UPDATE test.field
+		UPDATE public.field
 		SET use_yn = 'N', mod_dt = NOW()
 		WHERE code = ? AND image = ?
 	</sql>
 
 	<sql id="fac.deleteFieldByCode">
-		UPDATE test.field
+		UPDATE public.field
 		SET use_yn = 'N', mod_dt = NOW()
 		WHERE code = ?
 	</sql>
 
 	<sql id="fac.deleteFieldByCodeAndGroupIndex">
-		UPDATE test.field
+		UPDATE public.field
 		SET use_yn = 'N', mod_dt = NOW()
 		WHERE code = ? AND group_index = ?
 	</sql>
 
 	<sql id="fac.updateGroupCommentByCodeAndGroupIndex">
-		UPDATE test.field
+		UPDATE public.field
 		SET survey = ?, mod_dt = NOW()
 		WHERE code = ? AND group_index = ? AND use_yn = 'Y'
 	</sql>
 
 	<sql id="fac.selectCodesWithFieldData">
-		SELECT DISTINCT code FROM test.field WHERE use_yn = 'Y' ORDER BY code
+		SELECT DISTINCT code FROM public.field WHERE use_yn = 'Y' ORDER BY code
+	</sql>
+
+	<!-- 사진 파일명 번호 부여용: 삭제(use_yn=N)된 행도 포함해 그룹별로 쓰인 photo 인덱스 최댓값을 잃지 않음 -->
+	<sql id="fac.selectFieldImagesByCodeAndGroupAllYn">
+		SELECT DISTINCT f.image
+		FROM public.field f
+		WHERE f.code = ?
+		  AND f.group_index = CAST(? AS VARCHAR)
+		  AND f.image IS NOT NULL
+		  AND LENGTH(TRIM(f.image)) &gt; 0
 	</sql>
 </sqls>

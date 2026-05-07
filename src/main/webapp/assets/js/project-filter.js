@@ -940,7 +940,7 @@
 			return;
 		}
 		
-		var targetLayers = ["fac:gis_a_layer_dbfield"]; // 프로젝트 필터가 적용되는 레이어
+		var targetLayers = ["fac:gis_a_layer"]; // 프로젝트 필터가 적용되는 레이어
 		
 		// 먼저 모든 대상 레이어를 강제로 제거 (프로젝트 필터 변경 시 이전 레이어 완전 제거)
 		targetLayers.forEach(function(layerName) {
@@ -983,17 +983,17 @@
 		var layerList = document.getElementById("layerList");
 		var allRows = layerList ? layerList.querySelectorAll(".row") : [];
 		
-		// fac:gis_a_layer_dbfield는 항상 처리 (layerList가 없어도)
+		// fac:gis_a_layer는 항상 처리 (layerList가 없어도)
 		var gisLayerRow = null;
 		for (var i = 0; i < allRows.length; i++) {
-			if (allRows[i].getAttribute("data-layer") === "fac:gis_a_layer_dbfield") {
+			if (allRows[i].getAttribute("data-layer") === "fac:gis_a_layer") {
 				gisLayerRow = allRows[i];
 				break;
 			}
 		}
 		
-		// fac:gis_a_layer_dbfield 처리
-		var gisLayerName = "fac:gis_a_layer_dbfield";
+		// fac:gis_a_layer 처리
+		var gisLayerName = "fac:gis_a_layer";
 		var gisCheckbox = gisLayerRow ? gisLayerRow.querySelector(".wms-toggle") : null;
 		var gisOpacityInput = gisLayerRow ? gisLayerRow.querySelector(".wms-op") : null;
 		var gisOpacity = gisOpacityInput ? parseInt(gisOpacityInput.value || "100", 10) / 100 : 1;
@@ -1009,10 +1009,10 @@
 				opacity: gisOpacity, 
 				cql: gisCqlFilter 
 			});
-			console.log("[project-filter] Added fac:gis_a_layer_dbfield with CQL filter:", gisCqlFilter);
+			console.log("[project-filter] Added fac:gis_a_layer with CQL filter:", gisCqlFilter);
 		} else if (gisIsChecked && !gisCqlFilter) {
 			// CQL 필터가 없으면 레이어를 추가하지 않음 (필터링되지 않은 데이터가 표시되지 않도록)
-			console.log("[project-filter] Skipping fac:gis_a_layer_dbfield (no CQL filter available)");
+			console.log("[project-filter] Skipping fac:gis_a_layer (no CQL filter available)");
 		}
 		
 		// 다른 레이어들 처리 (layerList가 있을 때만)
@@ -1020,8 +1020,8 @@
 			allRows.forEach(function(row) {
 				var layerName = row.getAttribute("data-layer");
 				
-				// fac:gis_a_layer_dbfield는 이미 처리했으므로 건너뜀
-				if (layerName === "fac:gis_a_layer_dbfield") {
+				// fac:gis_a_layer는 이미 처리했으므로 건너뜀
+				if (layerName === "fac:gis_a_layer") {
 					return;
 				}
 				
@@ -1074,7 +1074,7 @@
 	 * - 단일 프로젝트 선택: project_code='J1234567'
 	 * - "전체 사업" 선택: project_code IN ('J1234567', 'J2020018', ...) - SQL1, SQL2 조건에 부합하는 모든 프로젝트
 	 * - 필터 없음: null
-	 * @param {string} layerName - 레이어 이름 (fac:gis_a_layer_dbfield인 경우 조사일자 필터 포함)
+	 * @param {string} layerName - 레이어 이름 (fac:gis_a_layer인 경우 조사일자 필터 포함)
 	 */
 	function buildProjectCqlFilter(layerName) {
 		var filters = [];
@@ -1098,9 +1098,9 @@
 			filters.push(projectCql);
 		}
 		
-		// 조사일자 필터 적용 (fac:gis_a_layer_dbfield만, 시설물 정보 검색 탭이 열려 있을 때만)
+		// 조사일자 필터 적용 (fac:gis_a_layer만, 시설물 정보 검색 탭이 열려 있을 때만)
 		// 탭을 닫으면 지도는 사업번호만으로 표시(조사일자/주관부서 조건 해제)
-		if (layerName === "fac:gis_a_layer_dbfield") {
+		if (layerName === "fac:gis_a_layer") {
 			var facSearchSection = document.getElementById("facSearchSection");
 			var isFacSearchOpen = facSearchSection && facSearchSection.style.display !== "none";
 			if (isFacSearchOpen) {

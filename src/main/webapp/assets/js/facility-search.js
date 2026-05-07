@@ -706,6 +706,14 @@
 		if (section) {
 			section.style.display = "flex";
 		}
+		var routeSection = document.getElementById("routeSection");
+		if (routeSection) {
+			routeSection.style.display = "none";
+		}
+		var menuRoute = document.getElementById("menuRoute");
+		if (menuRoute) {
+			menuRoute.classList.remove("active");
+		}
 		// 결과 영역 바로 표시 (화면 내 시설물이 나오는 자리)
 		var resultsEl = document.getElementById("facSearchResults");
 		var countEl = document.getElementById("facSearchResultsCount");

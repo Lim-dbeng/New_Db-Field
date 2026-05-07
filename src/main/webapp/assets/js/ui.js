@@ -213,10 +213,8 @@
 			var maptypeBtn = document.getElementById("nv-maptype-btn");
 			var maptypeDropdown = document.getElementById("maptypeDropdown");
 			if (maptypeBtn && maptypeDropdown) {
-				var page = document.querySelector(".page");
 				var toggleExpand = function(open) {
 					maptypeDropdown.classList.toggle("open", !!open);
-					if (page) page.classList.toggle("maptype-expanded", !!open);
 				};
 				maptypeBtn.addEventListener("click", function(e) {
 					e.stopPropagation();
@@ -521,6 +519,13 @@
 		if (searchSection) { searchSection.style.display = "none"; }
 		var menuFacilityInfo = document.getElementById("menuFacilityInfo");
 		if (menuFacilityInfo) { menuFacilityInfo.classList.remove("active"); }
+		var routeSection = document.getElementById("routeSection");
+		if (routeSection) { routeSection.style.display = "none"; }
+		var menuRoute = document.getElementById("menuRoute");
+		if (menuRoute) { menuRoute.classList.remove("active"); }
+		if (window.NewDbField && NewDbField.facility && NewDbField.facility.cancelRouteFlow) {
+			NewDbField.facility.cancelRouteFlow();
+		}
 		if (window.NewDbField && NewDbField.facility && NewDbField.facility.hideFacDetailSection) {
 			NewDbField.facility.hideFacDetailSection();
 		}
@@ -641,6 +646,469 @@
 				}
 			});
 		}
+
+		// 길찾기 패널
+		var menuRoute = document.getElementById("menuRoute");
+		var routeModeSelect = document.getElementById("routeModeSelect");
+		var routeSuggestTimer = null;
+		var routeSuggestState = {
+			origin: { activeIndex: -1, query: "" },
+			destination: { activeIndex: -1, query: "" }
+		};
+		var routeSuggestRequestSeq = { origin: 0, destination: 0 };
+		function getRouteSuggestElements(role) {
+			var box = document.getElementById(role === "origin" ? "routeOriginSuggest" : "routeDestSuggest");
+			if (!box) return [];
+			return box.querySelectorAll(".route-suggest-item");
+		}
+		function updateRouteSuggestActive(role) {
+			var items = getRouteSuggestElements(role);
+			var st = routeSuggestState[role];
+			if (!items.length || !st) return;
+			for (var i = 0; i < items.length; i++) {
+				items[i].classList.toggle("active", i === st.activeIndex);
+			}
+			if (st.activeIndex >= 0 && items[st.activeIndex] && items[st.activeIndex].scrollIntoView) {
+				items[st.activeIndex].scrollIntoView({ block: "nearest" });
+			}
+		}
+		function pickActiveRouteSuggest(role) {
+			var st = routeSuggestState[role];
+			if (!st || st.activeIndex < 0) return false;
+			var items = getRouteSuggestElements(role);
+			var el = items[st.activeIndex];
+			if (!el) return false;
+			applyRouteSuggestion(
+				el.getAttribute("data-role"),
+				el.getAttribute("data-title") || "",
+				parseFloat(el.getAttribute("data-lat")),
+				parseFloat(el.getAttribute("data-lng"))
+			);
+			return true;
+		}
+		function hideRouteSuggest(role) {
+			var box = document.getElementById(role === "origin" ? "routeOriginSuggest" : "routeDestSuggest");
+			if (!box) return;
+			if (routeSuggestState[role]) routeSuggestState[role].activeIndex = -1;
+			box.style.display = "none";
+			box.innerHTML = "";
+		}
+		function applyRouteSuggestion(role, title, lat, lng) {
+			var input = document.getElementById(role === "origin" ? "routeOriginInput" : "routeDestInput");
+			if (input) input.value = title || "";
+			if (window.NewDbField && NewDbField.facility) {
+				if (NewDbField.facility.setRouteFlowPoint && isFinite(lng) && isFinite(lat)) {
+					NewDbField.facility.setRouteFlowPoint(role, [lng, lat], title || "");
+				} else if (NewDbField.facility.setRouteFlowText) {
+					NewDbField.facility.setRouteFlowText(role, title || "");
+				}
+			}
+			hideRouteSuggest(role);
+			setRoutePickingUi(role === "origin" ? "destination" : "origin");
+		}
+		function showRouteSuggest(role, q) {
+			var box = document.getElementById(role === "origin" ? "routeOriginSuggest" : "routeDestSuggest");
+			if (!box) return;
+			if (!q || !String(q).trim()) {
+				hideRouteSuggest(role);
+				return;
+			}
+			if (!(window.kakao && window.kakao.maps && window.kakao.maps.services)) {
+				hideRouteSuggest(role);
+				return;
+			}
+			var reqId = ++routeSuggestRequestSeq[role];
+			var ps = new kakao.maps.services.Places();
+			ps.keywordSearch(q, function (data, status) {
+				if (reqId !== routeSuggestRequestSeq[role]) return;
+				var inputEl = document.getElementById(role === "origin" ? "routeOriginInput" : "routeDestInput");
+				if (!inputEl || String(inputEl.value || "").trim() !== String(q || "").trim()) return;
+				if (status !== kakao.maps.services.Status.OK || !data || !data.length) {
+					hideRouteSuggest(role);
+					return;
+				}
+				var html = "";
+				var prevState = routeSuggestState[role] || { activeIndex: -1, query: "" };
+				var keepIndex = (prevState.query === String(q || "").trim() && prevState.activeIndex >= 0)
+					? prevState.activeIndex
+					: -1;
+				for (var i = 0; i < Math.min(data.length, 8); i++) {
+					var it = data[i];
+					var title = it.place_name || "";
+					var addr = it.road_address_name || it.address_name || "";
+					html += ""
+						+ "<div class=\"route-suggest-item\" data-role=\"" + role + "\" data-title=\"" + escapeHtml(title) + "\" data-lat=\"" + escapeHtml(it.y || "") + "\" data-lng=\"" + escapeHtml(it.x || "") + "\">"
+						+ "<div class=\"t\">" + escapeHtml(title) + "</div>"
+						+ "<div class=\"s\">" + escapeHtml(addr) + "</div>"
+						+ "</div>";
+				}
+				box.innerHTML = html;
+				box.style.display = "block";
+				var items = box.querySelectorAll(".route-suggest-item");
+				// 같은 쿼리의 재렌더에서는 기존 키보드 선택 인덱스를 유지한다.
+				routeSuggestState[role].query = String(q || "").trim();
+				routeSuggestState[role].activeIndex = items.length
+					? Math.max(-1, Math.min(keepIndex, items.length - 1))
+					: -1;
+				updateRouteSuggestActive(role);
+				for (var bi = 0; bi < items.length; bi++) {
+					items[bi].addEventListener("mousedown", function (e) {
+						e.preventDefault();
+						var el = e.currentTarget;
+						applyRouteSuggestion(
+							el.getAttribute("data-role"),
+							el.getAttribute("data-title") || "",
+							parseFloat(el.getAttribute("data-lat")),
+							parseFloat(el.getAttribute("data-lng"))
+						);
+					});
+				}
+			});
+		}
+		function setRoutePickingUi(role) {
+			var oRow = document.getElementById("routeOriginRow");
+			var dRow = document.getElementById("routeDestRow");
+			if (oRow) oRow.classList.toggle("is-selecting", role === "origin");
+			if (dRow) dRow.classList.toggle("is-selecting", role === "destination");
+		}
+		function pushRouteRecent(originText, destText, mode) {
+			try {
+				var key = "ndf_route_recent";
+				var arr = JSON.parse(localStorage.getItem(key) || "[]");
+				var st = (window.NewDbField && NewDbField.facility && NewDbField.facility.getRouteFlowState)
+					? NewDbField.facility.getRouteFlowState()
+					: null;
+				var item = {
+					origin: String(originText || ""),
+					destination: String(destText || ""),
+					mode: mode === "walking" ? "도보" : "자동차",
+					originCoord: st && st.origin ? st.origin.slice(0, 2) : null,
+					destinationCoord: st && st.destination ? st.destination.slice(0, 2) : null,
+					ts: Date.now()
+				};
+				if (!item.origin || !item.destination) return;
+				arr = arr.filter(function (x) { return !(x.origin === item.origin && x.destination === item.destination && x.mode === item.mode); });
+				arr.unshift(item);
+				if (arr.length > 5) arr = arr.slice(0, 5);
+				localStorage.setItem(key, JSON.stringify(arr));
+			} catch (e) {}
+		}
+		function hasRouteInputsReady() {
+			var oi = document.getElementById("routeOriginInput");
+			var di = document.getElementById("routeDestInput");
+			return !!(oi && di && String(oi.value || "").trim() && String(di.value || "").trim());
+		}
+		function executeRouteRun() {
+			if (!(window.NewDbField && NewDbField.facility && NewDbField.facility.runRouteFlow)) return Promise.resolve();
+			return NewDbField.facility.runRouteFlow().then(function () {
+				var oi = document.getElementById("routeOriginInput");
+				var di = document.getElementById("routeDestInput");
+				pushRouteRecent(oi ? oi.value : "", di ? di.value : "", routeModeSelect ? routeModeSelect.value : "driving");
+				renderRouteRecent();
+			});
+		}
+		function renderRouteRecent() {
+			var box = document.getElementById("routeRecentList");
+			if (!box) return;
+			var arr = [];
+			try { arr = JSON.parse(localStorage.getItem("ndf_route_recent") || "[]"); } catch (e) { arr = []; }
+			if (!arr.length) {
+				box.innerHTML = "";
+				return;
+			}
+			var html = "<div class=\"route-recent-title\">최근 선택</div>";
+			for (var i = 0; i < arr.length; i++) {
+				var it = arr[i];
+				html += "<button type=\"button\" class=\"route-recent-item\" data-idx=\"" + i + "\">"
+					+ "[" + (it.mode || "자동차") + "] "
+					+ escapeHtml(it.origin || "") + " → " + escapeHtml(it.destination || "")
+					+ "</button>";
+			}
+			box.innerHTML = html;
+			var btns = box.querySelectorAll(".route-recent-item[data-idx]");
+			for (var bi = 0; bi < btns.length; bi++) {
+				btns[bi].addEventListener("click", function (e) {
+					var idx = parseInt(e.currentTarget.getAttribute("data-idx"), 10);
+					var it = arr[idx];
+					if (!it || !(window.NewDbField && NewDbField.facility)) return;
+					if (routeModeSelect) routeModeSelect.value = it.mode === "도보" ? "walking" : "driving";
+					var tabs = document.querySelectorAll(".route-mode-tab[data-mode]");
+					for (var ti = 0; ti < tabs.length; ti++) {
+						var m = tabs[ti].getAttribute("data-mode");
+						tabs[ti].classList.toggle("active", (routeModeSelect.value === "walking" ? m === "walking" : m === "driving"));
+					}
+					var oi = document.getElementById("routeOriginInput");
+					var di = document.getElementById("routeDestInput");
+					if (oi) oi.value = it.origin || "";
+					if (di) di.value = it.destination || "";
+					if (NewDbField.facility.setRouteFlowPoint && it.originCoord && it.destinationCoord) {
+						NewDbField.facility.setRouteFlowPoint("origin", it.originCoord, it.origin || "");
+						NewDbField.facility.setRouteFlowPoint("destination", it.destinationCoord, it.destination || "");
+					} else if (NewDbField.facility.setRouteFlowText) {
+						NewDbField.facility.setRouteFlowText("origin", it.origin || "");
+						NewDbField.facility.setRouteFlowText("destination", it.destination || "");
+					}
+					executeRouteRun().catch(function (err) {
+						alert("길찾기 실패: " + (err && err.message ? err.message : "알 수 없는 오류"));
+					});
+				});
+			}
+		}
+		function openRoutePanel() {
+			var page = document.querySelector(".page");
+			var routeSection = document.getElementById("routeSection");
+			closeAllFeatures();
+			if (menuRoute) { menuRoute.classList.add("active"); }
+			if (page && page.classList.contains("sidebar-hidden")) {
+				if (window.NewDbField && NewDbField.facility && NewDbField.facility.toggleSidebar) {
+					NewDbField.facility.toggleSidebar();
+				} else if (page) {
+					page.classList.remove("sidebar-hidden");
+				}
+			}
+			if (routeSection) {
+				// 사이드바 패널은 길찾기만 보이도록 강제 정리
+				var sidebar = routeSection.closest(".sidebar");
+				if (sidebar) {
+					var panels = sidebar.querySelectorAll(".panel");
+					for (var i = 0; i < panels.length; i++) {
+						panels[i].style.display = (panels[i] === routeSection) ? "block" : "none";
+					}
+					sidebar.scrollTop = 0;
+				} else {
+					routeSection.style.display = "block";
+				}
+			}
+			if (window.NewDbField && NewDbField.facility && NewDbField.facility.startRouteFlow) {
+				NewDbField.facility.startRouteFlow();
+			}
+			hideRouteSuggest("origin");
+			hideRouteSuggest("destination");
+			setRoutePickingUi("origin");
+			renderRouteRecent();
+		}
+		if (menuRoute) {
+			menuRoute.addEventListener("click", function () {
+				if (blockGuestWithoutProject()) return;
+				var page = document.querySelector(".page");
+				var routeSection = document.getElementById("routeSection");
+				if (menuRoute.classList.contains("active") && routeSection && routeSection.style.display === "block") {
+					closeAllFeatures();
+					if (page && !page.classList.contains("sidebar-hidden")) {
+						if (window.NewDbField && NewDbField.facility && NewDbField.facility.toggleSidebar) {
+							NewDbField.facility.toggleSidebar();
+						}
+					}
+				} else {
+					openRoutePanel();
+				}
+			});
+		}
+
+		var routeCloseBtn = document.getElementById("routeCloseBtn");
+		if (routeCloseBtn) {
+			routeCloseBtn.addEventListener("click", function () {
+				closeAllFeatures();
+				var page = document.querySelector(".page");
+				if (page && !page.classList.contains("sidebar-hidden")) {
+					if (window.NewDbField && NewDbField.facility && NewDbField.facility.toggleSidebar) {
+						NewDbField.facility.toggleSidebar();
+					}
+				}
+			});
+		}
+
+		var routePickOriginBtn = document.getElementById("routePickOriginBtn");
+		if (routePickOriginBtn) {
+			routePickOriginBtn.addEventListener("click", function () {
+				if (window.NewDbField && NewDbField.facility && NewDbField.facility.armRouteFlowFor) {
+					NewDbField.facility.armRouteFlowFor("origin");
+					setRoutePickingUi("origin");
+				}
+			});
+		}
+		var routePickDestBtn = document.getElementById("routePickDestBtn");
+		if (routePickDestBtn) {
+			routePickDestBtn.addEventListener("click", function () {
+				if (window.NewDbField && NewDbField.facility && NewDbField.facility.armRouteFlowFor) {
+					NewDbField.facility.armRouteFlowFor("destination");
+					setRoutePickingUi("destination");
+				}
+			});
+		}
+		var routeOriginInput = document.getElementById("routeOriginInput");
+		if (routeOriginInput) {
+			routeOriginInput.addEventListener("input", function () {
+				if (window.NewDbField && NewDbField.facility && NewDbField.facility.setRouteFlowText) {
+					NewDbField.facility.setRouteFlowText("origin", routeOriginInput.value);
+				}
+				if (routeSuggestTimer) clearTimeout(routeSuggestTimer);
+				routeSuggestTimer = setTimeout(function () {
+					showRouteSuggest("origin", routeOriginInput.value);
+				}, 180);
+			});
+			routeOriginInput.addEventListener("keydown", function (e) {
+				if (e.isComposing || e.keyCode === 229) return;
+				var box = document.getElementById("routeOriginSuggest");
+				var isSuggestOpen = !!(box && box.style.display !== "none" && box.children.length);
+				if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+					if (!isSuggestOpen) return;
+					e.preventDefault();
+					var items = getRouteSuggestElements("origin");
+					if (!items.length) return;
+					var st = routeSuggestState.origin;
+					if (st.activeIndex < 0) st.activeIndex = 0;
+					else st.activeIndex = e.key === "ArrowDown"
+						? Math.min(st.activeIndex + 1, items.length - 1)
+						: Math.max(st.activeIndex - 1, 0);
+					updateRouteSuggestActive("origin");
+					return;
+				}
+				if (e.key === "Escape") {
+					if (isSuggestOpen) {
+						e.preventDefault();
+						hideRouteSuggest("origin");
+					}
+					return;
+				}
+				if (e.key !== "Enter") return;
+				e.preventDefault();
+				if (isSuggestOpen && pickActiveRouteSuggest("origin")) {
+					if (hasRouteInputsReady()) {
+						executeRouteRun().catch(function (err) {
+							alert("길찾기 실패: " + (err && err.message ? err.message : "알 수 없는 오류"));
+						});
+						return;
+					}
+					if (routeDestInput) routeDestInput.focus();
+					return;
+				}
+				hideRouteSuggest("origin");
+				if (window.NewDbField && NewDbField.facility && NewDbField.facility.resolveRouteFlowText) {
+					NewDbField.facility.resolveRouteFlowText("origin").then(function () {
+						if (hasRouteInputsReady()) {
+							return executeRouteRun();
+						}
+						setRoutePickingUi("destination");
+						if (routeDestInput) routeDestInput.focus();
+					}).catch(function (err) {
+						alert("출발지 처리 실패: " + (err && err.message ? err.message : "알 수 없는 오류"));
+					});
+				}
+			});
+			routeOriginInput.addEventListener("focus", function () { setRoutePickingUi("origin"); });
+			routeOriginInput.addEventListener("blur", function () { setTimeout(function () { hideRouteSuggest("origin"); }, 120); });
+		}
+		var routeDestInput = document.getElementById("routeDestInput");
+		if (routeDestInput) {
+			routeDestInput.addEventListener("input", function () {
+				if (window.NewDbField && NewDbField.facility && NewDbField.facility.setRouteFlowText) {
+					NewDbField.facility.setRouteFlowText("destination", routeDestInput.value);
+				}
+				if (routeSuggestTimer) clearTimeout(routeSuggestTimer);
+				routeSuggestTimer = setTimeout(function () {
+					showRouteSuggest("destination", routeDestInput.value);
+				}, 180);
+			});
+			routeDestInput.addEventListener("keydown", function (e) {
+				if (e.isComposing || e.keyCode === 229) return;
+				var box = document.getElementById("routeDestSuggest");
+				var isSuggestOpen = !!(box && box.style.display !== "none" && box.children.length);
+				if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+					if (!isSuggestOpen) return;
+					e.preventDefault();
+					var items = getRouteSuggestElements("destination");
+					if (!items.length) return;
+					var st = routeSuggestState.destination;
+					if (st.activeIndex < 0) st.activeIndex = 0;
+					else st.activeIndex = e.key === "ArrowDown"
+						? Math.min(st.activeIndex + 1, items.length - 1)
+						: Math.max(st.activeIndex - 1, 0);
+					updateRouteSuggestActive("destination");
+					return;
+				}
+				if (e.key === "Escape") {
+					if (isSuggestOpen) {
+						e.preventDefault();
+						hideRouteSuggest("destination");
+					}
+					return;
+				}
+				if (e.key !== "Enter") return;
+				e.preventDefault();
+				if (isSuggestOpen && pickActiveRouteSuggest("destination")) {
+					if (hasRouteInputsReady()) {
+						executeRouteRun().catch(function (err) {
+							alert("길찾기 실패: " + (err && err.message ? err.message : "알 수 없는 오류"));
+						});
+					}
+					return;
+				}
+				hideRouteSuggest("destination");
+				if (window.NewDbField && NewDbField.facility && NewDbField.facility.resolveRouteFlowText) {
+					NewDbField.facility.resolveRouteFlowText("destination").then(function () {
+						if (hasRouteInputsReady()) {
+							return executeRouteRun();
+						}
+						setRoutePickingUi("destination");
+					}).catch(function (err) {
+						alert("도착지 처리 실패: " + (err && err.message ? err.message : "알 수 없는 오류"));
+					});
+				}
+			});
+			routeDestInput.addEventListener("focus", function () { setRoutePickingUi("destination"); });
+			routeDestInput.addEventListener("blur", function () { setTimeout(function () { hideRouteSuggest("destination"); }, 120); });
+		}
+		var routeModeTabs = document.querySelectorAll(".route-mode-tab[data-mode]");
+		for (var rti = 0; rti < routeModeTabs.length; rti++) {
+			(function (tab) {
+				tab.addEventListener("click", function () {
+					if (tab.disabled) return;
+					var prevMode = routeModeSelect ? routeModeSelect.value : "driving";
+					for (var ti = 0; ti < routeModeTabs.length; ti++) routeModeTabs[ti].classList.remove("active");
+					tab.classList.add("active");
+					if (routeModeSelect) {
+						routeModeSelect.value = tab.getAttribute("data-mode") === "walking" ? "walking" : "driving";
+						if (prevMode !== routeModeSelect.value && hasRouteInputsReady()) {
+							executeRouteRun().catch(function (err) {
+								alert("길찾기 실패: " + (err && err.message ? err.message : "알 수 없는 오류"));
+							});
+						}
+					}
+				});
+			})(routeModeTabs[rti]);
+		}
+		var routeSwapBtn = document.getElementById("routeSwapBtn");
+		if (routeSwapBtn) {
+			routeSwapBtn.addEventListener("click", function () {
+				if (!(window.NewDbField && NewDbField.facility && NewDbField.facility.getRouteFlowState && NewDbField.facility.setRouteFlowPoint)) return;
+				var st = NewDbField.facility.getRouteFlowState();
+				if (!st || !st.origin || !st.destination) return;
+				NewDbField.facility.setRouteFlowPoint("origin", st.destination, "도착지에서 변경");
+				NewDbField.facility.setRouteFlowPoint("destination", st.origin, "출발지에서 변경");
+			});
+		}
+		var routeClearBtn = document.getElementById("routeClearBtn");
+		if (routeClearBtn) {
+			routeClearBtn.addEventListener("click", function () {
+				if (window.NewDbField && NewDbField.facility && NewDbField.facility.startRouteFlow) {
+					NewDbField.facility.startRouteFlow();
+					hideRouteSuggest("origin");
+					hideRouteSuggest("destination");
+					setRoutePickingUi("origin");
+				}
+			});
+		}
+		var routeRunBtn = document.getElementById("routeRunBtn");
+		if (routeRunBtn) {
+			routeRunBtn.addEventListener("click", function () {
+				executeRouteRun().catch(function (err) {
+					alert("길찾기 실패: " + (err && err.message ? err.message : "알 수 없는 오류"));
+				});
+			});
+		}
+		if (!window.NewDbField.routePanel) { window.NewDbField.routePanel = {}; }
+		window.NewDbField.routePanel.open = openRoutePanel;
 
 		// 시설물 추가 버튼: 클릭 시 바로 추가 모드. 재클릭 시 추가 모드 해제.
 		var menuFacility = document.getElementById("menuFacility");
@@ -864,7 +1332,7 @@
 				var uploadSection = document.getElementById("shpUploadSection");
 				
 				if (menuUploadShp.classList.contains("active") && 
-				    uploadSection && uploadSection.style.display === "block") {
+				    uploadSection && uploadSection.style.display === "flex") {
 					closeAllFeatures();
 					if (page && !page.classList.contains("sidebar-hidden")) {
 						if (window.NewDbField && NewDbField.facility && NewDbField.facility.toggleSidebar) {
@@ -1512,7 +1980,7 @@
 				var doc = new DOMParser().parseFromString(xmlText, "application/xml");
 				var layers = [];
 				var nodes = doc.getElementsByTagName("Layer");
-				var targetNames = ["fac:gis_a_layer_dbfield", "fac:shp_layer"];
+				var targetNames = ["fac:gis_a_layer", "fac:shp_layer"];
 				for (var i=0;i<nodes.length;i++){
 					var n = nodes[i];
 					var nameEl = n.getElementsByTagName("Name")[0];
@@ -1547,7 +2015,7 @@
 	 */
 	function getProjectCqlFilter(layerName) {
 		// project_code 컬럼이 있는 레이어만 필터 적용
-		var projectFilterLayers = ["fac:gis_a_layer_dbfield", "fac:shp_layer"];
+		var projectFilterLayers = ["fac:gis_a_layer", "fac:shp_layer"];
 		if (projectFilterLayers.indexOf(layerName) === -1) {
 			return null;
 		}
@@ -1571,8 +2039,8 @@
 			filters.push(projectCql);
 		}
 		
-		// 조사일자 필터 적용 (fac:gis_a_layer_dbfield만)
-		if (layerName === "fac:gis_a_layer_dbfield") {
+		// 조사일자 필터 적용 (fac:gis_a_layer만)
+		if (layerName === "fac:gis_a_layer") {
 			var surveyDateInput = document.getElementById("facSearchSurveyDate");
 			if (surveyDateInput && surveyDateInput.value) {
 				var yearMonth = surveyDateInput.value.trim();
@@ -1596,8 +2064,8 @@
 			}
 		}
 		
-		// use_yn 필터 추가 (fac:gis_a_layer_dbfield만)
-		if (layerName === "fac:gis_a_layer_dbfield") {
+		// use_yn 필터 추가 (fac:gis_a_layer만)
+		if (layerName === "fac:gis_a_layer") {
 			filters.push("use_yn='Y'");
 		}
 		
@@ -1660,10 +2128,10 @@
 					return; // 더 이상 처리하지 않음
 				}
 				
-				// fac:gis_a_layer_dbfield는 프로젝트 필터가 로드된 후 refreshWmsLayers()에서 처리
+				// fac:gis_a_layer는 프로젝트 필터가 로드된 후 refreshWmsLayers()에서 처리
 				// 초기 렌더링 시점에는 프로젝트 필터가 아직 로드되지 않았을 수 있으므로
 				// refreshWmsLayers()가 호출될 때까지 대기
-				if (name === "fac:gis_a_layer_dbfield") {
+				if (name === "fac:gis_a_layer") {
 					// 프로젝트 필터가 이미 로드되어 있으면 즉시 추가
 					var currentFilter = window.ProjectFilter && window.ProjectFilter.getCurrentFilter ? 
 						window.ProjectFilter.getCurrentFilter() : null;
@@ -1671,7 +2139,7 @@
 					
 					// 프로젝트 필터가 준비되지 않았으면 refreshWmsLayers()가 호출될 때까지 대기
 					if (!projectFilterReady) {
-						console.log("[ui] Waiting for project filter to load before adding fac:gis_a_layer_dbfield");
+						console.log("[ui] Waiting for project filter to load before adding fac:gis_a_layer");
 						// 프로젝트 필터 로드 완료를 기다리는 대신, refreshWmsLayers()가 호출될 때 처리되도록 함
 						// 초기 상태는 체크박스만 설정하고 레이어는 추가하지 않음
 						return;
@@ -1906,16 +2374,16 @@
 					}
 				}
 				
-				// 첫 로그인 여부 확인 (wmsLayers가 비어있거나 fac:gis_a_layer_dbfield가 없으면 첫 로그인)
-				if (!wmsLayers || Object.keys(wmsLayers).length === 0 || !wmsLayers.hasOwnProperty("fac:gis_a_layer_dbfield")) {
+				// 첫 로그인 여부 확인 (wmsLayers가 비어있거나 fac:gis_a_layer가 없으면 첫 로그인)
+				if (!wmsLayers || Object.keys(wmsLayers).length === 0 || !wmsLayers.hasOwnProperty("fac:gis_a_layer")) {
 					isFirstLogin = true;
-					console.log("[ui] First login detected, setting default values for fac:gis_a_layer_dbfield");
+					console.log("[ui] First login detected, setting default values for fac:gis_a_layer");
 					
-					// fac:gis_a_layer_dbfield에 대한 기본값 설정 (visible=true, opacity=0)
+					// fac:gis_a_layer에 대한 기본값 설정 (visible=true, opacity=0)
 					if (!wmsLayers) {
 						wmsLayers = {};
 					}
-					wmsLayers["fac:gis_a_layer_dbfield"] = {
+					wmsLayers["fac:gis_a_layer"] = {
 						visible: true,
 						opacity: 0
 					};
@@ -1935,7 +2403,7 @@
 					})
 						.then(function(response) {
 							if (response.ok) {
-								console.log("[ui] Default values saved for fac:gis_a_layer_dbfield");
+								console.log("[ui] Default values saved for fac:gis_a_layer");
 							}
 						})
 						.catch(function(error) {

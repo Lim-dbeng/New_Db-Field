@@ -190,12 +190,18 @@
 		<dependency>
 		  <groupId>commons-io</groupId>
 		  <artifactId>commons-io</artifactId>
-		  <version>2.5</version>
+		  <!-- POI 5.x가 UnsynchronizedByteArrayOutputStream(2.7+)을 요구. 2.16.1로 통일 -->
+		  <version>2.16.1</version>
 		</dependency>
 		<!--json-->
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-core</artifactId>
+			<version>2.13.2</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
 			<version>2.13.2</version>
 		</dependency>
 		<dependency>
@@ -262,6 +268,43 @@
 			<groupId>org.geotools</groupId>
 			<artifactId>gt-geojson</artifactId>
 			<version>27.2</version>
+		</dependency>
+		<!-- 시설물 좌표 일괄 import (엑셀) — POI는 docx/xlsx/pptx 모두 커버 -->
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi-ooxml</artifactId>
+			<version>5.2.3</version>
+			<exclusions>
+				<!-- POI가 끌고 오는 commons-compress 1.21을 빼고 우리가 명시한 1.26.1만 사용 (충돌 방지) -->
+				<exclusion>
+					<groupId>org.apache.commons</groupId>
+					<artifactId>commons-compress</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<!-- 레거시 Office 바이너리 (.doc/.ppt) -->
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi-scratchpad</artifactId>
+			<version>5.2.3</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.apache.commons</groupId>
+					<artifactId>commons-compress</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<!-- 압축파일 (7z·tar 등) 추출 — 근거자료 재귀 파싱용 -->
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-compress</artifactId>
+			<version>1.26.1</version>
+		</dependency>
+		<!-- 7z LZMA 압축 알고리즘 — Commons Compress가 의존 (런타임 누락 방지) -->
+		<dependency>
+			<groupId>org.tukaani</groupId>
+			<artifactId>xz</artifactId>
+			<version>1.9</version>
 		</dependency>
 
 	</dependencies>

@@ -164,6 +164,26 @@ public class FacDAO {
 		}
 	}
 
+	public List<String> selectAllFieldImagesByCodeAndGroup(String code, int groupIndex) throws Exception {
+		String q = sql.get("fac.selectFieldImagesByCodeAndGroupAllYn");
+		try (Connection c = AppConfig.getConnection();
+		     PreparedStatement ps = c.prepareStatement(q)) {
+			ps.setString(1, code);
+			// DB의 group_index가 varchar인 경우를 위해 문자열로 바인딩 (다른 쿼리와 동일)
+			ps.setString(2, String.valueOf(groupIndex));
+			try (ResultSet rs = ps.executeQuery()) {
+				List<String> list = new ArrayList<>();
+				while (rs.next()) {
+					String img = rs.getString(1);
+					if (img != null && !img.trim().isEmpty()) {
+						list.add(img.trim());
+					}
+				}
+				return list;
+			}
+		}
+	}
+
 	public void updateFieldItem(FacFieldVO vo) throws Exception {
 		String q = sql.get("fac.updateFieldItem");
 		try (Connection c = AppConfig.getConnection();

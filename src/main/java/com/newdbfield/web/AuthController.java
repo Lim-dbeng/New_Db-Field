@@ -599,7 +599,7 @@ protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws Se
 		PreparedStatement pstmt = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT preference_value FROM test.user_preference " +
+			String sql = "SELECT preference_value FROM public.user_preference " +
 					"WHERE user_id = ? AND preference_key = 'projectFilter' " +
 					"ORDER BY reg_dt DESC LIMIT 1";
 			pstmt = conn.prepareStatement(sql);

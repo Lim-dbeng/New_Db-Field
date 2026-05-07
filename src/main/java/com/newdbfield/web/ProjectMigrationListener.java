@@ -110,7 +110,7 @@ public class ProjectMigrationListener implements ServletContextListener {
                 // 마이그레이션 상태 테이블 확인
                 String checkTableSql = "SELECT EXISTS (" +
                     "SELECT 1 FROM information_schema.tables " +
-                    "WHERE table_schema = 'test' AND table_name = 'project_migration_status'" +
+                    "WHERE table_schema = 'public' AND table_name = 'project_migration_status'" +
                     ")";
                 
                 boolean tableExists = false;
@@ -128,7 +128,7 @@ public class ProjectMigrationListener implements ServletContextListener {
                 }
                 
                 // 마이그레이션 상태 확인
-                String sql = "SELECT completed FROM test.project_migration_status " +
+                String sql = "SELECT completed FROM public.project_migration_status " +
                             "WHERE migration_type = ?";
                 try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
                     pstmt.setString(1, migrationType);
@@ -149,7 +149,7 @@ public class ProjectMigrationListener implements ServletContextListener {
      * 마이그레이션 상태 테이블 생성
      */
     private void createMigrationStatusTable(Connection conn) throws Exception {
-        String sql = "CREATE TABLE IF NOT EXISTS test.project_migration_status (" +
+        String sql = "CREATE TABLE IF NOT EXISTS public.project_migration_status (" +
                     "migration_type VARCHAR(20) PRIMARY KEY, " +
                     "completed BOOLEAN NOT NULL DEFAULT FALSE, " +
                     "last_migration_at TIMESTAMP DEFAULT NOW(), " +
@@ -169,7 +169,7 @@ public class ProjectMigrationListener implements ServletContextListener {
             try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
                 createMigrationStatusTable(conn);
                 
-                String sql = "INSERT INTO test.project_migration_status " +
+                String sql = "INSERT INTO public.project_migration_status " +
                             "(migration_type, completed, last_migration_at) " +
                             "VALUES (?, TRUE, NOW()) " +
                             "ON CONFLICT (migration_type) DO UPDATE SET " +

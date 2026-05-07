@@ -1,10 +1,19 @@
 package com.newdbfield.web;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.newdbfield.fac.FacFieldVO;
 import com.newdbfield.fac.FacService;
 import com.newdbfield.fac.FacServiceImpl;
 import com.newdbfield.util.ClientIpUtils;
+import com.newdbfield.util.FacImportPointsParser;
 import com.newdbfield.util.ProjectDeptAccessUtil;
+import com.newdbfield.util.SurveyReportDraftLlmUtil;
+import com.newdbfield.util.SurveyReportExportUtil;
+import com.newdbfield.util.SurveyReportKordocUtil;
+import org.postgresql.util.PGobject;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.MultipartConfig;
@@ -15,6 +24,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import javax.servlet.http.Part;
 import java.io.File;
+import java.io.InputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
@@ -23,6 +33,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -40,13 +51,14 @@ import java.util.zip.ZipOutputStream;
 
 @WebServlet(name = "FacCommController", urlPatterns = {"/api/fac/*"})
 @MultipartConfig(
-    maxFileSize = 10 * 1024 * 1024,      // 10MB
-    maxRequestSize = 50 * 1024 * 1024,    // 50MB
+    maxFileSize = 100 * 1024 * 1024,      // 100MB (단일 Part)
+    maxRequestSize = 128 * 1024 * 1024,   // 128MB (전체 multipart — 사진 다수 시 초과 방지)
     fileSizeThreshold = 1024 * 1024      // 1MB
 )
 public class FacCommController extends HttpServlet {
 	private transient FacService service;
 	private static final String UPLOAD_DIR = "DCIM";
+	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 	private File uploadBaseDir;
 	private File resolveUploadDir() {
 		// 1순위: D:\PROJECT\Db-Field\New_Db-Field\src\main\webapp\DCIM
@@ -126,6 +138,12 @@ public class FacCommController extends HttpServlet {
 				case "/codes-with-field-data":
 					handleCodesWithFieldData(req, resp);
 					return;
+				case "/survey-report":
+					handleSurveyReportGet(req, resp);
+					return;
+				case "/survey-report/export":
+					handleSurveyReportExport(req, resp);
+					return;
 				default:
 					resp.sendError(404);
 			}
@@ -178,6 +196,15 @@ public class FacCommController extends HttpServlet {
 				case "/group/comment":
 					handleUpdateGroupComment(req, resp);
 					return;
+				case "/survey-report/upload":
+					handleSurveyReportUpload(req, resp);
+					return;
+				case "/survey-report/generate-draft":
+					handleSurveyReportGenerateDraft(req, resp);
+					return;
+				case "/import-points/parse":
+					handleImportPointsParse(req, resp);
+					return;
 				default:
 					System.out.println("[FacCommController] doPost: 알 수 없는 경로 = " + path);
 					resp.sendError(404);
@@ -201,6 +228,18 @@ public class FacCommController extends HttpServlet {
 		try {
 			if ("/point/geometry".equals(path)) {
 				handleUpdatePointGeometry(req, resp);
+				return;
+			}
+			if ("/survey-report/schema".equals(path)) {
+				handleSurveyReportSchemaPut(req, resp);
+				return;
+			}
+			if ("/survey-report/answers".equals(path)) {
+				handleSurveyReportAnswersPut(req, resp);
+				return;
+			}
+			if ("/survey-report/user-prompt".equals(path)) {
+				handleSurveyReportUserPromptPut(req, resp);
 				return;
 			}
 			resp.sendError(404);
@@ -240,7 +279,7 @@ public class FacCommController extends HttpServlet {
 	}
 
 	/**
-	 * 시설물 포인트 위치(geometry) 수정. test.gis_a_layer를 직접 UPDATE하여 geometry NULL 방지.
+	 * 시설물 포인트 위치(geometry) 수정. public.gis_a_layer를 직접 UPDATE하여 geometry NULL 방지.
 	 * PUT /api/fac/point/geometry?code=xxx&lon=127.0&lat=36.0 (경도·위도 EPSG:4326)
 	 */
 	private void handleUpdatePointGeometry(HttpServletRequest req, HttpServletResponse resp) throws Exception {
@@ -283,8 +322,8 @@ public class FacCommController extends HttpServlet {
 		try {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-			// test.gis_a_layer: geometry(Point, 4326), mod_dt
-			String sql = "UPDATE test.gis_a_layer SET geometry = ST_SetSRID(ST_MakePoint(?, ?), 4326), mod_dt = NOW() WHERE code = ?";
+			// public.gis_a_layer: geometry(Point, 4326), mod_dt
+			String sql = "UPDATE public.gis_a_layer SET geometry = ST_SetSRID(ST_MakePoint(?, ?), 4326), mod_dt = NOW() WHERE code = ?";
 			java.sql.PreparedStatement pstmt = conn.prepareStatement(sql);
 			pstmt.setDouble(1, lon);
 			pstmt.setDouble(2, lat);
@@ -305,7 +344,7 @@ public class FacCommController extends HttpServlet {
 	}
 
 	/**
-	 * 시설물 포인트 삭제 시 test.field 해당 code의 use_yn = 'N' 처리.
+	 * 시설물 포인트 삭제 시 public.field 해당 code의 use_yn = 'N' 처리.
 	 * (gis_a_layer에서의 삭제는 프론트엔드 WFS-T Delete로 수행)
 	 */
 	private void handleDeletePoint(HttpServletRequest req, HttpServletResponse resp) throws Exception {
@@ -320,7 +359,7 @@ public class FacCommController extends HttpServlet {
 		}
 		code = code.trim();
 		service.deleteFieldItemsByCode(code);
-		// test.field use_yn='N' 처리 후 해당 code에 use_yn='Y' 없음 → gis_a_layer.photo1 비우기
+		// public.field use_yn='N' 처리 후 해당 code에 use_yn='Y' 없음 → gis_a_layer.photo1 비우기
 		clearGisALayerPhoto1IfNoFieldData(code);
 		resp.setContentType("application/json;charset=UTF-8");
 		try (PrintWriter w = resp.getWriter()) {
@@ -329,7 +368,7 @@ public class FacCommController extends HttpServlet {
 	}
 
 	/**
-	 * 현장 조사 그룹 하나 전체 삭제 (test.field의 code + group_index).
+	 * 현장 조사 그룹 하나 전체 삭제 (public.field의 code + group_index).
 	 * 파라미터: code, group_index (또는 groupIndex). 해당 그룹의 모든 사진이 본인 소유일 때만 삭제 가능.
 	 */
 	private void handleDeleteDetailGroup(HttpServletRequest req, HttpServletResponse resp) throws Exception {
@@ -440,7 +479,7 @@ public class FacCommController extends HttpServlet {
 	}
 
 	/**
-	 * test.field에 use_yn='Y'인 데이터가 있는 code 목록.
+	 * public.field에 use_yn='Y'인 데이터가 있는 code 목록.
 	 * 마커 색상(초록/주황) 판단용: 이 목록에 있으면 초록(조사 있음), 없으면 주황(조사 없음).
 	 */
 	private void handleCodesWithFieldData(HttpServletRequest req, HttpServletResponse resp) throws Exception {
@@ -688,11 +727,11 @@ public class FacCommController extends HttpServlet {
 		for (Map.Entry<Integer, DetailGroupPayload> entry : groups.entrySet()) {
 			System.out.println("[FacCommController]   group[" + entry.getKey() + "]: photos.size=" + entry.getValue().photos.size() + ", comment=" + entry.getValue().comment);
 		}
-		// test.field에 use_yn='Y' 데이터가 없으면 gis_a_layer.photo1 비우기 (마커 색상/대표사진은 field 기준)
+		// public.field에 use_yn='Y' 데이터가 없으면 gis_a_layer.photo1 비우기 (마커 색상/대표사진은 field 기준)
 		if (groups.isEmpty()) {
 			clearGisALayerPhoto1IfNoFieldData(code);
 		}
-		// projectCode가 있으면 project_name 조회 (VIEW_PROJ_INFO 또는 test.project)
+		// projectCode가 있으면 project_name 조회 (VIEW_PROJ_INFO 또는 public.project)
 		String projectName = null;
 		if (projectCode != null && !projectCode.trim().isEmpty()) {
 			try {
@@ -717,7 +756,7 @@ public class FacCommController extends HttpServlet {
 						Class.forName("org.postgresql.Driver");
 						try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 							 java.sql.PreparedStatement pstmt = conn.prepareStatement(
-								 "SELECT project_name FROM test.project WHERE project_code = ?")) {
+								 "SELECT project_name FROM public.project WHERE project_code = ?")) {
 							pstmt.setString(1, projectCode.trim());
 							try (java.sql.ResultSet rs = pstmt.executeQuery()) {
 								if (rs.next()) projectName = rs.getString("project_name");
@@ -946,28 +985,21 @@ public class FacCommController extends HttpServlet {
 			}
 			
 			// INSERT: 새로 업로드할 사진 추가
-			// 삭제 후 남은 기존 사진 개수 계산
-			int remainingExistingPhotos = 0;
-			for (FacFieldVO existing : existingGroupPhotos) {
-				if (existing.getImage() != null && !existing.getImage().isEmpty() 
-					&& !removedSet.contains(existing.getImage())) {
-					remainingExistingPhotos++;
-				}
-			}
+			// public.field에 기록된 모든 image(use_yn Y/N)에서 photo 번호 최댓값 → 그 다음 번호부터 (그룹 내 사진 전부 삭제 후에도 photo6 유지)
+			int nextPhotoNo = maxPhotoNumberFromImageFileNames(code, originalGroupIndex,
+				service.listAllFieldImagesByCodeAndGroup(code, originalGroupIndex));
 			
 			// 새 사진은 연속되지 않을 수 있으므로 모든 인덱스를 확인 (기존 사진은 existingName으로 전송되므로 image Part가 없음)
-			int newPhotoOrder = 0; // 새 사진의 순서 카운터
 			for (int p = 0; p < 100; p++) {
 				String partName = "groups[" + g + "].photos[" + p + "].image";
 				Part imagePart = req.getPart(partName);
 				if (imagePart == null || imagePart.getSize() == 0) continue;
 				
-				newPhotoOrder++; // 새 사진 순서 증가
+				nextPhotoNo++;
 				String orgname = imagePart.getSubmittedFileName();
 				String ext = orgname != null && orgname.contains(".") ? orgname.substring(orgname.lastIndexOf(".")) : ".jpg";
 				int groupNoForName = originalGroupIndex; // 원래 group_index 사용
-				// 삭제 후 남은 기존 사진 개수 + 새 사진 순서로 파일명 생성
-				int photoNoForName = remainingExistingPhotos + newPhotoOrder;
+				int photoNoForName = nextPhotoNo;
 				// 파일명 형식: 관리번호_그룹번호_사진번호.확장자 (조사자 ID 제거)
 				String uploadFileName = code + "_g" + groupNoForName + "_photo" + photoNoForName + ext;
 				System.out.println("[FacCommController] handleSaveDetail: 새 사진 저장 - fileName=" + uploadFileName + ", groupNo=" + groupNoForName + ", photoNo=" + photoNoForName);
@@ -1092,7 +1124,7 @@ public class FacCommController extends HttpServlet {
 			}
 		}
 		
-		// test.field 저장 완료 후 GeoServer WFS-T Update로 gis_a_layer.save = true 설정
+		// public.field 저장 완료 후 GeoServer WFS-T Update로 gis_a_layer.save = true 설정
 		updateGisALayerSaveViaWfs(code, true);
 
 		resp.setContentType("application/json;charset=UTF-8");
@@ -1323,6 +1355,43 @@ public class FacCommController extends HttpServlet {
 		}
 	}
 
+	/**
+	 * 파일명 {code}_g{groupIndex}_photo{n}.ext 에서 n의 최댓값.
+	 * image 목록은 DB에서 use_yn 무관 조회(listAllFieldImagesByCodeAndGroup)로 넘긴다.
+	 */
+	private static int maxPhotoNumberFromImageFileNames(String code, int groupIndex, List<String> imageFileNames) {
+		int max = 0;
+		if (code == null || code.isEmpty() || imageFileNames == null || imageFileNames.isEmpty()) {
+			return 0;
+		}
+		String prefix = code + "_g" + groupIndex + "_photo";
+		for (String img : imageFileNames) {
+			if (img == null || img.isEmpty()) {
+				continue;
+			}
+			if (!img.startsWith(prefix)) {
+				continue;
+			}
+			int start = prefix.length();
+			int end = start;
+			while (end < img.length() && Character.isDigit(img.charAt(end))) {
+				end++;
+			}
+			if (end <= start) {
+				continue;
+			}
+			try {
+				int n = Integer.parseInt(img.substring(start, end));
+				if (n > max) {
+					max = n;
+				}
+			} catch (NumberFormatException ignore) {
+				// skip
+			}
+		}
+		return max;
+	}
+
 	private String normalizeParam(String value) {
 		if (value == null) return null;
 		String trimmed = value.trim();
@@ -1464,7 +1533,7 @@ public class FacCommController extends HttpServlet {
 				int end = Math.min(i + batchSize, codes.size());
 				List<String> batch = codes.subList(i, end);
 				String placeholders = String.join(",", Collections.nCopies(batch.size(), "?"));
-				String sql = "UPDATE test.gis_a_layer SET project_code = ?, mod_dt = NOW() WHERE code IN (" + placeholders + ")";
+				String sql = "UPDATE public.gis_a_layer SET project_code = ?, mod_dt = NOW() WHERE code IN (" + placeholders + ")";
 				try (java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
 					pstmt.setString(1, newProjectCode);
 					for (int j = 0; j < batch.size(); j++) {
@@ -1472,7 +1541,7 @@ public class FacCommController extends HttpServlet {
 					}
 					totalUpdated += pstmt.executeUpdate();
 				}
-				String sqlField = "UPDATE test.field SET project_code = ? WHERE code IN (" + placeholders + ")";
+				String sqlField = "UPDATE public.field SET project_code = ? WHERE code IN (" + placeholders + ")";
 				try (java.sql.PreparedStatement pstmt = conn.prepareStatement(sqlField)) {
 					pstmt.setString(1, newProjectCode);
 					for (int j = 0; j < batch.size(); j++) {
@@ -1539,7 +1608,7 @@ public class FacCommController extends HttpServlet {
 
 		if ((userDeptName == null || userDeptName.trim().isEmpty()) && userId != null) {
 			try (Connection c = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
-				try (PreparedStatement ps = c.prepareStatement("SELECT dept_name FROM test.\"user\" WHERE id = ?")) {
+				try (PreparedStatement ps = c.prepareStatement("SELECT dept_name FROM public.\"user\" WHERE id = ?")) {
 					ps.setString(1, userId.trim());
 					try (ResultSet rs = ps.executeQuery()) {
 						if (rs.next()) {
@@ -1602,8 +1671,8 @@ public class FacCommController extends HttpServlet {
 
 			if (!(userAuthority == 1 || deptFullAccess)) {
 				StringBuilder sql = new StringBuilder();
-				sql.append("SELECT DISTINCT project_code FROM test.project WHERE (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL) ");
-				sql.append("AND (EXISTS (SELECT 1 FROM test.project_members pm WHERE pm.project_code = test.project.project_code AND pm.user_id = ? AND pm.status = 'ACTIVE') ");
+				sql.append("SELECT DISTINCT project_code FROM public.project WHERE (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL) ");
+				sql.append("AND (EXISTS (SELECT 1 FROM public.project_members pm WHERE pm.project_code = public.project.project_code AND pm.user_id = ? AND pm.status = 'ACTIVE') ");
 				if (userDeptName != null && !userDeptName.trim().isEmpty())
 					sql.append("OR main_dept_name = ? ");
 				sql.append(")");
@@ -1619,7 +1688,7 @@ public class FacCommController extends HttpServlet {
 						}
 					}
 				}
-				try (PreparedStatement paPstmt = pgConn.prepareStatement("SELECT DISTINCT project_code FROM test.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'")) {
+				try (PreparedStatement paPstmt = pgConn.prepareStatement("SELECT DISTINCT project_code FROM public.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'")) {
 					paPstmt.setString(1, userId.trim());
 					try (ResultSet paRs = paPstmt.executeQuery()) {
 						while (paRs.next()) {
@@ -1629,8 +1698,8 @@ public class FacCommController extends HttpServlet {
 					}
 				}
 				try (PreparedStatement ptPstmt = pgConn.prepareStatement(
-						"SELECT project_code FROM test.project p WHERE p.pm_id = ? AND (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL) " +
-						"AND NOT EXISTS (SELECT 1 FROM test.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')")) {
+						"SELECT project_code FROM public.project p WHERE p.pm_id = ? AND (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL) " +
+						"AND NOT EXISTS (SELECT 1 FROM public.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')")) {
 					ptPstmt.setString(1, userId.trim());
 					try (ResultSet ptRs = ptPstmt.executeQuery()) {
 						while (ptRs.next()) {
@@ -1640,7 +1709,7 @@ public class FacCommController extends HttpServlet {
 					}
 				}
 			} else {
-				try (PreparedStatement pstmt = pgConn.prepareStatement("SELECT project_code FROM test.project WHERE (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL)")) {
+				try (PreparedStatement pstmt = pgConn.prepareStatement("SELECT project_code FROM public.project WHERE (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL)")) {
 					try (ResultSet rs = pstmt.executeQuery()) {
 						while (rs.next()) {
 							String code = rs.getString("project_code");
@@ -1724,6 +1793,46 @@ public class FacCommController extends HttpServlet {
 		}
 	}
 
+	/**
+	 * POST multipart: file — SHP(zip)·GeoJSON·DXF·엑셀에서 경위도 포인트 목록 추출 (DB 저장 없음).
+	 */
+	private void handleImportPointsParse(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			resp.setStatus(401);
+			resp.setContentType("application/json;charset=UTF-8");
+			try (PrintWriter w = resp.getWriter()) {
+				w.write("{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			}
+			return;
+		}
+		Part part = req.getPart("file");
+		if (part == null) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"파일(file)이 없습니다.\"}");
+			return;
+		}
+		String fname = part.getSubmittedFileName();
+		if (fname == null) {
+			fname = "upload.bin";
+		}
+		try (InputStream in = part.getInputStream()) {
+			FacImportPointsParser.Result result = FacImportPointsParser.parse(in, fname, getServletContext());
+			String json = FacImportPointsParser.resultToJson(result);
+			writeJson(resp, json);
+		} catch (IOException ex) {
+			resp.setStatus(400);
+			resp.setContentType("application/json;charset=UTF-8");
+			String msg = ex.getMessage();
+			if (msg == null || msg.trim().isEmpty()) {
+				msg = ex.getClass().getSimpleName();
+			}
+			try (PrintWriter w = resp.getWriter()) {
+				w.write("{\"success\":false,\"message\":\"" + escape(msg) + "\"}");
+			}
+		}
+	}
+
 	private UserInfo getUserInfo(HttpServletRequest req) throws Exception {
 		HttpSession session = req.getSession(false);
 		String userId = null;
@@ -1786,8 +1895,8 @@ public class FacCommController extends HttpServlet {
 	}
 	
 	/**
-	 * test.field에 use_yn='Y'인 데이터가 없을 때 gis_a_layer.photo1을 비움.
-	 * (대표사진은 test.field 기준으로만 표시하고, 데이터 없으면 마커 색상/이미지도 비움)
+	 * public.field에 use_yn='Y'인 데이터가 없을 때 gis_a_layer.photo1을 비움.
+	 * (대표사진은 public.field 기준으로만 표시하고, 데이터 없으면 마커 색상/이미지도 비움)
 	 */
 	private void clearGisALayerPhoto1IfNoFieldData(String code) {
 		if (code == null || code.trim().isEmpty()) return;
@@ -1799,14 +1908,14 @@ public class FacCommController extends HttpServlet {
 		try {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-			// test.field에 use_yn='Y'가 없으면 gis_a_layer.photo1 비우기
+			// public.field에 use_yn='Y'가 없으면 gis_a_layer.photo1 비우기
 			try (java.sql.PreparedStatement pstmt = conn.prepareStatement(
-					"UPDATE test.gis_a_layer SET photo1 = NULL WHERE code = ? AND NOT EXISTS (SELECT 1 FROM test.field f WHERE f.code = ? AND f.use_yn = 'Y')")) {
+					"UPDATE public.gis_a_layer SET photo1 = NULL WHERE code = ? AND NOT EXISTS (SELECT 1 FROM public.field f WHERE f.code = ? AND f.use_yn = 'Y')")) {
 				pstmt.setString(1, code.trim());
 				pstmt.setString(2, code.trim());
 				int n = pstmt.executeUpdate();
 				if (n > 0) {
-					System.out.println("[FacCommController] clearGisALayerPhoto1: code=" + code + " (no use_yn='Y' in test.field)");
+					System.out.println("[FacCommController] clearGisALayerPhoto1: code=" + code + " (no use_yn='Y' in public.field)");
 				}
 			}
 		} catch (Exception e) {
@@ -1818,7 +1927,7 @@ public class FacCommController extends HttpServlet {
 
 	/**
 	 * GeoServer WFS-T Update로 gis_a_layer.save 값 갱신
-	 * test.field에 INSERT/UPDATE 발생 시 해당 시설물 포인트의 save를 true로 설정
+	 * public.field에 INSERT/UPDATE 발생 시 해당 시설물 포인트의 save를 true로 설정
 	 */
 	private void updateGisALayerSaveViaWfs(String code, boolean save) {
 		if (code == null || code.trim().isEmpty()) return;
@@ -1832,7 +1941,7 @@ public class FacCommController extends HttpServlet {
 
 		String payload = "<?xml version='1.0' encoding='UTF-8'?>"
 				+ "<wfs:Transaction service='WFS' version='1.0.0' xmlns:wfs='http://www.opengis.net/wfs' xmlns:ogc='http://www.opengis.net/ogc'>"
-				+ "<wfs:Update typeName='fac:gis_a_layer_dbfield'>"
+				+ "<wfs:Update typeName='fac:gis_a_layer'>"
 				+ "<wfs:Property><wfs:Name>save</wfs:Name><wfs:Value>" + saveVal + "</wfs:Value></wfs:Property>"
 				+ "<ogc:Filter>"
 				+ "<ogc:PropertyIsEqualTo>"
@@ -1867,6 +1976,987 @@ public class FacCommController extends HttpServlet {
 			System.err.println("[FacCommController] WFS-T Update error for code=" + code + ": " + e.getMessage());
 		} finally {
 			if (conn != null) conn.disconnect();
+		}
+	}
+
+	// ─── 조사 보고서 양식 (HWP → JSONB, 1단계 API) ─────────────────────────────
+
+	private File resolveSurveyHwpDir() {
+		if (uploadBaseDir == null) {
+			return null;
+		}
+		File parent = uploadBaseDir.getParentFile();
+		if (parent == null) {
+			return null;
+		}
+		File d = new File(parent, "SURVEY_HWP");
+		if (!d.exists()) {
+			d.mkdirs();
+		}
+		return d;
+	}
+
+	/** "SURVEY_HWP/<file>" 또는 절대경로를 실제 파일로 해석. 존재하지 않으면 null. */
+	private static String loadUserPrompt(Connection conn, String code) {
+		if (conn == null || code == null) return "";
+		try (PreparedStatement ps = conn.prepareStatement(
+				"SELECT user_prompt FROM public.facility_survey_report WHERE code = ?")) {
+			ps.setString(1, code);
+			try (ResultSet rs = ps.executeQuery()) {
+				if (rs.next()) {
+					String s = rs.getString(1);
+					return s != null ? s : "";
+				}
+			}
+		} catch (Exception e) {
+			System.err.println("[FacCommController] loadUserPrompt: " + e.getMessage());
+		}
+		return "";
+	}
+
+	private static byte[] readAllBytes(java.io.InputStream in, int max) throws java.io.IOException {
+		java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+		byte[] buf = new byte[8192];
+		int total = 0;
+		int n;
+		while ((n = in.read(buf)) != -1) {
+			if (total + n > max) {
+				bos.write(buf, 0, max - total);
+				break;
+			}
+			bos.write(buf, 0, n);
+			total += n;
+		}
+		return bos.toByteArray();
+	}
+
+	private File resolveStoredTemplateFile(String storedPath) {
+		if (storedPath == null || storedPath.trim().isEmpty()) return null;
+		String s = storedPath.trim().replace("\\", "/");
+		File candidate = new File(s);
+		if (candidate.isAbsolute() && candidate.isFile()) return candidate;
+		// 상대경로: SURVEY_HWP 디렉토리 기준
+		File surveyDir = resolveSurveyHwpDir();
+		if (surveyDir == null) return null;
+		String name = s.startsWith("SURVEY_HWP/") ? s.substring("SURVEY_HWP/".length()) : s;
+		File f = new File(surveyDir, name);
+		return f.isFile() ? f : null;
+	}
+
+	private void setPgJsonb(PreparedStatement ps, int idx, String json) throws Exception {
+		String j = (json == null || json.isEmpty()) ? "{}" : json;
+		PGobject pg = new PGobject();
+		pg.setType("jsonb");
+		pg.setValue(j);
+		ps.setObject(idx, pg);
+	}
+
+	private String loadFacilityProjectCode(Connection conn, String code) throws Exception {
+		if (code == null || code.trim().isEmpty()) {
+			return null;
+		}
+		try (PreparedStatement ps = conn.prepareStatement("SELECT project_code FROM public.gis_a_layer WHERE code = ?")) {
+			ps.setString(1, code.trim());
+			try (ResultSet rs = ps.executeQuery()) {
+				if (rs.next()) {
+					return rs.getString("project_code");
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * GET /api/fac/survey-report?code=시설코드
+	 */
+	private void handleSurveyReportGet(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			resp.setStatus(401);
+			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			return;
+		}
+		String code = req.getParameter("code");
+		if (code == null || code.trim().isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"code가 필요합니다.\"}");
+			return;
+		}
+		code = code.trim();
+		String dbUrl = getServletContext().getInitParameter("DB_URL");
+		String dbUser = getServletContext().getInitParameter("DB_USER");
+		String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
+		String dbViewUrl = getServletContext().getInitParameter("DB_VIEW_URL");
+		String dbViewUser = getServletContext().getInitParameter("DB_VIEW_USER");
+		String dbViewPassword = getServletContext().getInitParameter("DB_VIEW_PASSWORD");
+		if (dbUrl == null || dbUser == null) {
+			resp.setStatus(500);
+			writeJson(resp, "{\"success\":false,\"message\":\"DB 설정이 없습니다.\"}");
+			return;
+		}
+		Class.forName("org.postgresql.Driver");
+		try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
+			String pc = loadFacilityProjectCode(conn, code);
+			if (pc == null) {
+				resp.setStatus(404);
+				writeJson(resp, "{\"success\":false,\"message\":\"시설 코드를 찾을 수 없습니다.\"}");
+				return;
+			}
+			if (!canAccessFacilityProject(req, pc, dbUrl, dbUser, dbPassword, dbViewUrl, dbViewUser, dbViewPassword)) {
+				resp.setStatus(403);
+				writeJson(resp, "{\"success\":false,\"message\":\"해당 시설에 대한 권한이 없습니다.\"}");
+				return;
+			}
+			try (PreparedStatement ps = conn.prepareStatement(
+					"SELECT id, code, project_code, source_filename, stored_path, review_status, "
+							+ "draft_field_schema::text, field_schema::text, answers::text, "
+							+ "reference_paths::text, user_prompt, schema_version, created_by, "
+							+ "created_at, updated_at FROM public.facility_survey_report WHERE code = ?")) {
+				ps.setString(1, code);
+				try (ResultSet rs = ps.executeQuery()) {
+					if (!rs.next()) {
+						writeJson(resp, "{\"success\":true,\"exists\":false,\"code\":\"" + escape(code) + "\",\"project_code\":\"" + escape(pc) + "\"}");
+						return;
+					}
+					String refsStr = rs.getString("reference_paths");
+					if (refsStr == null || refsStr.isEmpty()) refsStr = "[]";
+					String userPromptDb = rs.getString("user_prompt");
+					if (userPromptDb == null) userPromptDb = "";
+					StringBuilder sb = new StringBuilder();
+					sb.append("{\"success\":true,\"exists\":true,");
+					sb.append("\"id\":").append(rs.getLong("id")).append(",");
+					sb.append("\"code\":\"").append(escape(rs.getString("code"))).append("\",");
+					sb.append("\"project_code\":\"").append(escape(rs.getString("project_code"))).append("\",");
+					sb.append("\"source_filename\":\"").append(escape(rs.getString("source_filename"))).append("\",");
+					sb.append("\"stored_path\":\"").append(escape(rs.getString("stored_path"))).append("\",");
+					sb.append("\"review_status\":\"").append(escape(rs.getString("review_status"))).append("\",");
+					sb.append("\"schema_version\":").append(rs.getInt("schema_version")).append(",");
+					sb.append("\"created_by\":\"").append(escape(rs.getString("created_by"))).append("\",");
+					sb.append("\"draft_field_schema\":").append(rs.getString("draft_field_schema")).append(",");
+					sb.append("\"field_schema\":").append(rs.getString("field_schema")).append(",");
+					sb.append("\"answers\":").append(rs.getString("answers")).append(",");
+					sb.append("\"reference_paths\":").append(refsStr).append(",");
+					sb.append("\"user_prompt\":\"").append(escape(userPromptDb)).append("\"");
+					sb.append("}");
+					writeJson(resp, sb.toString());
+				}
+			}
+		}
+	}
+
+	/**
+	 * GET /api/fac/survey-report/export?code=시설코드
+	 * 확정 field_schema(없으면 draft 필드) + answers → 마크다운 → kordoc HWPX; 실패 시 .md
+	 */
+	private void handleSurveyReportExport(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			resp.setStatus(401);
+			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			return;
+		}
+		String code = req.getParameter("code");
+		if (code == null || code.trim().isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"code가 필요합니다.\"}");
+			return;
+		}
+		code = code.trim();
+		String dbUrl = getServletContext().getInitParameter("DB_URL");
+		String dbUser = getServletContext().getInitParameter("DB_USER");
+		String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
+		String dbViewUrl = getServletContext().getInitParameter("DB_VIEW_URL");
+		String dbViewUser = getServletContext().getInitParameter("DB_VIEW_USER");
+		String dbViewPassword = getServletContext().getInitParameter("DB_VIEW_PASSWORD");
+		if (dbUrl == null || dbUser == null) {
+			resp.setStatus(500);
+			writeJson(resp, "{\"success\":false,\"message\":\"DB 설정이 없습니다.\"}");
+			return;
+		}
+		Class.forName("org.postgresql.Driver");
+		try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
+			String pc = loadFacilityProjectCode(conn, code);
+			if (pc == null) {
+				resp.setStatus(404);
+				writeJson(resp, "{\"success\":false,\"message\":\"시설 코드를 찾을 수 없습니다.\"}");
+				return;
+			}
+			if (!canAccessFacilityProject(req, pc, dbUrl, dbUser, dbPassword, dbViewUrl, dbViewUser, dbViewPassword)) {
+				resp.setStatus(403);
+				writeJson(resp, "{\"success\":false,\"message\":\"해당 시설에 대한 권한이 없습니다.\"}");
+				return;
+			}
+			String sourceFilename = null;
+			String draftStr = null;
+			String schemaStr = null;
+			String answersStr = null;
+			String storedPath = null;
+			try (PreparedStatement ps = conn.prepareStatement(
+					"SELECT source_filename, draft_field_schema::text, field_schema::text, answers::text, stored_path "
+							+ "FROM public.facility_survey_report WHERE code = ?")) {
+				ps.setString(1, code);
+				try (ResultSet rs = ps.executeQuery()) {
+					if (!rs.next()) {
+						resp.setStatus(404);
+						writeJson(resp, "{\"success\":false,\"message\":\"조사 보고서 데이터가 없습니다. HWP를 먼저 업로드하세요.\"}");
+						return;
+					}
+					sourceFilename = rs.getString(1);
+					draftStr = rs.getString(2);
+					schemaStr = rs.getString(3);
+					answersStr = rs.getString(4);
+					storedPath = rs.getString(5);
+				}
+			}
+			JsonNode draft = JSON_MAPPER.readTree(draftStr != null && !draftStr.isEmpty() ? draftStr : "{}");
+			JsonNode fieldSchemaRoot = JSON_MAPPER.readTree(schemaStr != null && !schemaStr.isEmpty() ? schemaStr : "{}");
+			JsonNode answers = JSON_MAPPER.readTree(answersStr != null && !answersStr.isEmpty() ? answersStr : "{}");
+			JsonNode fieldsNode = fieldSchemaRoot.path("fields");
+			if (!fieldsNode.isArray() || fieldsNode.size() == 0) {
+				fieldsNode = draft.path("fields");
+			}
+			ObjectNode exportSchema = JSON_MAPPER.createObjectNode();
+			exportSchema.set("fields", fieldsNode);
+			if (!fieldsNode.isArray() || fieldsNode.size() == 0) {
+				resp.setStatus(400);
+				writeJson(resp, "{\"success\":false,\"message\":\"내보낼 필드 정의가 없습니다.\"}");
+				return;
+			}
+
+			List<File> exportPhotos = loadExportPhotoFiles(conn, code);
+			System.out.println("[FacCommController] survey export photos=" + exportPhotos.size());
+
+			String stem = sourceFilename != null && sourceFilename.contains(".")
+					? sourceFilename.substring(0, sourceFilename.lastIndexOf('.'))
+					: code;
+			String niceBase = stem + "_작성초안";
+			String asciiFallback = "survey_" + code.replaceAll("[^a-zA-Z0-9._-]", "_") + "_draft";
+
+			// Template 경로(slot 기반 schema + 저장된 hwpx 템플릿)면 사진을 LLM(vision)에 보내 답변 즉석 생성 후 fillTemplate
+			File templateHwpx = resolveStoredTemplateFile(storedPath);
+			boolean slotBased = com.newdbfield.util.SurveyReportTemplateUtil.isSlotBasedSchema(exportSchema);
+			String firstFieldId = "";
+			if (fieldsNode.isArray() && fieldsNode.size() > 0) {
+				firstFieldId = fieldsNode.get(0).path("id").asText("");
+			}
+			System.out.println("[FacCommController] export DIAG"
+					+ " storedPath=" + storedPath
+					+ " templateHwpx=" + (templateHwpx != null ? templateHwpx.getAbsolutePath() : "null")
+					+ " templateExists=" + (templateHwpx != null && templateHwpx.isFile())
+					+ " isHwpx=" + (templateHwpx != null && templateHwpx.getName().toLowerCase().endsWith(".hwpx"))
+					+ " firstFieldId=" + firstFieldId
+					+ " slotBased=" + slotBased
+					+ " fieldsCount=" + (fieldsNode.isArray() ? fieldsNode.size() : 0));
+			boolean templateMode = slotBased
+					&& templateHwpx != null && templateHwpx.isFile()
+					&& templateHwpx.getName().toLowerCase().endsWith(".hwpx");
+			System.out.println("[FacCommController] templateMode=" + templateMode);
+
+			if (templateMode) {
+				File tmpHwpx = File.createTempFile("survey_export_", ".hwpx");
+				try {
+					// 1) UI에서 본 그대로 출력하기 위해 DB에 저장된 answers 우선 사용
+					//    (AI 초안 생성 버튼이 이미 LLM을 한 번 돌려 answers를 채워둠)
+					JsonNode finalAnswers = answers;
+					boolean answersHasSlotData = false;
+					if (finalAnswers != null && finalAnswers.isObject() && finalAnswers.size() > 0) {
+						java.util.Iterator<String> it = finalAnswers.fieldNames();
+						while (it.hasNext()) {
+							String k = it.next();
+							if (k.matches("^(F|IMG)\\d+$")
+									&& !finalAnswers.path(k).asText("").trim().isEmpty()) {
+								answersHasSlotData = true;
+								break;
+							}
+						}
+					}
+					System.out.println("[FacCommController] export answersHasSlotData=" + answersHasSlotData
+							+ " size=" + (finalAnswers != null ? finalAnswers.size() : 0));
+
+					// 2) 답변이 비어 있으면(첫 export) LLM 폴백 호출 — 빈 hwpx 방지
+					if (!answersHasSlotData) {
+						try {
+							List<FacFieldVO> rows = service.listFieldItemsByCode(code);
+							com.fasterxml.jackson.databind.JsonNode refPaths =
+									com.newdbfield.util.SurveyReportRefUtil.loadReferencePaths(conn, code);
+							String refCtx = com.newdbfield.util.SurveyReportRefUtil.extractContext(
+									getServletContext(), refPaths, resolveSurveyHwpDir());
+							String userPromptDb = loadUserPrompt(conn, code);
+							String mergedJson = com.newdbfield.util.SurveyReportDraftLlmUtil.generateAndMergeAnswers(
+									getServletContext(), req, (ArrayNode) fieldsNode, rows, code, answers, conn, exportPhotos, refCtx, userPromptDb);
+							finalAnswers = JSON_MAPPER.readTree(mergedJson);
+							// 다음 export에 재사용 가능하도록 DB에 저장
+							try (PreparedStatement upd = conn.prepareStatement(
+									"UPDATE public.facility_survey_report SET answers = ?::jsonb, updated_at = NOW() WHERE code = ?")) {
+								setPgJsonb(upd, 1, mergedJson);
+								upd.setString(2, code);
+								upd.executeUpdate();
+							}
+							System.out.println("[FacCommController] LLM fallback fields=" + finalAnswers.size() + " (saved to DB)");
+						} catch (Exception llmEx) {
+							System.err.println("[FacCommController] LLM 폴백 실패, 빈 answers로 진행: " + llmEx.getMessage());
+						}
+					}
+
+					// 3) 사진을 IMG 슬롯에 매핑
+					java.util.Map<String, File> photoMap =
+							com.newdbfield.util.SurveyReportTemplateUtil.mapPhotosToImageSlots(exportSchema, exportPhotos);
+					// 4) 양식 그대로 두고 셀만 채우기
+					boolean ok = com.newdbfield.util.SurveyReportTemplateUtil.fillFromTemplate(
+							getServletContext(), templateHwpx, finalAnswers, photoMap, tmpHwpx);
+					if (ok) {
+						resp.setContentType("application/octet-stream");
+						resp.setHeader("Content-Disposition", buildAttachmentContentDisposition(niceBase + ".hwpx", asciiFallback + ".hwpx"));
+						Files.copy(tmpHwpx.toPath(), resp.getOutputStream());
+						resp.getOutputStream().flush();
+						return;
+					}
+					System.err.println("[FacCommController] fillTemplate 실패 → markdown 경로로 폴백");
+				} finally {
+					if (tmpHwpx.exists()) tmpHwpx.delete();
+				}
+			}
+
+			// 폴백: 기존 markdown → markdownToHwpx 경로
+			String md = SurveyReportExportUtil.buildExportMarkdown(code, sourceFilename, pc, exportSchema, answers, exportPhotos);
+			File tmpMd = File.createTempFile("survey_export_", ".md");
+			File tmpHwpx = File.createTempFile("survey_export_", ".hwpx");
+			try {
+				SurveyReportExportUtil.writeUtf8File(tmpMd, md);
+				boolean hwpxOk = SurveyReportExportUtil.runMarkdownToHwpx(getServletContext(), tmpMd, tmpHwpx);
+				if (hwpxOk) {
+					resp.setContentType("application/octet-stream");
+					resp.setHeader("Content-Disposition", buildAttachmentContentDisposition(niceBase + ".hwpx", asciiFallback + ".hwpx"));
+					Files.copy(tmpHwpx.toPath(), resp.getOutputStream());
+					resp.getOutputStream().flush();
+				} else {
+					resp.setContentType("text/markdown; charset=UTF-8");
+					resp.setHeader("Content-Disposition", buildAttachmentContentDisposition(niceBase + ".md", asciiFallback + ".md"));
+					resp.getOutputStream().write(md.getBytes(StandardCharsets.UTF_8));
+					resp.getOutputStream().flush();
+				}
+			} finally {
+				if (tmpMd.exists()) {
+					tmpMd.delete();
+				}
+				if (tmpHwpx.exists()) {
+					tmpHwpx.delete();
+				}
+			}
+		}
+	}
+
+	private static String buildAttachmentContentDisposition(String utf8FileName, String asciiFallback) throws Exception {
+		String enc = URLEncoder.encode(utf8FileName, StandardCharsets.UTF_8.name()).replace("+", "%20");
+		return "attachment; filename=\"" + asciiFallback + "\"; filename*=UTF-8''" + enc;
+	}
+
+	private List<File> loadExportPhotoFiles(Connection conn, String code) {
+		List<File> files = new ArrayList<>();
+		if (conn == null || code == null || code.trim().isEmpty() || this.uploadBaseDir == null) {
+			return files;
+		}
+		System.out.println("[FacCommController] export uploadBaseDir=" + this.uploadBaseDir.getAbsolutePath());
+		String codeTrim = code.trim();
+		try {
+			// 1차: 활성 데이터 우선
+			appendPhotoFiles(conn, codeTrim,
+					"SELECT image FROM public.field WHERE code = ? AND use_yn = 'Y' AND image IS NOT NULL AND image <> '' "
+							+ "ORDER BY group_index NULLS LAST, reg_dt, idx",
+					files);
+			// 2차 fallback: 운영 데이터에 use_yn이 비어있거나 정리 지연된 경우도 포함
+			if (files.isEmpty()) {
+				appendPhotoFiles(conn, codeTrim,
+						"SELECT image FROM public.field WHERE code = ? AND image IS NOT NULL AND image <> '' "
+								+ "ORDER BY group_index NULLS LAST, reg_dt DESC, idx DESC",
+						files);
+			}
+		} catch (Exception e) {
+			System.err.println("[FacCommController] loadExportPhotoFiles failed: " + e.getMessage());
+		}
+		return files;
+	}
+
+	private void appendPhotoFiles(Connection conn, String code, String sql, List<File> files) throws Exception {
+		try (PreparedStatement ps = conn.prepareStatement(sql)) {
+			ps.setString(1, code);
+			try (ResultSet rs = ps.executeQuery()) {
+				Set<String> seen = new HashSet<>();
+				for (File f : files) {
+					seen.add(f.getName());
+				}
+				while (rs.next()) {
+					String image = rs.getString(1);
+					if (image == null || image.trim().isEmpty()) {
+						continue;
+					}
+					String imageName = image.trim();
+					if (seen.contains(imageName)) {
+						continue;
+					}
+					File f = resolveExportPhotoFile(imageName);
+					if (f.isFile()) {
+						files.add(f);
+						seen.add(imageName);
+					}
+				}
+			}
+		}
+	}
+
+	private File resolveExportPhotoFile(String imageNameRaw) {
+		if (imageNameRaw == null) {
+			return new File(this.uploadBaseDir, "");
+		}
+		String name = imageNameRaw.trim();
+		if (name.isEmpty()) {
+			return new File(this.uploadBaseDir, "");
+		}
+		// URL/절대경로/상대경로 혼재 저장 대응
+		name = name.replace("\\", "/");
+		int dcimIdx = name.toLowerCase().indexOf("/dcim/");
+		if (dcimIdx >= 0) {
+			name = name.substring(dcimIdx + 6);
+		}
+		while (name.startsWith("/")) {
+			name = name.substring(1);
+		}
+		File asAbsolute = new File(name);
+		if (asAbsolute.isAbsolute() && asAbsolute.isFile()) {
+			return asAbsolute;
+		}
+		File inPrimary = new File(this.uploadBaseDir, name);
+		if (inPrimary.isFile()) {
+			return inPrimary;
+		}
+		String baseName = name;
+		int slash = baseName.lastIndexOf('/');
+		if (slash >= 0) {
+			baseName = baseName.substring(slash + 1);
+		}
+		for (File dir : getExportPhotoSearchDirs()) {
+			File f = new File(dir, baseName);
+			if (f.isFile()) {
+				return f;
+			}
+		}
+		return inPrimary;
+	}
+
+	private List<File> getExportPhotoSearchDirs() {
+		List<File> dirs = new ArrayList<>();
+		if (this.uploadBaseDir != null) {
+			dirs.add(this.uploadBaseDir);
+		}
+		File devDcim = new File("D:\\PROJECT\\Db-Field\\New_Db-Field\\src\\main\\webapp\\DCIM");
+		dirs.add(devDcim);
+		try {
+			String realRoot = getServletContext() != null ? getServletContext().getRealPath("/") : null;
+			if (realRoot != null) {
+				dirs.add(new File(realRoot, "DCIM"));
+			}
+		} catch (Exception ignore) {}
+		File fallback = new File(System.getProperty("user.dir"), "DCIM");
+		dirs.add(fallback);
+		return dirs;
+	}
+
+	private boolean canAccessFacilityProject(HttpServletRequest req, String projectCode, String dbUrl, String dbUser,
+			String dbPassword, String dbViewUrl, String dbViewUser, String dbViewPassword) throws Exception {
+		if (projectCode == null || projectCode.trim().isEmpty()) {
+			return false;
+		}
+		List<String> allowed = getAllowedProjectCodes(req, dbUrl, dbUser, dbPassword, dbViewUrl, dbViewUser, dbViewPassword);
+		return allowed != null && allowed.contains(projectCode.trim());
+	}
+
+	/**
+	 * POST /api/fac/survey-report/upload (multipart: code, file)
+	 * HWP 파일 저장 + draft_field_schema 초기화 (kordoc Node 파싱 연동).
+	 */
+	private void handleSurveyReportUpload(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			resp.setStatus(401);
+			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			return;
+		}
+		String code = req.getParameter("code");
+		if (code == null || code.trim().isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"code가 필요합니다.\"}");
+			return;
+		}
+		code = code.trim();
+		Part filePart = req.getPart("file");
+		if (filePart == null || filePart.getSize() <= 0) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"file 파트가 필요합니다.\"}");
+			return;
+		}
+		String submitted = filePart.getSubmittedFileName();
+		if (submitted == null || submitted.trim().isEmpty()) {
+			submitted = "upload.hwp";
+		}
+		String ext = "";
+		int dot = submitted.lastIndexOf('.');
+		if (dot >= 0) {
+			ext = submitted.substring(dot).toLowerCase();
+		}
+		if (!ext.isEmpty() && !ext.equals(".hwp") && !ext.equals(".hwpx")) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"HWP 또는 HWPX 파일만 업로드할 수 있습니다.\"}");
+			return;
+		}
+
+		File surveyDir = resolveSurveyHwpDir();
+		if (surveyDir == null) {
+			resp.setStatus(500);
+			writeJson(resp, "{\"success\":false,\"message\":\"업로드 경로를 확인할 수 없습니다.\"}");
+			return;
+		}
+
+		String dbUrl = getServletContext().getInitParameter("DB_URL");
+		String dbUser = getServletContext().getInitParameter("DB_USER");
+		String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
+		String dbViewUrl = getServletContext().getInitParameter("DB_VIEW_URL");
+		String dbViewUser = getServletContext().getInitParameter("DB_VIEW_USER");
+		String dbViewPassword = getServletContext().getInitParameter("DB_VIEW_PASSWORD");
+		if (dbUrl == null || dbUser == null) {
+			resp.setStatus(500);
+			writeJson(resp, "{\"success\":false,\"message\":\"DB 설정이 없습니다.\"}");
+			return;
+		}
+
+		Class.forName("org.postgresql.Driver");
+		try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
+			String projectCode = loadFacilityProjectCode(conn, code);
+			if (projectCode == null) {
+				resp.setStatus(404);
+				writeJson(resp, "{\"success\":false,\"message\":\"시설 코드를 찾을 수 없습니다.\"}");
+				return;
+			}
+			if (!canAccessFacilityProject(req, projectCode, dbUrl, dbUser, dbPassword, dbViewUrl, dbViewUser, dbViewPassword)) {
+				resp.setStatus(403);
+				writeJson(resp, "{\"success\":false,\"message\":\"해당 시설에 대한 권한이 없습니다.\"}");
+				return;
+			}
+
+			String safeName = code.replaceAll("[^a-zA-Z0-9._-]", "_") + "_" + System.currentTimeMillis() + (ext.isEmpty() ? ".hwp" : ext);
+			File outFile = new File(surveyDir, safeName);
+			try (java.io.InputStream in = filePart.getInputStream()) {
+				Files.copy(in, outFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			}
+
+			// .hwp 업로드 시 한컴 COM으로 .hwpx 변환 (양식 보존을 위한 표준화 단계)
+			if (".hwp".equals(ext)) {
+				File converted = com.newdbfield.util.HwpToHwpxConverter.convertToHwpx(outFile);
+				if (converted != null && converted.isFile()) {
+					outFile = converted;
+					safeName = converted.getName();
+				} else {
+					System.err.println("[FacCommController] hwp→hwpx 변환 실패, 원본 .hwp로 진행: " + outFile.getName());
+				}
+			}
+
+			String relativePath = "SURVEY_HWP/" + safeName;
+			// 변환된 hwpx면 template(slot 기반) 분석 우선, 실패 시 기존 kordoc 파싱으로 폴백
+			String draftJson = null;
+			boolean isHwpxNow = outFile.getName().toLowerCase().endsWith(".hwpx");
+			System.out.println("[FacCommController] upload outFile=" + outFile.getAbsolutePath()
+					+ " ext=" + ext + " isHwpxNow=" + isHwpxNow);
+			if (isHwpxNow) {
+				draftJson = com.newdbfield.util.SurveyReportTemplateUtil.parseToTemplateSchema(getServletContext(), outFile);
+				System.out.println("[FacCommController] parseToTemplateSchema => "
+						+ (draftJson != null ? "OK len=" + draftJson.length() : "NULL (will fallback)"));
+			}
+			if (draftJson == null) {
+				draftJson = SurveyReportKordocUtil.parseToDraftSchema(getServletContext(), outFile);
+				System.out.println("[FacCommController] parseToDraftSchema(legacy) => "
+						+ (draftJson != null ? "OK len=" + draftJson.length() : "NULL"));
+			}
+			if (draftJson == null) {
+				draftJson = "{\"schemaVersion\":1,\"parseStatus\":\"pending\",\"fields\":[],\"message\":\""
+						+ escape("Node/kordoc 미실행. 서버에 Node 설치·PATH, 또는 KORDOC_HOME( kordoc 폴더 ) 설정을 확인하세요.")
+						+ "\"}";
+			}
+
+			// 근거자료(name="reference") 다중 파트 저장 → reference_paths 메타 배열
+			File refsDir = com.newdbfield.util.SurveyReportRefUtil.resolveRefsDir(surveyDir, code);
+			com.fasterxml.jackson.databind.node.ArrayNode refMetaArr =
+					com.newdbfield.util.SurveyReportRefUtil.storeUploadedReferences(refsDir, req.getParts());
+			System.out.println("[FacCommController] references stored=" + refMetaArr.size());
+
+			// 사용자 정의 프롬프트 — multipart text 파트
+			String userPrompt = "";
+			Part userPromptPart = req.getPart("userPrompt");
+			if (userPromptPart != null) {
+				try (java.io.InputStream in = userPromptPart.getInputStream()) {
+					byte[] b = readAllBytes(in, 64 * 1024);
+					userPrompt = new String(b, StandardCharsets.UTF_8).trim();
+				}
+			}
+			if (userPrompt.length() > 8000) userPrompt = userPrompt.substring(0, 8000);
+			System.out.println("[FacCommController] userPrompt len=" + userPrompt.length());
+
+			String upsert = "INSERT INTO public.facility_survey_report (code, project_code, source_filename, stored_path, "
+					+ "review_status, draft_field_schema, field_schema, answers, reference_paths, user_prompt, schema_version, created_by, updated_at) "
+					+ "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW()) "
+					+ "ON CONFLICT (code) DO UPDATE SET project_code = EXCLUDED.project_code, "
+					+ "source_filename = EXCLUDED.source_filename, stored_path = EXCLUDED.stored_path, "
+					+ "review_status = EXCLUDED.review_status, draft_field_schema = EXCLUDED.draft_field_schema, "
+					// 재업로드 = 양식 교체이므로 옛 field_schema·answers는 비워서 새 슬롯 기반으로 시작
+					+ "field_schema = EXCLUDED.field_schema, answers = EXCLUDED.answers, "
+					+ "reference_paths = EXCLUDED.reference_paths, "
+					+ "user_prompt = EXCLUDED.user_prompt, "
+					+ "updated_at = NOW() RETURNING id";
+			try (PreparedStatement ps = conn.prepareStatement(upsert)) {
+				ps.setString(1, code);
+				ps.setString(2, projectCode);
+				ps.setString(3, submitted);
+				ps.setString(4, relativePath);
+				ps.setString(5, "pending_review");
+				setPgJsonb(ps, 6, draftJson);
+				setPgJsonb(ps, 7, "{}");
+				setPgJsonb(ps, 8, "{}");
+				setPgJsonb(ps, 9, refMetaArr.toString());
+				ps.setString(10, userPrompt);
+				ps.setInt(11, 1);
+				ps.setString(12, userInfo.userId.trim());
+				try (ResultSet rs = ps.executeQuery()) {
+					long id = 0;
+					if (rs.next()) {
+						id = rs.getLong(1);
+					}
+					String parseStatusStr = "pending";
+					try {
+						com.fasterxml.jackson.databind.JsonNode dj = JSON_MAPPER.readTree(draftJson);
+						parseStatusStr = dj.path("parseStatus").asText("pending");
+					} catch (Exception ignore) { }
+					writeJson(resp, "{\"success\":true,\"id\":" + id + ",\"code\":\"" + escape(code) + "\",\"stored_path\":\""
+							+ escape(relativePath) + "\",\"review_status\":\"pending_review\",\"parseStatus\":\""
+							+ escape(parseStatusStr) + "\",\"references\":" + refMetaArr.size() + "}");
+				}
+			}
+		}
+	}
+
+	/**
+	 * PUT /api/fac/survey-report/user-prompt
+	 * Body: { "code": "...", "userPrompt": "..." }
+	 * 사용자 정의 LLM 프롬프트만 갱신.
+	 */
+	private void handleSurveyReportUserPromptPut(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			resp.setStatus(401);
+			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			return;
+		}
+		String body = readRequestBody(req);
+		JsonNode payload;
+		try {
+			payload = JSON_MAPPER.readTree(body == null || body.isEmpty() ? "{}" : body);
+		} catch (Exception e) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"JSON 파싱 실패\"}");
+			return;
+		}
+		String code = payload.path("code").asText("");
+		String userPrompt = payload.path("userPrompt").asText("");
+		if (code.trim().isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"code가 필요합니다.\"}");
+			return;
+		}
+		if (userPrompt.length() > 8000) userPrompt = userPrompt.substring(0, 8000);
+		String dbUrl = getServletContext().getInitParameter("DB_URL");
+		String dbUser = getServletContext().getInitParameter("DB_USER");
+		String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
+		if (dbUrl == null || dbUser == null) {
+			resp.setStatus(500);
+			writeJson(resp, "{\"success\":false,\"message\":\"DB 설정이 없습니다.\"}");
+			return;
+		}
+		Class.forName("org.postgresql.Driver");
+		try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
+			try (PreparedStatement ps = conn.prepareStatement(
+					"UPDATE public.facility_survey_report SET user_prompt = ?, updated_at = NOW() WHERE code = ?")) {
+				ps.setString(1, userPrompt);
+				ps.setString(2, code.trim());
+				int n = ps.executeUpdate();
+				if (n == 0) {
+					resp.setStatus(404);
+					writeJson(resp, "{\"success\":false,\"message\":\"해당 시설의 보고서가 없습니다. 양식을 먼저 업로드하세요.\"}");
+					return;
+				}
+			}
+			writeJson(resp, "{\"success\":true,\"len\":" + userPrompt.length() + "}");
+		}
+	}
+
+	/**
+	 * PUT /api/fac/survey-report/schema
+	 * Body: { "code", "field_schema": { ... }, "review_status": "approved" | "pending_review" }
+	 */
+	private void handleSurveyReportSchemaPut(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			resp.setStatus(401);
+			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			return;
+		}
+		String body = readRequestBody(req);
+		JsonNode root = JSON_MAPPER.readTree(body);
+		String code = root.path("code").asText(null);
+		if (code == null || code.trim().isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"code가 필요합니다.\"}");
+			return;
+		}
+		code = code.trim();
+		JsonNode schemaNode = root.get("field_schema");
+		if (schemaNode == null || schemaNode.isNull()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"field_schema가 필요합니다.\"}");
+			return;
+		}
+		String reviewStatus = root.path("review_status").asText("approved");
+		if (!"approved".equals(reviewStatus) && !"pending_review".equals(reviewStatus)) {
+			reviewStatus = "approved";
+		}
+		String schemaJson = JSON_MAPPER.writeValueAsString(schemaNode);
+
+		String dbUrl = getServletContext().getInitParameter("DB_URL");
+		String dbUser = getServletContext().getInitParameter("DB_USER");
+		String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
+		String dbViewUrl = getServletContext().getInitParameter("DB_VIEW_URL");
+		String dbViewUser = getServletContext().getInitParameter("DB_VIEW_USER");
+		String dbViewPassword = getServletContext().getInitParameter("DB_VIEW_PASSWORD");
+		if (dbUrl == null || dbUser == null) {
+			resp.setStatus(500);
+			writeJson(resp, "{\"success\":false,\"message\":\"DB 설정이 없습니다.\"}");
+			return;
+		}
+		Class.forName("org.postgresql.Driver");
+		try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
+			String pc = loadFacilityProjectCode(conn, code);
+			if (pc == null) {
+				resp.setStatus(404);
+				writeJson(resp, "{\"success\":false,\"message\":\"시설 코드를 찾을 수 없습니다.\"}");
+				return;
+			}
+			if (!canAccessFacilityProject(req, pc, dbUrl, dbUser, dbPassword, dbViewUrl, dbViewUser, dbViewPassword)) {
+				resp.setStatus(403);
+				writeJson(resp, "{\"success\":false,\"message\":\"해당 시설에 대한 권한이 없습니다.\"}");
+				return;
+			}
+			String sql = "UPDATE public.facility_survey_report SET field_schema = ?::jsonb, review_status = ?, updated_at = NOW() WHERE code = ?";
+			try (PreparedStatement ps = conn.prepareStatement(sql)) {
+				setPgJsonb(ps, 1, schemaJson);
+				ps.setString(2, reviewStatus);
+				ps.setString(3, code);
+				int n = ps.executeUpdate();
+				if (n == 0) {
+					resp.setStatus(404);
+					writeJson(resp, "{\"success\":false,\"message\":\"보고서 양식 행이 없습니다. 먼저 HWP를 업로드하세요.\"}");
+					return;
+				}
+				writeJson(resp, "{\"success\":true,\"message\":\"ok\"}");
+			}
+		}
+	}
+
+	/**
+	 * PUT /api/fac/survey-report/answers
+	 * Body: { "code", "answers": { ... } }
+	 */
+	private void handleSurveyReportAnswersPut(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			resp.setStatus(401);
+			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			return;
+		}
+		String body = readRequestBody(req);
+		JsonNode root = JSON_MAPPER.readTree(body);
+		String code = root.path("code").asText(null);
+		if (code == null || code.trim().isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"code가 필요합니다.\"}");
+			return;
+		}
+		code = code.trim();
+		JsonNode ansNode = root.get("answers");
+		if (ansNode == null || ansNode.isNull()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"answers가 필요합니다.\"}");
+			return;
+		}
+		String answersJson = JSON_MAPPER.writeValueAsString(ansNode);
+
+		String dbUrl = getServletContext().getInitParameter("DB_URL");
+		String dbUser = getServletContext().getInitParameter("DB_USER");
+		String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
+		String dbViewUrl = getServletContext().getInitParameter("DB_VIEW_URL");
+		String dbViewUser = getServletContext().getInitParameter("DB_VIEW_USER");
+		String dbViewPassword = getServletContext().getInitParameter("DB_VIEW_PASSWORD");
+		if (dbUrl == null || dbUser == null) {
+			resp.setStatus(500);
+			writeJson(resp, "{\"success\":false,\"message\":\"DB 설정이 없습니다.\"}");
+			return;
+		}
+		Class.forName("org.postgresql.Driver");
+		try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
+			String pc = loadFacilityProjectCode(conn, code);
+			if (pc == null) {
+				resp.setStatus(404);
+				writeJson(resp, "{\"success\":false,\"message\":\"시설 코드를 찾을 수 없습니다.\"}");
+				return;
+			}
+			if (!canAccessFacilityProject(req, pc, dbUrl, dbUser, dbPassword, dbViewUrl, dbViewUser, dbViewPassword)) {
+				resp.setStatus(403);
+				writeJson(resp, "{\"success\":false,\"message\":\"해당 시설에 대한 권한이 없습니다.\"}");
+				return;
+			}
+			String sql = "UPDATE public.facility_survey_report SET answers = ?::jsonb, updated_at = NOW() WHERE code = ?";
+			try (PreparedStatement ps = conn.prepareStatement(sql)) {
+				setPgJsonb(ps, 1, answersJson);
+				ps.setString(2, code);
+				int n = ps.executeUpdate();
+				if (n == 0) {
+					resp.setStatus(404);
+					writeJson(resp, "{\"success\":false,\"message\":\"보고서 양식 행이 없습니다. 먼저 HWP를 업로드하세요.\"}");
+					return;
+				}
+				writeJson(resp, "{\"success\":true,\"message\":\"ok\"}");
+			}
+		}
+	}
+
+	/**
+	 * POST /api/fac/survey-report/generate-draft
+	 * Body: { "code": "시설코드" } — draft 또는 확정 field_schema의 필드에 맞춰 LLM이 answers(JSON)를 채움.
+	 * web.xml: SURVEY_LLM_API_URL (필수), SURVEY_LLM_API_KEY, SURVEY_LLM_MODEL
+	 */
+	private void handleSurveyReportGenerateDraft(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			resp.setStatus(401);
+			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			return;
+		}
+		String body = readRequestBody(req);
+		JsonNode root = JSON_MAPPER.readTree(body);
+		String code = root.path("code").asText(null);
+		if (code == null || code.trim().isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"code가 필요합니다.\"}");
+			return;
+		}
+		code = code.trim();
+
+		String dbUrl = getServletContext().getInitParameter("DB_URL");
+		String dbUser = getServletContext().getInitParameter("DB_USER");
+		String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
+		String dbViewUrl = getServletContext().getInitParameter("DB_VIEW_URL");
+		String dbViewUser = getServletContext().getInitParameter("DB_VIEW_USER");
+		String dbViewPassword = getServletContext().getInitParameter("DB_VIEW_PASSWORD");
+		if (dbUrl == null || dbUser == null) {
+			resp.setStatus(500);
+			writeJson(resp, "{\"success\":false,\"message\":\"DB 설정이 없습니다.\"}");
+			return;
+		}
+		Class.forName("org.postgresql.Driver");
+		try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
+			String pc = loadFacilityProjectCode(conn, code);
+			if (pc == null) {
+				resp.setStatus(404);
+				writeJson(resp, "{\"success\":false,\"message\":\"시설 코드를 찾을 수 없습니다.\"}");
+				return;
+			}
+			if (!canAccessFacilityProject(req, pc, dbUrl, dbUser, dbPassword, dbViewUrl, dbViewUser, dbViewPassword)) {
+				resp.setStatus(403);
+				writeJson(resp, "{\"success\":false,\"message\":\"해당 시설에 대한 권한이 없습니다.\"}");
+				return;
+			}
+			String draftStr = null;
+			String schemaStr = null;
+			String answersStr = null;
+			String reviewStatus = null;
+			try (PreparedStatement ps = conn.prepareStatement(
+					"SELECT draft_field_schema::text, field_schema::text, answers::text, review_status "
+							+ "FROM public.facility_survey_report WHERE code = ?")) {
+				ps.setString(1, code);
+				try (ResultSet rs = ps.executeQuery()) {
+					if (!rs.next()) {
+						resp.setStatus(404);
+						writeJson(resp, "{\"success\":false,\"message\":\"조사 보고서 행이 없습니다. 먼저 HWP를 업로드하세요.\"}");
+						return;
+					}
+					draftStr = rs.getString(1);
+					schemaStr = rs.getString(2);
+					answersStr = rs.getString(3);
+					reviewStatus = rs.getString(4);
+				}
+			}
+			JsonNode draft = JSON_MAPPER.readTree(draftStr != null && !draftStr.isEmpty() ? draftStr : "{}");
+			JsonNode fieldSchema = JSON_MAPPER.readTree(schemaStr != null && !schemaStr.isEmpty() ? schemaStr : "{}");
+			JsonNode answers = JSON_MAPPER.readTree(answersStr != null && !answersStr.isEmpty() ? answersStr : "{}");
+			JsonNode fieldsNode = "approved".equals(reviewStatus) ? fieldSchema.path("fields") : draft.path("fields");
+			if (!fieldsNode.isArray() || fieldsNode.size() == 0) {
+				resp.setStatus(400);
+				writeJson(resp, "{\"success\":false,\"message\":\"생성할 필드가 없습니다. HWP 파싱을 확인하거나 양식을 확정하세요.\"}");
+				return;
+			}
+			ArrayNode fieldsArray = (ArrayNode) fieldsNode;
+			List<FacFieldVO> rows = service.listFieldItemsByCode(code);
+			try {
+				List<File> aiPhotos = loadExportPhotoFiles(conn, code);
+				System.out.println("[FacCommController] generate-draft: photos=" + aiPhotos.size());
+				// 근거자료 텍스트 컨텍스트 — LLM 시스템 프롬프트에 첨부 (실패해도 LLM은 계속 호출)
+				String refCtx = null;
+				try {
+					com.fasterxml.jackson.databind.JsonNode refPaths =
+							com.newdbfield.util.SurveyReportRefUtil.loadReferencePaths(conn, code);
+					refCtx = com.newdbfield.util.SurveyReportRefUtil.extractContext(
+							getServletContext(), refPaths, resolveSurveyHwpDir());
+					if (refCtx != null) {
+						System.out.println("[FacCommController] reference context len=" + refCtx.length());
+					}
+				} catch (Throwable refEx) {
+					System.err.println("[FacCommController] reference extract failed (continuing without): " + refEx.getMessage());
+					refEx.printStackTrace();
+					refCtx = null;
+				}
+				String userPromptDb = loadUserPrompt(conn, code);
+				if (userPromptDb != null && !userPromptDb.isEmpty()) {
+					System.out.println("[FacCommController] user_prompt len=" + userPromptDb.length());
+				}
+				String mergedJson = SurveyReportDraftLlmUtil.generateAndMergeAnswers(
+						getServletContext(), req, fieldsArray, rows, code, answers, conn, aiPhotos, refCtx, userPromptDb);
+				String sql = "UPDATE public.facility_survey_report SET answers = ?::jsonb, updated_at = NOW() WHERE code = ?";
+				try (PreparedStatement ps = conn.prepareStatement(sql)) {
+					setPgJsonb(ps, 1, mergedJson);
+					ps.setString(2, code);
+					int n = ps.executeUpdate();
+					if (n == 0) {
+						resp.setStatus(404);
+						writeJson(resp, "{\"success\":false,\"message\":\"업데이트 대상이 없습니다.\"}");
+						return;
+					}
+				}
+				writeJson(resp, "{\"success\":true,\"message\":\"초안이 저장되었습니다. 내용을 검토한 뒤 필요 시 수정하세요.\"}");
+			} catch (IllegalStateException ex) {
+				resp.setStatus(503);
+				writeJson(resp, "{\"success\":false,\"message\":\"" + escape(ex.getMessage()) + "\"}");
+			} catch (Throwable t) {
+				// 예상치 못한 예외(예: NoClassDefFoundError, POI 라이브러리 실패 등)도 잡아서 메시지 반환
+				System.err.println("[FacCommController] generate-draft FAILED: " + t.getClass().getSimpleName() + ": " + t.getMessage());
+				t.printStackTrace();
+				resp.setStatus(500);
+				writeJson(resp, "{\"success\":false,\"message\":\"" + escape(t.getClass().getSimpleName() + ": " + (t.getMessage() != null ? t.getMessage() : "unknown")) + "\"}");
+			}
 		}
 	}
 

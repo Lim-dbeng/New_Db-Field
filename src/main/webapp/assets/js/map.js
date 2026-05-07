@@ -929,13 +929,13 @@
 				params: params,
 				crossOrigin: 'anonymous'
 			}),
-				zIndex: (layerName === "fac:gis_a_layer_dbfield") ? 100 : 1000 // fac:gis_a_layer_dbfield는 Vector 레이어 아래에 표시
+				zIndex: (layerName === "fac:gis_a_layer") ? 100 : 1000 // fac:gis_a_layer는 Vector 레이어 아래에 표시
 			});
 			s.overlays[key] = layer;
 			s.map.addLayer(layer);
 			console.log("[map] Added WMS layer:", layerName, "CQL:", params.CQL_FILTER || "none");
 			// Vector 레이어 강제 업데이트 (WMS toggle 변경 시)
-			if (layerName === "fac:gis_a_layer_dbfield" && window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.refreshVectorLayer) {
+			if (layerName === "fac:gis_a_layer" && window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.refreshVectorLayer) {
 				setTimeout(function() {
 					window.NewDbField.facility.refreshVectorLayer();
 				}, 100);
@@ -945,9 +945,9 @@
 			console.log("[map] WMS layer hidden:", layerName);
 		}
 		
-		// fac:gis_a_layer_dbfield WMS 레이어 표출 여부에 따라 벡터 레이어도 표출/숨김
+		// fac:gis_a_layer WMS 레이어 표출 여부에 따라 벡터 레이어도 표출/숨김
 		// 단, visible이 true일 때만 벡터 레이어를 표시 (WMS 레이어가 켜져있을 때만 원본 레이어 표시)
-		if (layerName === "fac:gis_a_layer_dbfield") {
+		if (layerName === "fac:gis_a_layer") {
 			if (window.NewDbField && window.NewDbField.facility) {
 				if (visible && window.NewDbField.facility.setVectorLayerVisible) {
 					// WMS 레이어가 켜져있을 때만 벡터 레이어도 표시
@@ -1011,7 +1011,15 @@
 		for (var i = 0; i < features.length; i++) {
 			var f = features[i];
 			var geom = new ol.geom.Point(ol.proj.fromLonLat([f.lng, f.lat]));
-			var feature = new ol.Feature({ geometry: geom, id: f.id, title: f.title, category: f.category || "all" });
+			var feature = new ol.Feature({
+				geometry: geom,
+				id: f.id,
+				title: f.title,
+				category: f.category || "all",
+				addr: f.addr || "",
+				lat: f.lat,
+				lng: f.lng
+			});
 			feats.push(feature);
 		}
 		if (feats.length === 0) { return; }
@@ -1149,8 +1157,8 @@
 	}
 
 	function buildSpotsystemStyle(ol, typeName) {
-		// facTest 저장소의 fac:gis_a_layer_dbfield 레이어 스타일 규칙
-		if (typeName === "fac:gis_a_layer_dbfield" || typeName === "fac:gis_a_layer_local") {
+		// 워크스페이스 fac 레이어 fac:gis_a_layer 스타일 규칙
+		if (typeName === "fac:gis_a_layer" || typeName === "fac:gis_a_layer_local") {
 			// 색상은 test.field 기준: use_yn='Y' 데이터가 있으면 초록(조사 있음), 없으면 주황(조사 없음).
 			// 사진 파일 유무와 무관하게 test.field에 데이터만 있으면 초록.
 			var styleOrange = new ol.style.Style({
@@ -1206,7 +1214,7 @@
 	// expose style builder so other modules (facility.js) can reuse identical rules
 	App.mapApi.getSpotsystemStyle = function (typeName) {
 		var ol = window.ol || window.OL;
-		return buildSpotsystemStyle(ol, typeName || "fac:gis_a_layer_dbfield");
+		return buildSpotsystemStyle(ol, typeName || "fac:gis_a_layer");
 	};
 	function updateCoord(lng, lat) {
 		var el = document.getElementById("coordDisplay");

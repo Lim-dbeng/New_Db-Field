@@ -18,6 +18,8 @@
 	var shpFeatureInfoMapRef = null;
 	var shpFeatureInfoOverlay = null;
 	var shpFeatureInfoCtx = null;
+	var shpFeaturePropSaveTimers = {}; // { "layer|fx|fy|key": timerId }
+	var shpMoveCopyCtx = null; // { layer, map, ol, refGeo, previewLayer, previewSource, translateInteraction, moved, originalMapLayer, originalVisible }
 	
 	// Geometry 편집 관련 변수
 	var editingLayerIdx = null;
@@ -91,6 +93,57 @@
 		try {
 			localStorage.setItem(SHP_FEATURE_PROP_OVERRIDES_KEY, JSON.stringify(map || {}));
 		} catch (e) {}
+	}
+
+	function getLayerIdxByLayerKey(layerKey) {
+		for (var i = 0; i < shpLayers.length; i++) {
+			var lk = shpLayers[i].layerKey != null ? shpLayers[i].layerKey : shpLayers[i].idx;
+			if (String(lk) === String(layerKey)) return shpLayers[i].idx;
+		}
+		return layerKey;
+	}
+
+	function parseFeatureCoord(v) {
+		if (v == null) return null;
+		var n = Number(v);
+		return isFinite(n) ? n : null;
+	}
+
+	function schedulePersistFeatureProperty(layerIdx, baseProps, propKey, propValue) {
+		var fx = parseFeatureCoord(baseProps && baseProps.feature_x);
+		var fy = parseFeatureCoord(baseProps && baseProps.feature_y);
+		if (fx == null || fy == null || !layerIdx || !propKey) return;
+		var saveKey = [String(layerIdx), fx.toFixed(12), fy.toFixed(12), String(propKey)].join("|");
+		if (shpFeaturePropSaveTimers[saveKey]) clearTimeout(shpFeaturePropSaveTimers[saveKey]);
+		shpFeaturePropSaveTimers[saveKey] = setTimeout(function() {
+			delete shpFeaturePropSaveTimers[saveKey];
+			fetch("/api/shp/updateFeatureProperty", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				credentials: "include",
+				body: JSON.stringify({
+					idx: layerIdx,
+					featureX: fx,
+					featureY: fy,
+					propertyKey: propKey,
+					propertyValue: (propValue == null ? "" : String(propValue))
+				})
+			})
+				.then(function(res) { return res.text().then(function(t) { return { ok: res.ok, status: res.status, text: t }; }); })
+				.then(function(r) {
+					if (!r.ok) {
+						try {
+							var j = JSON.parse(r.text || "{}");
+							console.warn("[shp-panel][feature-popup] 서버 저장 실패:", r.status, j.message || j);
+						} catch (e) {
+							console.warn("[shp-panel][feature-popup] 서버 저장 실패:", r.status, (r.text || "").slice(0, 120));
+						}
+					}
+				})
+				.catch(function(err) {
+					console.warn("[shp-panel][feature-popup] 서버 저장 오류:", err && err.message ? err.message : err);
+				});
+		}, 400);
 	}
 
 	function loadLayerFeatureTableOverridesMap() {
@@ -607,6 +660,8 @@
 				all[String(shpFeatureInfoCtx.layerKey)] = layerMap;
 				saveFeaturePropOverridesMap(all);
 			}
+			var layerIdx = getLayerIdxByLayerKey(shpFeatureInfoCtx.layerKey);
+			schedulePersistFeatureProperty(layerIdx, shpFeatureInfoCtx.originalProps || {}, key, nextVal);
 			if (shpFeatureInfoCtx.mapLayer && shpFeatureInfoCtx.mapLayer.changed) shpFeatureInfoCtx.mapLayer.changed();
 		});
 		return shpFeatureInfoOverlay;
@@ -1263,6 +1318,18 @@
 			});
 			actions.appendChild(downloadBtn);
 
+			// 좌표 이동(복제) - 원본은 그대로 두고, 이동된 GeoJSON을 새 레이어로 저장
+			if (isOwner && !layer.freeLayer) {
+				var moveBtn = document.createElement("button");
+				moveBtn.className = "shp-layer-item-action-btn";
+				moveBtn.title = "좌표 이동(복제)";
+				moveBtn.innerHTML = '<iconify-icon icon="tabler:arrows-move"></iconify-icon>';
+				moveBtn.addEventListener("click", function () {
+					startMoveCopyLayer(layer);
+				});
+				actions.appendChild(moveBtn);
+			}
+
 			if (isOwner) {
 				var deleteBtn = document.createElement("button");
 				deleteBtn.className = "shp-layer-item-action-btn";
@@ -1290,6 +1357,262 @@
 		if (visibleCount > 0 && listContainer.children.length === 0) {
 			console.error("[shp-panel] WARNING: Items were created but not appended to container!");
 		}
+	}
+
+	function ensureMoveCopyControls() {
+		var el = document.getElementById("shpMoveCopyControls");
+		if (el) return el;
+		el = document.createElement("div");
+		el.id = "shpMoveCopyControls";
+		el.style.cssText = "position:fixed;right:20px;bottom:24px;z-index:99999;display:none;gap:8px;align-items:center;background:#0f172a;color:#fff;padding:10px 12px;border-radius:10px;box-shadow:0 10px 22px rgba(0,0,0,.25);";
+		el.innerHTML = '' +
+			'<div style="font-size:12px;opacity:.9;margin-right:8px;">레이어 이동(복제) 모드</div>' +
+			'<button type="button" id="shpMoveCopyConfirm" style="border:none;background:#22c55e;color:#fff;font-size:12px;padding:7px 10px;border-radius:8px;cursor:pointer;">저장</button>' +
+			'<button type="button" id="shpMoveCopyCancel" style="border:none;background:#334155;color:#fff;font-size:12px;padding:7px 10px;border-radius:8px;cursor:pointer;">취소</button>';
+		document.body.appendChild(el);
+		var c = document.getElementById("shpMoveCopyConfirm");
+		var x = document.getElementById("shpMoveCopyCancel");
+		if (c) c.addEventListener("click", function() { confirmMoveCopyLayer(); });
+		if (x) x.addEventListener("click", function() { cancelMoveCopyLayer(); });
+		return el;
+	}
+
+	function showMoveCopyControls(show) {
+		var el = ensureMoveCopyControls();
+		if (!el) return;
+		el.style.display = show ? "flex" : "none";
+	}
+
+	function stopMoveCopyMode(options) {
+		if (!shpMoveCopyCtx) return;
+		options = options || {};
+		var restoreOriginal = (typeof options.restoreOriginal === "boolean") ? options.restoreOriginal : true;
+		var ctx = shpMoveCopyCtx;
+		shpMoveCopyCtx = null;
+		try {
+			if (ctx.map && ctx.translateInteraction) ctx.map.removeInteraction(ctx.translateInteraction);
+		} catch (e) { /* ignore */ }
+		try {
+			if (ctx.map && ctx.previewLayer) ctx.map.removeLayer(ctx.previewLayer);
+		} catch (e2) { /* ignore */ }
+		try {
+			if (restoreOriginal && ctx.originalMapLayer && typeof ctx.originalVisible === "boolean") {
+				ctx.originalMapLayer.setVisible(ctx.originalVisible);
+				if (ctx.originalMapLayer.changed) ctx.originalMapLayer.changed();
+			}
+		} catch (e3) { /* ignore */ }
+		showMoveCopyControls(false);
+	}
+
+	function cancelMoveCopyLayer() {
+		stopMoveCopyMode({ restoreOriginal: true });
+	}
+
+	function startMoveCopyLayer(layer) {
+		var map = getOlMap();
+		var ol = window.ol || window.OL;
+		if (!map || !ol) {
+			alert("지도가 준비되지 않았습니다.");
+			return;
+		}
+		if (editingLayerIdx != null) {
+			alert("현재 모양 편집 중입니다. 편집을 종료한 뒤 시도해주세요.");
+			return;
+		}
+		if (shpMoveCopyCtx) {
+			if (!confirm("다른 레이어 이동(복제)이 진행 중입니다. 취소하고 새로 시작할까요?")) return;
+			stopMoveCopyMode();
+		}
+
+		showMoveCopyControls(true);
+		var layerIdx = layer && layer.idx;
+		if (!layerIdx) {
+			alert("레이어 idx를 찾을 수 없습니다.");
+			showMoveCopyControls(false);
+			return;
+		}
+		var fcUrl = "/api/shp/featureCollection?idx=" + encodeURIComponent(layerIdx);
+		fetch(fcUrl, { credentials: "include" })
+			.then(function(res) { return res.text().then(function(t) { return { ok: res.ok, status: res.status, text: t }; }); })
+			.then(function(r) {
+				if (!r.ok) {
+					var msg = "원본 GeoJSON 로드 실패 (HTTP " + r.status + ")";
+					try {
+						var j = JSON.parse(r.text || "{}");
+						if (j && j.message) msg += ": " + j.message;
+					} catch (e) { /* ignore */ }
+					throw new Error(msg);
+				}
+				var geo = JSON.parse(r.text || "{}");
+				if (!geo || geo.type !== "FeatureCollection" || !Array.isArray(geo.features) || !geo.features.length) {
+					throw new Error("FeatureCollection이 비어 있습니다.");
+				}
+
+				// preview features: 4326 -> 3857
+				var fmt = new ol.format.GeoJSON();
+				var feats3857 = fmt.readFeatures(geo, { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" }) || [];
+				if (!feats3857.length) throw new Error("피처를 읽을 수 없습니다.");
+
+				var previewSource = new ol.source.Vector({ features: feats3857 });
+				var color = (layerStates[layer.idx] && layerStates[layer.idx].color) ? layerStates[layer.idx].color : (layer.color || "#3b82f6");
+				var previewLayer = new ol.layer.Vector({
+					source: previewSource,
+					style: function(feature) {
+						var g = feature.getGeometry ? feature.getGeometry() : null;
+						var gt = g ? g.getType() : null;
+						if (gt === "LineString" || gt === "MultiLineString") {
+							return new ol.style.Style({
+								stroke: new ol.style.Stroke({ color: hexToRgba(color, 0.85), width: 4 })
+							});
+						}
+						return new ol.style.Style({
+							stroke: new ol.style.Stroke({ color: hexToRgba(color, 0.85), width: 3 }),
+							fill: new ol.style.Fill({ color: hexToRgba(color, 0.20) })
+						});
+					},
+					zIndex: 999999
+				});
+				previewLayer.set("shpLayerId", "move_preview_" + layerIdx);
+				map.addLayer(previewLayer);
+
+				// 이동 중에는 원본 레이어를 잠시 숨겨서 헷갈리지 않게 한다.
+				var originalMapLayer = map.getLayers().getArray().find(function(l) {
+					return l && l.get && l.get("shpLayerId") === (layer.layerKey != null ? layer.layerKey : layer.idx);
+				});
+				var originalVisible = null;
+				if (originalMapLayer && typeof originalMapLayer.getVisible === "function") {
+					originalVisible = originalMapLayer.getVisible();
+					originalMapLayer.setVisible(false);
+					if (originalMapLayer.changed) originalMapLayer.changed();
+				}
+
+				// translate interaction: drag to move all preview features
+				var collection = new ol.Collection(feats3857);
+				var translate = new ol.interaction.Translate({ features: collection });
+				translate.on("translatestart", function() {
+					if (window.SHP_FEATURE_POPUP_DEBUG) console.log("[shp-move] translatestart");
+				});
+				translate.on("translateend", function(ev) {
+					if (!shpMoveCopyCtx) return;
+					shpMoveCopyCtx.moved = true;
+					if (window.SHP_FEATURE_POPUP_DEBUG) {
+						console.log("[shp-move] translateend", ev && ev.coordinate ? ev.coordinate : "");
+					}
+				});
+				map.addInteraction(translate);
+
+				shpMoveCopyCtx = {
+					layer: layer,
+					map: map,
+					ol: ol,
+					refGeo: geo,
+					previewLayer: previewLayer,
+					previewSource: previewSource,
+					translateInteraction: translate,
+					moved: false,
+					originalMapLayer: originalMapLayer,
+					originalVisible: originalVisible
+				};
+
+				alert("이동(복제) 모드입니다.\n- 파란 미리보기 레이어를 드래그해서 옮기세요.\n- 우측 하단 [저장]을 누르면 새 레이어로 저장됩니다.\n- [취소]하면 원상복구됩니다.");
+			})
+			.catch(function(err) {
+				console.error("[shp-panel] move copy start failed:", err);
+				alert(err && err.message ? err.message : "이동(복제) 시작 실패");
+				stopMoveCopyMode();
+			});
+	}
+
+	function confirmMoveCopyLayer() {
+		if (!shpMoveCopyCtx) return;
+		var ctx = shpMoveCopyCtx;
+		var map = ctx.map;
+		var ol = ctx.ol;
+		var layer = ctx.layer;
+		if (!map || !ol || !layer) {
+			stopMoveCopyMode();
+			return;
+		}
+		if (!ctx.previewSource) {
+			alert("미리보기 레이어가 없습니다.");
+			return;
+		}
+		var feats = ctx.previewSource.getFeatures ? ctx.previewSource.getFeatures() : [];
+		if (!feats.length) {
+			alert("저장할 피처가 없습니다.");
+			return;
+		}
+
+		// export moved features back to 4326, keep properties
+		var fmt = new ol.format.GeoJSON();
+		var cloned = feats.map(function(f) {
+			var nf = f.clone();
+			var g = nf.getGeometry ? nf.getGeometry() : null;
+			if (g && typeof g.transform === "function") {
+				g.transform("EPSG:3857", "EPSG:4326");
+			}
+			return nf;
+		});
+		var fcObj = fmt.writeFeaturesObject(cloned, { dataProjection: "EPSG:4326", featureProjection: "EPSG:4326" });
+		var movedGeoJson = JSON.stringify(fcObj);
+
+		// generate new filename
+		var base = (layer.fileName || "layer").replace(/\.(geojson|json|zip|dxf|dwg|dgn)$/i, "");
+		var stamp = (new Date()).toISOString().replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "_");
+		var newFileName = base + "_moved_" + stamp + ".geojson";
+
+		var projectCode = layer.projectCode || (window.ProjectFilter && window.ProjectFilter.getCurrentFilter ? window.ProjectFilter.getCurrentFilter() : "");
+		if (!projectCode) {
+			alert("projectCode를 찾을 수 없습니다. 프로젝트를 선택한 뒤 다시 시도해주세요.");
+			return;
+		}
+		var color = (layerStates[layer.idx] && layerStates[layer.idx].color) ? layerStates[layer.idx].color : (layer.color || "#00b7a5");
+
+		// disable confirm button briefly
+		var controls = ensureMoveCopyControls();
+		var btn = document.getElementById("shpMoveCopyConfirm");
+		if (btn) { btn.disabled = true; btn.textContent = "저장 중..."; }
+
+		fetch("/api/shp/draw", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			credentials: "include",
+			body: JSON.stringify({
+				geoJson: movedGeoJson,
+				fileName: newFileName,
+				projectCode: projectCode,
+				color: color
+			})
+		})
+			.then(function(res) { return res.text().then(function(t) { return { ok: res.ok, status: res.status, text: t }; }); })
+			.then(function(r) {
+				if (!r.ok) {
+					try {
+						var j = JSON.parse(r.text || "{}");
+						throw new Error(j.message || ("저장 실패 (HTTP " + r.status + ")"));
+					} catch (e) {
+						throw new Error("저장 실패 (HTTP " + r.status + ")");
+					}
+				}
+				var j2 = JSON.parse(r.text || "{}");
+				if (!j2 || !j2.success) throw new Error((j2 && j2.message) ? j2.message : "저장 실패");
+				alert("이동(복제) 저장 완료");
+				// 저장 성공 시에는 원본을 계속 숨김 상태로 유지(체크도 해제)
+				stopMoveCopyMode({ restoreOriginal: false });
+				var originalKey = layer.layerKey != null ? layer.layerKey : layer.idx;
+				if (layerStates[originalKey]) {
+					layerStates[originalKey].visible = false;
+				}
+				toggleLayer(originalKey, false);
+				loadShpLayers();
+			})
+			.catch(function(err) {
+				console.error("[shp-panel] move copy save failed:", err);
+				alert(err && err.message ? err.message : "저장 실패");
+			})
+			.finally(function() {
+				if (btn) { btn.disabled = false; btn.textContent = "저장"; }
+			});
 	}
 
 	/**
@@ -1707,7 +2030,8 @@
 					fill: new ol.style.Fill({ color: hexToRgba(currentColor, 0.2) })
 				});
 			},
-			zIndex: 10000 + (typeof layer.idx === "number" ? layer.idx : 0),
+			// Below facility markers (11000+); cap idx so z stays under 11000
+			zIndex: 6000 + Math.min(Math.max(0, typeof layer.idx === "number" ? layer.idx : 0), 4999),
 			updateWhileAnimating: true,
 			updateWhileInteracting: true,
 			visible: false

@@ -48,33 +48,16 @@ public class PermissionChecker {
             return true; // Super User는 모든 프로젝트 접근 가능
         }
         
-        // 프로젝트 멤버십 확인 (project_members 또는 pr_participant)
+        // 프로젝트 멤버십 확인 (project_members)
         return isProjectMember(projectCode);
     }
     
     /**
-     * 프로젝트 멤버 여부 확인
-     * project_members 테이블을 우선 확인하고, 없으면 pr_participant 테이블 확인
+     * 프로젝트 멤버 여부 확인 (project_members 기준)
      */
     public boolean isProjectMember(String projectCode) {
-        // 1. project_members 테이블 확인
-        String sql = "SELECT COUNT(*) FROM test.project_members " +
+        String sql = "SELECT COUNT(*) FROM public.project_members " +
                      "WHERE project_code = ? AND user_id = ? AND status = 'ACTIVE'";
-        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, projectCode);
-            pstmt.setString(2, userId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next() && rs.getInt(1) > 0) {
-                    return true;
-                }
-            }
-        } catch (SQLException e) {
-            // 테이블이 없을 수 있으므로 무시하고 다음 확인
-        }
-        
-        // 2. pr_participant 테이블 확인 (기존 테이블)
-        sql = "SELECT COUNT(*) FROM test.pr_participant " +
-              "WHERE project_code = ? AND participant_id = ? AND use_yn = 'Y'";
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, projectCode);
             pstmt.setString(2, userId);
@@ -97,24 +80,9 @@ public class PermissionChecker {
             return "OWNER"; // Super User는 모든 프로젝트에서 OWNER 권한
         }
         
-        // 1. project_members 테이블 확인
-        String sql = "SELECT role FROM test.project_members " +
+        // project_members 테이블 확인
+        String sql = "SELECT role FROM public.project_members " +
                      "WHERE project_code = ? AND user_id = ? AND status = 'ACTIVE'";
-        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, projectCode);
-            pstmt.setString(2, userId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getString("role");
-                }
-            }
-        } catch (SQLException e) {
-            // 테이블이 없을 수 있으므로 무시하고 다음 확인
-        }
-        
-        // 2. pr_participant 테이블 확인 (기존 테이블)
-        sql = "SELECT role FROM test.pr_participant " +
-              "WHERE project_code = ? AND participant_id = ? AND use_yn = 'Y'";
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, projectCode);
             pstmt.setString(2, userId);

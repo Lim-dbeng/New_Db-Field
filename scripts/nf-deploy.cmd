@@ -35,5 +35,14 @@ if exist "%MAT_ASSETS_SRC%" (
 
 REM Remove legacy deployment folder if present to avoid duplicate context
 if exist "%TOMCAT_DIR%\webapps\New_Db-Field" rmdir /s /q "%TOMCAT_DIR%\webapps\New_Db-Field"
+
+REM 클래스 reload 트리거 — web.xml의 mtime을 갱신하면 Tomcat이 컨텍스트 재시작 (JVM은 안 죽음)
+REM context.xml에 reloadable="true"가 있어야 함
+set "WEB_XML=%APP_DEST%\WEB-INF\web.xml"
+if exist "%WEB_XML%" (
+    powershell -NoProfile -Command "$f=Get-Item '%WEB_XML%'; $f.LastWriteTime=Get-Date" >nul 2>nul
+    echo Touched web.xml ^- Tomcat will reload context within ~10 seconds ^(no JVM restart^)^.
+)
+
 echo Deploy completed.
 exit /b 0

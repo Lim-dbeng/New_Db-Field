@@ -811,7 +811,30 @@
 		var container = document.getElementById("projectRequestListContent");
 		if (!container) return;
 		pendingCountByProject = pendingCountByProject || {};
-		
+
+		function pendingCountForProject(project) {
+			var code = (project.code || project.projectCode || "").trim();
+			if (!code) return 0;
+			var n = pendingCountByProject[code];
+			if (n != null) return n;
+			n = pendingCountByProject[code.toUpperCase()];
+			if (n != null) return n;
+			n = pendingCountByProject[code.toLowerCase()];
+			return n != null ? n : 0;
+		}
+
+		// 승인 대기가 있는 프로젝트를 위로 (같은 그룹 내에서는 대기 건수 많은 순 → 코드 순)
+		var sortedProjects = projects.slice().sort(function(a, b) {
+			var ca = pendingCountForProject(a);
+			var cb = pendingCountForProject(b);
+			if (ca > 0 && cb === 0) return -1;
+			if (ca === 0 && cb > 0) return 1;
+			if (ca !== cb) return cb - ca;
+			var codeA = (a.code || a.projectCode || "").trim();
+			var codeB = (b.code || b.projectCode || "").trim();
+			return codeA.localeCompare(codeB);
+		});
+
 		var html = '<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
 		html += '<thead><tr style="background: #f9fafb; border-bottom: 2px solid #e5e7eb;">';
 		html += '<th style="padding: 10px 8px; text-align: left; font-weight: 600; color: #374151; white-space: nowrap; width: 120px;">프로젝트 코드</th>';
@@ -820,10 +843,10 @@
 		html += '</tr></thead>';
 		html += '<tbody>';
 		
-		projects.forEach(function(project) {
+		sortedProjects.forEach(function(project) {
 			var code = (project.code || project.projectCode || "").trim();
 			var name = (project.name || "").trim();
-			var pendingCount = pendingCountByProject[code] || (code ? (pendingCountByProject[code.toUpperCase()] || pendingCountByProject[code.toLowerCase()]) : null) || 0;
+			var pendingCount = pendingCountForProject(project);
 			var editable = isMyManagedProjectEditable(project);
 			html += '<tr class="project-managed-row" style="border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.2s;" ';
 			html += 'data-code="' + escapeHtml(code) + '" data-name="' + escapeHtml(name) + '" data-can-manage="' + (editable ? "1" : "0") + '" ';

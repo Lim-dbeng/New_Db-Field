@@ -28,6 +28,9 @@
 	boolean isAdminMode = (userAuthority == 1);
 	
 	String googleKey = getServletContext().getInitParameter("GOOGLE_MAPS_API_KEY");
+	if (googleKey == null || googleKey.trim().isEmpty()) {
+		googleKey = System.getenv("GOOGLE_MAPS_API_KEY");
+	}
 	String vworldKey = getServletContext().getInitParameter("VWORLD_API_KEY");
 	String geoserverWms = getServletContext().getInitParameter("GEOSERVER_WMS_URL");
 	String defaultCenter = getServletContext().getInitParameter("DEFAULT_CENTER");
@@ -43,10 +46,10 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>New_Db-Field</title>
 	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/styles.css?v=1">
-	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/custom.css?v=26">
+	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/custom.css?v=43">
 	<!-- OpenLayers CSS will be injected dynamically when needed -->
 </head>
-<body class="<%= isAdminMode ? "admin-mode" : "" %>">
+<body class="<%= isAdminMode ? "admin-mode" : "" %>" data-context-path="<%=request.getContextPath()%>">
 	<div id="config"
 	     data-google-key="<%=googleKey%>"
 	     data-vworld-key="<%=vworldKey%>"
@@ -68,6 +71,10 @@
 				<button type="button" class="menu-item" id="menuFacilityInfo" title="시설물 정보표출">
 					<iconify-icon icon="tabler:info-circle"></iconify-icon>
 					<span>시설물 정보</span>
+				</button>
+				<button type="button" class="menu-item" id="menuRoute" title="길찾기">
+					<iconify-icon icon="tabler:route-2"></iconify-icon>
+					<span>길찾기</span>
 				</button>
 				<button type="button" class="menu-item" id="menuFacility" title="시설물 추가">
 					<iconify-icon icon="tabler:map-pin-plus"></iconify-icon>
@@ -172,7 +179,12 @@
 
 사용 중 불편사항이나 개선 의견이 있으시면 적극적인 피드백 부탁드립니다.
 
-감사합니다.</div>
+감사합니다.
+
+26.04.02
+ - 다운로드 파일 및 QR코드 수정
+ - 새로운 QR코드로 재다운로드 권장
+</div>
 				<div style="margin-top:24px; display:flex; flex-direction:column; gap:10px;">
 					<label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#64748b; cursor:pointer;">
 						<input type="checkbox" id="noticeTestDontShowToday">
@@ -633,6 +645,50 @@
 					<div id="facSearchPagination" class="fac-search-pagination mt-3"></div>
 				</div>
 			</section>
+
+			<section id="routeSection" class="panel route-section" style="display:none;">
+				<div class="fac-search-header">
+					<h3>길찾기</h3>
+					<button type="button" class="btn btn-sm btn-outline-secondary" id="routeCloseBtn">닫기</button>
+				</div>
+				<div class="route-panel-body mt-3">
+					<div class="route-mode-tabs" role="tablist" aria-label="길찾기 이동수단">
+						<button type="button" class="route-mode-tab active" id="routeTabDriving" data-mode="driving">자동차</button>
+						<button type="button" class="route-mode-tab" id="routeTabWalking" data-mode="walking">도보</button>
+					</div>
+
+					<div class="route-input-box mt-2">
+						<div class="route-input-row" id="routeOriginRow">
+							<div class="route-input-label">출발지</div>
+							<input type="text" id="routeOriginInput" class="form-control form-control-sm route-input" placeholder="출발지를 입력하거나 지도/마커에서 선택" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" name="route_origin_no_autofill">
+							<button type="button" class="btn btn-sm btn-outline-primary route-pick-btn" id="routePickOriginBtn">지도 선택</button>
+						</div>
+						<div id="routeOriginSuggest" class="route-suggest-list" style="display:none;"></div>
+						<div class="route-input-row" id="routeDestRow">
+							<div class="route-input-label">도착지</div>
+							<input type="text" id="routeDestInput" class="form-control form-control-sm route-input" placeholder="도착지를 입력하거나 지도/마커에서 선택" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" name="route_dest_no_autofill">
+							<button type="button" class="btn btn-sm btn-outline-primary route-pick-btn" id="routePickDestBtn">지도 선택</button>
+						</div>
+						<div id="routeDestSuggest" class="route-suggest-list" style="display:none;"></div>
+						<button type="button" class="route-swap-btn" id="routeSwapBtn" title="출발지/도착지 바꾸기">⇅</button>
+					</div>
+
+					<div class="route-action-row mt-2">
+						<button type="button" class="btn btn-sm btn-outline-secondary" id="routeClearBtn">다시입력</button>
+						<button type="button" class="btn btn-sm btn-primary" id="routeRunBtn">길찾기</button>
+					</div>
+					<div id="routePanelSummary" class="route-panel-summary mt-2" style="display:none;"></div>
+
+					<select id="routeModeSelect" class="form-select form-select-sm" style="display:none;">
+						<option value="driving" selected>자동차</option>
+						<option value="walking">도보</option>
+					</select>
+
+					<div id="routeSectionHint" class="route-section-hint mt-2" style="display:none;"></div>
+					<div id="routeAltList" class="route-alt-list mt-2" style="display:none;"></div>
+					<div id="routeRecentList" class="route-recent-list mt-2"></div>
+				</div>
+			</section>
 			
 			<!-- 시설물 추가 섹션 (처음에는 숨김) -->
 			<section id="facAddSection" class="panel fac-add-section" style="display:none;">
@@ -645,6 +701,15 @@
 					<select id="projectCode" class="form-select form-select-sm">
 						<option value="">사업번호를 선택하세요</option>
 					</select>
+				</div>
+				<div class="mt-3 fac-import-points-wrap">
+					<div class="form-label small mb-1">좌표 파일 일괄 추가</div>
+					<input type="file" id="facImportPointsFile" class="fac-import-points-file-hidden" tabindex="-1" aria-label="좌표 파일 선택" accept=".zip,.geojson,.json,.dxf,.xlsx,.xls,application/zip,application/json,application/dxf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+					<label for="facImportPointsFile" class="btn btn-sm w-100 fac-import-file-btn mb-2">
+						<iconify-icon icon="tabler:file-upload"></iconify-icon>
+						좌표 파일 선택 (ZIP·GeoJSON·DXF·Excel)
+					</label>
+					<p class="text-muted small mt-1 mb-0">SHP(zip), GeoJSON, DXF(POINT), 엑셀(1행 헤더: 경도·위도 또는 lon·lat 등)</p>
 				</div>
 				<div class="mt-3" id="facAddPointHint">
 					<p class="text-muted small">지도에서 포인트를 클릭하여 시설물을 추가하세요.</p>
@@ -719,6 +784,19 @@
 						<button type="button" class="btn btn-sm btn-outline-secondary" id="detailDownloadAllBtn">
 							<iconify-icon icon="tabler:download"></iconify-icon> 사진 전체 다운로드
 						</button>
+					</div>
+					<div id="facSurveyReportPanel" class="fac-survey-report-panel mt-3" style="display:none;">
+						<div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+							<div class="fac-survey-report-intro flex-grow-1 min-w-0">
+								<h4 class="fac-survey-report-title mb-1">조사 보고서 양식 (HWP)</h4>
+								<p class="fac-survey-report-hint small text-muted mb-0">HWP 업로드 → kordoc 초안 → AI 초안 생성 → HWPX 다운로드</p>
+							</div>
+							<button type="button" id="facSurveyReportOpenBtn" class="btn btn-sm btn-primary fac-survey-report-open-btn flex-shrink-0 text-nowrap">
+								<iconify-icon icon="tabler:file-text"></iconify-icon> 보고서 양식 관리
+							</button>
+						</div>
+						<p id="facSurveyReportSummary" class="fac-survey-report-summary small text-muted mb-0 mt-2"></p>
+						<div id="facSurveyReportBody" style="display:none;"></div>
 					</div>
 					<div id="facDetailGroups" class="fac-groups-list mt-2"></div>
 				</div>
@@ -924,8 +1002,14 @@
 				<div class="point-popup-image">
 					<img id="pointPopupImage" src="" alt="시설물 사진">
 				</div>
+				<div id="pointPopupMeta" class="point-popup-meta" style="display:none;"></div>
 				<div class="point-popup-footer">
 					<span id="pointPopupCode">-</span>
+					<div class="point-popup-route-actions" onclick="event.stopPropagation();">
+						<button type="button" class="btn btn-sm btn-outline-primary" id="pointPopupSetOriginBtn">출발지 설정</button>
+						<button type="button" class="btn btn-sm btn-outline-primary" id="pointPopupSetDestBtn">도착지 설정</button>
+					</div>
+					<div id="pointPopupRouteSummary" class="point-popup-route-summary" style="display:none;"></div>
 				</div>
 			</div>
 			
@@ -1002,7 +1086,7 @@
 			<div class="nv-type nv-maptype-item" data-type="vworld" title="브이월드 위성" style="background-image:url('<%=request.getContextPath()%>/assets/images/satellite.png');"><span>vworld</span></div>
 			<div class="nv-type nv-maptype-item" data-type="hybrid" title="하이브리드" style="background-image:url('<%=request.getContextPath()%>/assets/images/satellite.png');"><span>하이브리드</span></div>
 		</div>
-		<!-- SHP 목록 버튼: 지도 선택 펼침 시에만 이동, 메뉴바는 고정 -->
+		<!-- SHP 목록 버튼: 메뉴바 왼쪽 고정 -->
 		<div class="shp-panel-toggle-wrap">
 			<button type="button" class="shp-panel-toggle-btn nv-toolbar-shp" id="shpPanelToggle" title="SHP 레이어 목록">
 				<iconify-icon icon="gala:layer" class="shp-panel-toggle-icon"></iconify-icon>
@@ -1018,6 +1102,10 @@
 					<div class="nv-type" data-type="hybrid" title="하이브리드" style="background-image:url('<%=request.getContextPath()%>/assets/images/satellite.png');"><span>하이브리드</span></div>
 				</div>
 				<div class="nv-actions">
+					<div class="nv-btn" id="nv-photo-gps" title="사진 촬영 위치 표시 (EXIF GPS)">
+						<iconify-icon icon="tabler:photo-pin" width="24" height="24"></iconify-icon>
+					</div>
+					<div class="nv-sep"></div>
 					<div class="nv-btn nv-btn-dropdown nv-maptype-wrap" id="nv-maptype-btn" title="지도 종류">
 						<iconify-icon icon="tabler:layers-subtract" width="24" height="24"></iconify-icon>
 					</div>
@@ -1075,6 +1163,27 @@
 			</div>
 			
 			<!-- 시설물 추가 모달 -->
+			<!-- 조사 보고서 양식 관리 모달 -->
+			<div id="modalSurveyReport" class="modal fade fac-survey-report-modal" tabindex="-1" role="dialog" aria-labelledby="modalSurveyReportTitle" aria-hidden="true">
+				<div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered" role="document">
+					<div class="modal-content fac-survey-report-modal-shell">
+						<div class="modal-header fac-survey-report-modal-header">
+							<div class="flex-grow-1 min-w-0 pe-2">
+								<h5 class="modal-title" id="modalSurveyReportTitle">조사 보고서 양식 관리</h5>
+								<p class="fac-survey-report-modal-sub mb-0">양식 업로드 · 검수 · 입력값 저장 · HWPX 초안</p>
+							</div>
+							<button type="button" class="btn-close fac-survey-report-modal-close" id="modalSurveyReportCloseBtn" aria-label="닫기"></button>
+						</div>
+						<div class="modal-body fac-survey-report-modal-body">
+							<div id="facSurveyReportModalBody" class="fac-survey-report-modal-root"></div>
+						</div>
+						<div class="modal-footer fac-survey-report-modal-footer">
+							<button type="button" class="btn btn-secondary" id="modalSurveyReportFooterClose">닫기</button>
+						</div>
+					</div>
+				</div>
+			</div>
+
 			<div id="modalAddFac" class="modal fade" tabindex="-1" role="dialog">
 				<div class="modal-dialog modal-lg" role="document">
 					<div class="modal-content">
@@ -1121,22 +1230,23 @@
 	<script src="<%=request.getContextPath()%>/assets/js/project-management.js?v=5"></script>
 
 	<script src="<%=request.getContextPath()%>/assets/js/app.js?v=2"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/map.js?v=2"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/wms-presets.js?v=1"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/ui.js?v=2"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/map.js?v=4"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/wms-presets.js?v=2"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/ui.js?v=6"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/list.js?v=2"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/facility.js?v=15"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/project-filter.js?v=3"></script>
+	<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js" crossorigin="anonymous"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility.js?v=61"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/project-filter.js?v=4"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/facility-search.js?v=3"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/project-list.js?v=7"></script>
 	<!-- JSZip, shpjs: SHP/ZIP → GeoJSON 변환 (브라우저) -->
 	<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/shpjs@3.5.0/dist/shp.min.js"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/shp-upload.js?v=10"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/shp-layer.js?v=1"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/shp-upload.js?v=11"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/shp-layer.js?v=2"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/shp-draw.js?v=1"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/shp-center.js?v=1"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/shp-panel.js?v=4"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/shp-panel.js?v=6"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/map-measure.js?v=1"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/map-capture.js?v=1"></script>
 

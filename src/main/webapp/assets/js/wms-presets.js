@@ -22,7 +22,7 @@ window.NewDbField.WMS_PRESETS = {
 };
 
 window.NewDbField.defaultWmsLayers = [
-	{ name: "fac:gis_a_layer_dbfield", title: "시설물 조사 레이어" },
+	{ name: "fac:gis_a_layer", title: "시설물 조사 레이어" },
 	{ name: "fac:shp_layer", title: "SHP 레이어" }
 ];
 

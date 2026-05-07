@@ -54,7 +54,7 @@ public class ProjectController extends HttpServlet {
 			} else if ("/requests".equals(pathInfo)) {
 				handleGetPermissionRequests(req, resp); // 프로젝트 관리자가 관리하는 프로젝트의 권한 요청 목록 조회
 			} else if ("/members".equals(pathInfo)) {
-				handleGetProjectMembers(req, resp); // test.project_members(PM 승인 인원) 목록 조회
+				handleGetProjectMembers(req, resp); // public.project_members(PM 승인 인원) 목록 조회
 			} else if ("/dept-members".equals(pathInfo)) {
 				handleGetDeptMembers(req, resp); // 부서 인원 목록 조회
 			} else if ("/all-members".equals(pathInfo)) {
@@ -163,7 +163,7 @@ public class ProjectController extends HttpServlet {
 
 	/**
 	 * 프로젝트 목록 조회 (새로운 권한 시스템 적용)
-	 * VIEW_PROJ_INFO 기준 진행중(CONT_STATE=N'진행중')만 조회. SQL Server 미연결 시 test.project 폴백.
+	 * VIEW_PROJ_INFO 기준 진행중(CONT_STATE=N'진행중')만 조회. SQL Server 미연결 시 public.project 폴백.
 	 * 1. Super User: VIEW_PROJ_INFO에서 진행중 전체 (부서 무관)
 	 * 2. Common User/Guest: 권한 있는 프로젝트만 (project_members, owner, CHARGE_DEPT_NM=내 부서)
 	 */
@@ -286,14 +286,14 @@ public class ProjectController extends HttpServlet {
 				msConn = DriverManager.getConnection(dbViewUrl, dbViewUser, dbViewPassword);
 			}
 			
-			// 사용자 부서: 세션 → 없으면 test.user (모바일 토큰 등)
+			// 사용자 부서: 세션 → 없으면 public.user (모바일 토큰 등)
 			String userDeptName = resolveDeptNameFromUser(pgConn, session, userId);
 			boolean deptFullAccess = ProjectDeptAccessUtil.isUnrestrictedResearchDept(userDeptName);
 			
 			// project_members 테이블에 데이터가 있는지 확인
 			boolean hasProjectMembers = false;
 			try {
-				String checkSql = "SELECT COUNT(*) FROM test.project_members LIMIT 1";
+				String checkSql = "SELECT COUNT(*) FROM public.project_members LIMIT 1";
 				try (PreparedStatement checkPstmt = pgConn.prepareStatement(checkSql);
 					 ResultSet checkRs = checkPstmt.executeQuery()) {
 					if (checkRs.next() && checkRs.getInt(1) > 0) {
@@ -342,7 +342,7 @@ public class ProjectController extends HttpServlet {
 						// Common User: 권한 있는 프로젝트만 (project_members, 부서, PM 소속)
 						Set<String> permitted = new HashSet<>();
 						try (PreparedStatement permPstmt = pgConn.prepareStatement(
-								"SELECT DISTINCT project_code FROM test.project_members WHERE user_id = ? AND status = 'ACTIVE'")) {
+								"SELECT DISTINCT project_code FROM public.project_members WHERE user_id = ? AND status = 'ACTIVE'")) {
 							permPstmt.setString(1, userId);
 							try (ResultSet permRs = permPstmt.executeQuery()) {
 								while (permRs.next()) {
@@ -352,7 +352,7 @@ public class ProjectController extends HttpServlet {
 							}
 						}
 						try (PreparedStatement ownerPstmt = pgConn.prepareStatement(
-								"SELECT project_code FROM test.project WHERE main_dept_name = ?")) {
+								"SELECT project_code FROM public.project WHERE main_dept_name = ?")) {
 							ownerPstmt.setString(1, userDeptName != null ? userDeptName.trim() : "");
 							try (ResultSet ownerRs = ownerPstmt.executeQuery()) {
 								while (ownerRs.next()) {
@@ -361,12 +361,12 @@ public class ProjectController extends HttpServlet {
 								}
 							}
 						} catch (Exception e) {
-							// test.project 없을 수 있음
+							// public.project 없을 수 있음
 						}
 						// 본인이 PM인 프로젝트 추가 (list-all과 동일, 모바일 등 /list 호출 시에도 PM 프로젝트 노출)
 						try {
 							try (PreparedStatement paPstmt = pgConn.prepareStatement(
-									"SELECT DISTINCT project_code FROM test.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'")) {
+									"SELECT DISTINCT project_code FROM public.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'")) {
 								paPstmt.setString(1, userId.trim());
 								try (ResultSet paRs = paPstmt.executeQuery()) {
 									while (paRs.next()) {
@@ -376,8 +376,8 @@ public class ProjectController extends HttpServlet {
 								}
 							}
 							try (PreparedStatement ptPstmt = pgConn.prepareStatement(
-									"SELECT project_code FROM test.project p WHERE p.pm_id = ? AND NOT EXISTS " +
-											"(SELECT 1 FROM test.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')")) {
+									"SELECT project_code FROM public.project p WHERE p.pm_id = ? AND NOT EXISTS " +
+											"(SELECT 1 FROM public.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')")) {
 								ptPstmt.setString(1, userId.trim());
 								try (ResultSet ptRs = ptPstmt.executeQuery()) {
 									while (ptRs.next()) {
@@ -449,7 +449,7 @@ public class ProjectController extends HttpServlet {
 					// PM 표시: project_admin 우선 (VIEW 사용 시)
 					if (usedViewProjInfo && !projectDetails.isEmpty()) {
 						try (PreparedStatement adminPstmt = pgConn.prepareStatement(
-								"SELECT DISTINCT ON (project_code) project_code, admin_user_id FROM test.project_admin WHERE use_yn = 'Y' ORDER BY project_code, assigned_at, id")) {
+								"SELECT DISTINCT ON (project_code) project_code, admin_user_id FROM public.project_admin WHERE use_yn = 'Y' ORDER BY project_code, assigned_at, id")) {
 							try (ResultSet adminRs = adminPstmt.executeQuery()) {
 								while (adminRs.next()) {
 									String pc = adminRs.getString("project_code");
@@ -467,19 +467,19 @@ public class ProjectController extends HttpServlet {
 						}
 					}
 				} catch (Exception e) {
-					System.err.println("[ProjectController] VIEW_PROJ_INFO 조회 실패, test.project 폴백: " + e.getMessage());
+					System.err.println("[ProjectController] VIEW_PROJ_INFO 조회 실패, public.project 폴백: " + e.getMessage());
 					usedViewProjInfo = false;
 				}
 			}
 
-			// VIEW_PROJ_INFO를 사용한 경우에도 test.project의 프로젝트 병합
+			// VIEW_PROJ_INFO를 사용한 경우에도 public.project의 프로젝트 병합
 			if (usedViewProjInfo) {
 				try {
 					Set<String> existingCodes = new HashSet<>(projectCodes);
 					if (userAuthority == 1 || deptFullAccess) {
-						// Super User: test.project의 모든 프로젝트 병합 (기존에 없는 것만)
+						// Super User: public.project의 모든 프로젝트 병합 (기존에 없는 것만)
 						String sql = "SELECT p.project_code, p.project_name, p.pm_id, p.pm_name, p.main_dept_name, p.project_status, p.reg_dt " +
-								"FROM test.project p " +
+								"FROM public.project p " +
 								"ORDER BY CASE WHEN (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL) THEN 0 ELSE 1 END, p.project_code";
 						try (PreparedStatement mergePstmt = pgConn.prepareStatement(sql);
 							 ResultSet mergeRs = mergePstmt.executeQuery()) {
@@ -503,10 +503,10 @@ public class ProjectController extends HttpServlet {
 							}
 						}
 					} else {
-						// Common User: 권한 있는 test.project 프로젝트만 병합 (PM 소속 포함)
+						// Common User: 권한 있는 public.project 프로젝트만 병합 (PM 소속 포함)
 						Set<String> permitted = new HashSet<>();
 						try (PreparedStatement permPstmt = pgConn.prepareStatement(
-								"SELECT DISTINCT project_code FROM test.project_members WHERE user_id = ? AND status = 'ACTIVE'")) {
+								"SELECT DISTINCT project_code FROM public.project_members WHERE user_id = ? AND status = 'ACTIVE'")) {
 							permPstmt.setString(1, userId);
 							try (ResultSet permRs = permPstmt.executeQuery()) {
 								while (permRs.next()) {
@@ -516,7 +516,7 @@ public class ProjectController extends HttpServlet {
 							}
 						}
 						try (PreparedStatement ownerPstmt = pgConn.prepareStatement(
-								"SELECT project_code FROM test.project WHERE main_dept_name = ?")) {
+								"SELECT project_code FROM public.project WHERE main_dept_name = ?")) {
 							ownerPstmt.setString(1, userDeptName != null ? userDeptName.trim() : "");
 							try (ResultSet ownerRs = ownerPstmt.executeQuery()) {
 								while (ownerRs.next()) {
@@ -525,14 +525,14 @@ public class ProjectController extends HttpServlet {
 								}
 							}
 						} catch (Exception e) {
-							// test.project 없을 수 있음
+							// public.project 없을 수 있음
 						}
 						permitted.addAll(pmProjectCodes);
 						
 						if (!permitted.isEmpty() || (userDeptName != null && !userDeptName.trim().isEmpty())) {
 							StringBuilder mergeSql = new StringBuilder();
 							mergeSql.append("SELECT p.project_code, p.project_name, p.pm_id, p.pm_name, p.main_dept_name, p.project_status, p.reg_dt ");
-							mergeSql.append("FROM test.project p ");
+							mergeSql.append("FROM public.project p ");
 							mergeSql.append("WHERE (");
 							if (!permitted.isEmpty()) {
 								String inClause = permitted.stream().map(c -> "?").collect(Collectors.joining(","));
@@ -577,20 +577,20 @@ public class ProjectController extends HttpServlet {
 						}
 					}
 				} catch (Exception e) {
-					System.err.println("[ProjectController] test.project 병합 실패: " + e.getMessage());
+					System.err.println("[ProjectController] public.project 병합 실패: " + e.getMessage());
 					e.printStackTrace();
 					// 병합 실패해도 VIEW_PROJ_INFO 데이터는 유지
 				}
 			}
 
-			// 2) 폴백: test.project (SQL Server 미연결 또는 VIEW 조회 실패)
+			// 2) 폴백: public.project (SQL Server 미연결 또는 VIEW 조회 실패)
 			if (!usedViewProjInfo) {
 				projectCodes.clear();
 				projectNames.clear();
 				projectDetails.clear();
 				if (userAuthority == 1 || deptFullAccess) {
 					String sql = "SELECT p.project_code, p.project_name, p.pm_id, p.pm_name, p.main_dept_name, p.project_status, p.reg_dt " +
-							"FROM test.project p " +
+							"FROM public.project p " +
 							"ORDER BY CASE WHEN (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL) THEN 0 ELSE 1 END, p.project_code";
 					pstmt = pgConn.prepareStatement(sql);
 					rs = pstmt.executeQuery();
@@ -613,7 +613,7 @@ public class ProjectController extends HttpServlet {
 					}
 				} else if (!hasProjectMembers) {
 					String sql = "SELECT p.project_code, p.project_name, p.pm_id, p.pm_name, p.main_dept_name, p.project_status, p.reg_dt " +
-							"FROM test.project p " +
+							"FROM public.project p " +
 							"ORDER BY CASE WHEN (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL) THEN 0 ELSE 1 END, p.project_code";
 					pstmt = pgConn.prepareStatement(sql);
 					rs = pstmt.executeQuery();
@@ -637,14 +637,14 @@ public class ProjectController extends HttpServlet {
 				} else {
 					StringBuilder sqlBuilder = new StringBuilder();
 					sqlBuilder.append("SELECT DISTINCT p.project_code, p.project_name, p.pm_id, p.pm_name, p.main_dept_name, p.project_status, p.reg_dt ");
-					sqlBuilder.append("FROM test.project p ");
+					sqlBuilder.append("FROM public.project p ");
 					sqlBuilder.append("WHERE (");
-					sqlBuilder.append("EXISTS (SELECT 1 FROM test.project_members pm WHERE pm.project_code = p.project_code AND pm.user_id = ? AND pm.status = 'ACTIVE') ");
+					sqlBuilder.append("EXISTS (SELECT 1 FROM public.project_members pm WHERE pm.project_code = p.project_code AND pm.user_id = ? AND pm.status = 'ACTIVE') ");
 					if (userDeptName != null && !userDeptName.trim().isEmpty()) {
 						sqlBuilder.append("OR p.main_dept_name = ? ");
 					}
 					sqlBuilder.append("OR p.pm_id = ? ");
-					sqlBuilder.append("OR EXISTS (SELECT 1 FROM test.project_admin pa WHERE pa.project_code = p.project_code AND pa.admin_user_id = ? AND pa.use_yn = 'Y') ");
+					sqlBuilder.append("OR EXISTS (SELECT 1 FROM public.project_admin pa WHERE pa.project_code = p.project_code AND pa.admin_user_id = ? AND pa.use_yn = 'Y') ");
 					sqlBuilder.append(") ORDER BY CASE WHEN (p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL) THEN 0 ELSE 1 END, p.project_code");
 					pstmt = pgConn.prepareStatement(sqlBuilder.toString());
 					int paramIndex = 1;
@@ -675,7 +675,7 @@ public class ProjectController extends HttpServlet {
 				}
 			}
 
-			// PM 이름 조회 (인사 VIEW + test.user 게스트)
+			// PM 이름 조회 (인사 VIEW + public.user 게스트)
 			if (!projectDetails.isEmpty()) {
 				Set<String> pmIds = new HashSet<>();
 				for (Map<String, Object> detail : projectDetails.values()) {
@@ -865,7 +865,7 @@ public class ProjectController extends HttpServlet {
 				msConn = DriverManager.getConnection(dbViewUrl, dbViewUser, dbViewPassword);
 			}
 			
-			// 사용자 부서: 세션 → 없으면 test.user (모바일 토큰 등)
+			// 사용자 부서: 세션 → 없으면 public.user (모바일 토큰 등)
 			String userDeptName = resolveDeptNameFromUser(pgConn, session, userId);
 			boolean deptFullAccess = ProjectDeptAccessUtil.isUnrestrictedResearchDept(userDeptName);
 			
@@ -907,12 +907,12 @@ public class ProjectController extends HttpServlet {
 					}
 				}
 				
-				// VIEW_PROJ_INFO를 사용한 경우에도 test.project의 프로젝트 병합
+				// VIEW_PROJ_INFO를 사용한 경우에도 public.project의 프로젝트 병합
 				try {
 					Set<String> existingCodes = new HashSet<>(projectDetails.keySet());
-					// test.project의 모든 프로젝트 조회 (기존에 없는 것만 추가)
+					// public.project의 모든 프로젝트 조회 (기존에 없는 것만 추가)
 					String sql = "SELECT project_code, project_name, pm_id, pm_name, main_dept_name, project_status, reg_dt " +
-							"FROM test.project " +
+							"FROM public.project " +
 							"ORDER BY CASE WHEN (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL) THEN 0 ELSE 1 END, project_code";
 					try (PreparedStatement mergePstmt = pgConn.prepareStatement(sql);
 						 ResultSet mergeRs = mergePstmt.executeQuery()) {
@@ -936,14 +936,14 @@ public class ProjectController extends HttpServlet {
 						}
 					}
 				} catch (Exception e) {
-					System.err.println("[ProjectController] test.project 병합 실패: " + e.getMessage());
+					System.err.println("[ProjectController] public.project 병합 실패: " + e.getMessage());
 					e.printStackTrace();
 					// 병합 실패해도 VIEW_PROJ_INFO 데이터는 유지
 				}
 			} else {
-				// SQL Server 미연결 시 test.project 폴백 (모든 상태)
+				// SQL Server 미연결 시 public.project 폴백 (모든 상태)
 				String sql = "SELECT project_code, project_name, pm_id, pm_name, main_dept_name, project_status, reg_dt " +
-						"FROM test.project WHERE 1=1 ";
+						"FROM public.project WHERE 1=1 ";
 				if (filterByDept) sql += "AND main_dept_name = ? ";
 				sql += "ORDER BY CASE WHEN (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL) THEN 0 ELSE 1 END, project_code";
 				pstmt = pgConn.prepareStatement(sql);
@@ -973,7 +973,7 @@ public class ProjectController extends HttpServlet {
 			// PM 표시 우선순위: 1) project_admin에 PM이 있으면 해당 PM(관리자 지정), 2) 없으면 뷰/테이블 기본 PM
 			try {
 				String adminPmSql = "SELECT DISTINCT ON (project_code) project_code, admin_user_id " +
-						"FROM test.project_admin WHERE use_yn = 'Y' ORDER BY project_code, assigned_at, id";
+						"FROM public.project_admin WHERE use_yn = 'Y' ORDER BY project_code, assigned_at, id";
 				pstmt = pgConn.prepareStatement(adminPmSql);
 				rs = pstmt.executeQuery();
 				Map<String, String> projectCodeToAdminPm = new HashMap<>();
@@ -1005,7 +1005,7 @@ public class ProjectController extends HttpServlet {
 			// 본인이 PM인 프로젝트 조회 (모든 사용자 - list-all 응답에서 제외)
 			try {
 				try (PreparedStatement paPstmt = pgConn.prepareStatement(
-						"SELECT DISTINCT project_code FROM test.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'")) {
+						"SELECT DISTINCT project_code FROM public.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'")) {
 					paPstmt.setString(1, userId.trim());
 					try (ResultSet paRs = paPstmt.executeQuery()) {
 						while (paRs.next()) {
@@ -1015,8 +1015,8 @@ public class ProjectController extends HttpServlet {
 					}
 				}
 				try (PreparedStatement ptPstmt = pgConn.prepareStatement(
-						"SELECT project_code FROM test.project p WHERE p.pm_id = ? AND NOT EXISTS " +
-								"(SELECT 1 FROM test.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')")) {
+						"SELECT project_code FROM public.project p WHERE p.pm_id = ? AND NOT EXISTS " +
+								"(SELECT 1 FROM public.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')")) {
 					ptPstmt.setString(1, userId.trim());
 					try (ResultSet ptRs = ptPstmt.executeQuery()) {
 						while (ptRs.next()) {
@@ -1071,7 +1071,7 @@ public class ProjectController extends HttpServlet {
 			} else {
 				// project_members 테이블에서 사용자가 속한 프로젝트 조회
 				try {
-					String memberSql = "SELECT DISTINCT project_code FROM test.project_members WHERE user_id = ? AND status = 'ACTIVE'";
+					String memberSql = "SELECT DISTINCT project_code FROM public.project_members WHERE user_id = ? AND status = 'ACTIVE'";
 					try (PreparedStatement memberPstmt = pgConn.prepareStatement(memberSql)) {
 						memberPstmt.setString(1, userId);
 						try (ResultSet memberRs = memberPstmt.executeQuery()) {
@@ -1111,7 +1111,7 @@ public class ProjectController extends HttpServlet {
 					String permissionStatus = "NONE"; // 기본값: 신청 전
 					String permissionRejectReason = "";
 					try {
-						String statusSql = "SELECT id, req_status, review_comment FROM test.project_permission_request " +
+						String statusSql = "SELECT id, req_status, review_comment FROM public.project_permission_request " +
 								"WHERE project_code = ? AND req_user_id = ? " +
 								"ORDER BY COALESCE(reviewed_at, req_at) DESC NULLS LAST, req_at DESC LIMIT 1";
 						try (PreparedStatement statusPstmt = pgConn.prepareStatement(statusSql)) {
@@ -1144,7 +1144,7 @@ public class ProjectController extends HttpServlet {
 				}
 			}
 
-			// PM 이름 조회 (인사 VIEW + test.user 게스트)
+			// PM 이름 조회 (인사 VIEW + public.user 게스트)
 			if (!projectDetails.isEmpty()) {
 				Set<String> pmIds = new HashSet<>();
 				for (Map<String, Object> detail : projectDetails.values()) {
@@ -1325,7 +1325,7 @@ public class ProjectController extends HttpServlet {
 			return;
 		}
 
-		// Authority 1은 부서 없어도 전체 조회(VIEW + test.project).
+		// Authority 1은 부서 없어도 전체 조회(VIEW + public.project).
 		String deptFilter = (userDeptName != null) ? userDeptName.trim() : "";
 		String keyword = req.getParameter("keyword");
 		String dbUrl = getServletContext().getInitParameter("DB_URL");
@@ -1388,7 +1388,7 @@ public class ProjectController extends HttpServlet {
 				}
 			} else {
 				String sql = "SELECT project_code, project_name, pm_id, pm_name, main_dept_name, project_status " +
-						"FROM test.project WHERE 1=1 ";
+						"FROM public.project WHERE 1=1 ";
 				if (!deptFilter.isEmpty()) sql += "AND main_dept_name = ? ";
 				if (keyword != null && !keyword.trim().isEmpty()) {
 					sql += "AND (project_code LIKE ? OR project_name LIKE ? OR pm_id LIKE ? OR pm_name LIKE ?) ";
@@ -1423,9 +1423,9 @@ public class ProjectController extends HttpServlet {
 				pstmt.close();
 			}
 
-			// VIEW에 없는 test.project 전용 프로젝트(관리자 추가) 병합 → 목록에 함께 표시
+			// VIEW에 없는 public.project 전용 프로젝트(관리자 추가) 병합 → 목록에 함께 표시
 			String mergeSql = "SELECT project_code, project_name, pm_id, pm_name, main_dept_name, project_status " +
-					"FROM test.project WHERE 1=1 ";
+					"FROM public.project WHERE 1=1 ";
 			if (!deptFilter.isEmpty()) mergeSql += "AND main_dept_name = ? ";
 			if (keyword != null && !keyword.trim().isEmpty()) mergeSql += "AND (project_code LIKE ? OR project_name LIKE ? OR pm_id LIKE ? OR pm_name LIKE ?) ";
 			mergeSql += "ORDER BY project_code";
@@ -1461,7 +1461,7 @@ public class ProjectController extends HttpServlet {
 			// PM 표시: project_admin 우선
 			try {
 				String adminPmSql = "SELECT DISTINCT ON (project_code) project_code, admin_user_id " +
-						"FROM test.project_admin WHERE use_yn = 'Y' ORDER BY project_code, assigned_at, id";
+						"FROM public.project_admin WHERE use_yn = 'Y' ORDER BY project_code, assigned_at, id";
 				pstmt = pgConn.prepareStatement(adminPmSql);
 				rs = pstmt.executeQuery();
 				Map<String, String> projectCodeToAdminPm = new HashMap<>();
@@ -1485,7 +1485,7 @@ public class ProjectController extends HttpServlet {
 				System.err.println("[ProjectController] list-admin project_admin PM 조회 실패: " + e.getMessage());
 			}
 
-			// PM 이름 (인사 VIEW + test.user 게스트)
+			// PM 이름 (인사 VIEW + public.user 게스트)
 			if (!projectDetails.isEmpty()) {
 				Set<String> pmIds = new HashSet<>();
 				for (Map<String, Object> detail : projectDetails.values()) {
@@ -1599,14 +1599,14 @@ public class ProjectController extends HttpServlet {
 			Class.forName("org.postgresql.Driver");
 			pgConn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 			
-			// PM인 프로젝트 확인: project_admin, test.project.pm_id, project_members.role='PM'
+			// PM인 프로젝트 확인: project_admin, public.project.pm_id, project_members.role='PM'
 			String sql = "SELECT COUNT(*) as cnt FROM (" +
-					"SELECT 1 FROM test.project_admin WHERE admin_user_id = ? AND use_yn = 'Y' " +
+					"SELECT 1 FROM public.project_admin WHERE admin_user_id = ? AND use_yn = 'Y' " +
 					"UNION " +
-					"SELECT 1 FROM test.project WHERE pm_id = ? AND ((project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL)) " +
-					"AND NOT EXISTS (SELECT 1 FROM test.project_admin pa WHERE pa.project_code = test.project.project_code AND pa.use_yn = 'Y') " +
+					"SELECT 1 FROM public.project WHERE pm_id = ? AND ((project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL)) " +
+					"AND NOT EXISTS (SELECT 1 FROM public.project_admin pa WHERE pa.project_code = public.project.project_code AND pa.use_yn = 'Y') " +
 					"UNION " +
-					"SELECT 1 FROM test.project_members WHERE user_id = ? AND role = 'PM' AND status = 'ACTIVE'" +
+					"SELECT 1 FROM public.project_members WHERE user_id = ? AND role = 'PM' AND status = 'ACTIVE'" +
 					") AS pm_projects";
 			
 			pstmt = pgConn.prepareStatement(sql);
@@ -1709,7 +1709,7 @@ public class ProjectController extends HttpServlet {
 				msConn = DriverManager.getConnection(dbViewUrl, dbViewUser, dbViewPassword);
 			}
 			java.util.List<String> projectCodes = new java.util.ArrayList<>();
-			String adminProjectsSql = "SELECT DISTINCT project_code FROM test.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'";
+			String adminProjectsSql = "SELECT DISTINCT project_code FROM public.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'";
 			pstmt = pgConn.prepareStatement(adminProjectsSql);
 			pstmt.setString(1, userId.trim());
 			rs = pstmt.executeQuery();
@@ -1719,9 +1719,9 @@ public class ProjectController extends HttpServlet {
 			}
 			rs.close();
 			pstmt.close();
-			String pmProjectsSql = "SELECT p.project_code FROM test.project p " +
+			String pmProjectsSql = "SELECT p.project_code FROM public.project p " +
 					"WHERE p.pm_id = ? AND ((p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL)) " +
-					"AND NOT EXISTS (SELECT 1 FROM test.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')";
+					"AND NOT EXISTS (SELECT 1 FROM public.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')";
 			pstmt = pgConn.prepareStatement(pmProjectsSql);
 			pstmt.setString(1, userId.trim());
 			rs = pstmt.executeQuery();
@@ -1772,7 +1772,7 @@ public class ProjectController extends HttpServlet {
 			}
 			for (String pc : projectCodes) {
 				if (!projectNameMap.containsKey(pc) && pgConn != null) {
-					try (PreparedStatement namePstmt = pgConn.prepareStatement("SELECT project_name, main_dept_name FROM test.project WHERE project_code = ?")) {
+					try (PreparedStatement namePstmt = pgConn.prepareStatement("SELECT project_name, main_dept_name FROM public.project WHERE project_code = ?")) {
 						namePstmt.setString(1, pc);
 						try (ResultSet nameRs = namePstmt.executeQuery()) {
 							if (nameRs.next()) {
@@ -1785,7 +1785,7 @@ public class ProjectController extends HttpServlet {
 					}
 				}
 				if (!projectMainDeptMap.containsKey(pc) && pgConn != null) {
-					try (PreparedStatement deptPstmt = pgConn.prepareStatement("SELECT main_dept_name FROM test.project WHERE project_code = ?")) {
+					try (PreparedStatement deptPstmt = pgConn.prepareStatement("SELECT main_dept_name FROM public.project WHERE project_code = ?")) {
 						deptPstmt.setString(1, pc);
 						try (ResultSet deptRs = deptPstmt.executeQuery()) {
 							if (deptRs.next()) {
@@ -1893,7 +1893,7 @@ public class ProjectController extends HttpServlet {
 			try {
 				Class.forName("org.postgresql.Driver");
 				checkConn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-				String checkSql = "SELECT is_dept_admin FROM test.\"user\" WHERE id = ? AND dept_name = ?";
+				String checkSql = "SELECT is_dept_admin FROM public.\"user\" WHERE id = ? AND dept_name = ?";
 				try (PreparedStatement checkPstmt = checkConn.prepareStatement(checkSql)) {
 					checkPstmt.setString(1, userId.trim());
 					checkPstmt.setString(2, userDeptName.trim());
@@ -1935,7 +1935,7 @@ public class ProjectController extends HttpServlet {
 			boolean filterByDept = userDeptName != null && !userDeptName.trim().isEmpty()
 					&& (userAuthority != 1) && isDeptAdmin;
 			
-			// 프로젝트 목록: SQL Server VIEW_PROJ_INFO에서 조회 (실패 시 test.project 폴백)
+			// 프로젝트 목록: SQL Server VIEW_PROJ_INFO에서 조회 (실패 시 public.project 폴백)
 			boolean usedViewProjInfo = false;
 			if (msConn != null) {
 				try {
@@ -1983,15 +1983,15 @@ public class ProjectController extends HttpServlet {
 					}
 				}
 				} catch (Exception e) {
-					System.err.println("[ProjectController] VIEW_PROJ_INFO 조회 실패, test.project 폴백: " + e.getMessage());
+					System.err.println("[ProjectController] VIEW_PROJ_INFO 조회 실패, public.project 폴백: " + e.getMessage());
 					e.printStackTrace();
 				}
 			}
 			
 			if (!usedViewProjInfo) {
-				// VIEW_PROJ_INFO 실패 또는 미연결 시 test.project 폴백
+				// VIEW_PROJ_INFO 실패 또는 미연결 시 public.project 폴백
 				String fallbackSql = "SELECT project_code, project_name, pm_id, pm_name, main_dept_name, project_status, reg_dt " +
-						"FROM test.project WHERE 1=1 ";
+						"FROM public.project WHERE 1=1 ";
 				if (filterByDept) fallbackSql += "AND main_dept_name = ? ";
 				if (keyword != null && !keyword.trim().isEmpty()) fallbackSql += "AND (project_code LIKE ? OR project_name LIKE ?) ";
 				fallbackSql += "ORDER BY CASE WHEN (project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL) THEN 0 ELSE 1 END, project_code";
@@ -2024,9 +2024,9 @@ public class ProjectController extends HttpServlet {
 				pstmt.close();
 			}
 
-			// VIEW_PROJ_INFO에 없는 test.project 전용 프로젝트(관리자 추가) 병합 → 목록에 함께 표시
+			// VIEW_PROJ_INFO에 없는 public.project 전용 프로젝트(관리자 추가) 병합 → 목록에 함께 표시
 			String mergeSql = "SELECT project_code, project_name, pm_id, pm_name, main_dept_name, project_status, reg_dt " +
-					"FROM test.project WHERE 1=1 ";
+					"FROM public.project WHERE 1=1 ";
 			if (filterByDept) mergeSql += "AND main_dept_name = ? ";
 			if (keyword != null && !keyword.trim().isEmpty()) mergeSql += "AND (project_code LIKE ? OR project_name LIKE ?) ";
 			mergeSql += "ORDER BY project_code";
@@ -2048,7 +2048,7 @@ public class ProjectController extends HttpServlet {
 							projectDetail.put("name", projectNameVal != null ? projectNameVal.trim() : "");
 							projectDetail.put("pmId", mergeRs.getString("pm_id"));
 							projectDetail.put("pmName", mergeRs.getString("pm_name"));
-							projectDetail.put("pmSource", "project"); // test.project 전용
+							projectDetail.put("pmSource", "project"); // public.project 전용
 							projectDetail.put("mainDeptName", mergeRs.getString("main_dept_name"));
 							projectDetail.put("status", mergeRs.getString("project_status"));
 							projectDetail.put("regDt", mergeRs.getTimestamp("reg_dt") != null ? mergeRs.getTimestamp("reg_dt").toString() : null);
@@ -2061,7 +2061,7 @@ public class ProjectController extends HttpServlet {
 			// project_admin에 PM이 있으면 해당 PM으로 덮어쓰기 (관리자 지정)
 			try {
 				String adminPmSql = "SELECT DISTINCT ON (project_code) project_code, admin_user_id " +
-						"FROM test.project_admin WHERE use_yn = 'Y' ORDER BY project_code, assigned_at, id";
+						"FROM public.project_admin WHERE use_yn = 'Y' ORDER BY project_code, assigned_at, id";
 				pstmt = pgConn.prepareStatement(adminPmSql);
 				rs = pstmt.executeQuery();
 				Map<String, String> projectCodeToAdminPm = new HashMap<>();
@@ -2082,7 +2082,7 @@ public class ProjectController extends HttpServlet {
 						detail.put("pmSource", "admin");
 					}
 				}
-				// PM 이름 조회 (인사 VIEW + test.user 게스트)
+				// PM 이름 조회 (인사 VIEW + public.user 게스트)
 				Set<String> pmIds = new HashSet<>();
 				for (Map<String, Object> detail : projectDetails.values()) {
 					String pmId = (String) detail.get("pmId");
@@ -2164,7 +2164,7 @@ public class ProjectController extends HttpServlet {
 	 * Body: projectName, mainDeptCode, mainDeptName, projectStatus
 	 * - projectCode는 서버가 N + timestamp 형식으로 자동 생성
 	 * - VIEW_PROJ_INFO에 CONT_NO(projectCode)가 있으면 "중복된 사업번호" 반환
-	 * - test.project에 저장 (로그인 사용자 생성 프로젝트)
+	 * - public.project에 저장 (로그인 사용자 생성 프로젝트)
 	 */
 	private void handleCreateProject(HttpServletRequest req, HttpServletResponse resp) throws Exception {
 		System.out.println("[ProjectController] handleCreateProject: 호출됨 (POST /api/project)");
@@ -2220,9 +2220,9 @@ public class ProjectController extends HttpServlet {
 			Class.forName("org.postgresql.Driver");
 			pgConn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 			System.out.println("[ProjectController] handleCreateProject: PostgreSQL 연결 완료");
-			// 코드 충돌 방지: test.project 중복 시 재생성
+			// 코드 충돌 방지: public.project 중복 시 재생성
 			for (int i = 0; i < 5; i++) {
-				try (PreparedStatement dupPstmt = pgConn.prepareStatement("SELECT 1 FROM test.project WHERE project_code = ?")) {
+				try (PreparedStatement dupPstmt = pgConn.prepareStatement("SELECT 1 FROM public.project WHERE project_code = ?")) {
 					dupPstmt.setString(1, projectCode);
 					try (ResultSet dupRs = dupPstmt.executeQuery()) {
 						if (!dupRs.next()) break;
@@ -2263,24 +2263,24 @@ public class ProjectController extends HttpServlet {
 				System.out.println("[ProjectController] handleCreateProject: SQL Server 설정 없음, VIEW_PROJ_INFO 확인 생략");
 			}
 
-			// test.project 중복 확인
-			System.out.println("[ProjectController] handleCreateProject: test.project 중복 확인 중");
-			try (PreparedStatement checkPstmt = pgConn.prepareStatement("SELECT 1 FROM test.project WHERE project_code = ?")) {
+			// public.project 중복 확인
+			System.out.println("[ProjectController] handleCreateProject: public.project 중복 확인 중");
+			try (PreparedStatement checkPstmt = pgConn.prepareStatement("SELECT 1 FROM public.project WHERE project_code = ?")) {
 				checkPstmt.setString(1, projectCode.trim());
 				try (ResultSet checkRs = checkPstmt.executeQuery()) {
 					if (checkRs.next()) {
-						System.out.println("[ProjectController] handleCreateProject: 거부됨 - test.project에 이미 존재하는 코드: " + projectCode);
+						System.out.println("[ProjectController] handleCreateProject: 거부됨 - public.project에 이미 존재하는 코드: " + projectCode);
 						resp.setStatus(400);
 						writeJson(resp, "{\"success\":false,\"message\":\"이미 존재하는 프로젝트 코드입니다.\"}");
 						return;
 					}
 				}
 			}
-			System.out.println("[ProjectController] handleCreateProject: test.project 중복 없음");
+			System.out.println("[ProjectController] handleCreateProject: public.project 중복 없음");
 
-			// PM 지정 시 해당 계정이 test.user에 존재하는지 확인 (없으면 생성 불가)
+			// PM 지정 시 해당 계정이 public.user에 존재하는지 확인 (없으면 생성 불가)
 			if (pmId != null && !pmId.trim().isEmpty()) {
-				try (PreparedStatement userCheckPstmt = pgConn.prepareStatement("SELECT 1 FROM test.\"user\" WHERE id = ?")) {
+				try (PreparedStatement userCheckPstmt = pgConn.prepareStatement("SELECT 1 FROM public.\"user\" WHERE id = ?")) {
 					userCheckPstmt.setString(1, pmId.trim());
 					try (ResultSet userCheckRs = userCheckPstmt.executeQuery()) {
 						if (!userCheckRs.next()) {
@@ -2297,9 +2297,9 @@ public class ProjectController extends HttpServlet {
 			java.sql.Timestamp startDt = new java.sql.Timestamp(System.currentTimeMillis());
 			java.sql.Timestamp endDt = null;
 
-			String insertSql = "INSERT INTO test.project (project_code, project_name, main_dept_code, main_dept_name, project_status, pm_id, pm_name, reg_dt, mod_dt, start_dt, end_dt) " +
+			String insertSql = "INSERT INTO public.project (project_code, project_name, main_dept_code, main_dept_name, project_status, pm_id, pm_name, reg_dt, mod_dt, start_dt, end_dt) " +
 					"VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NULL, ?, ?)";
-			System.out.println("[ProjectController] handleCreateProject: test.project INSERT 실행 중");
+			System.out.println("[ProjectController] handleCreateProject: public.project INSERT 실행 중");
 			try (PreparedStatement insPstmt = pgConn.prepareStatement(insertSql)) {
 				insPstmt.setString(1, projectCode.trim());
 				insPstmt.setString(2, projectName.trim().length() > 100 ? projectName.trim().substring(0, 100) : projectName.trim());
@@ -2315,7 +2315,7 @@ public class ProjectController extends HttpServlet {
 			// 지정한 PM을 project_admin에 등록 → 권한 요청 수락 등 PM 기능 사용 가능
 			if (pmId != null && !pmId.trim().isEmpty()) {
 				try {
-					String adminInsertSql = "INSERT INTO test.project_admin (project_code, admin_user_id, assigned_by, assigned_at, created_at, updated_at, use_yn) VALUES (?, ?, ?, NOW(), NOW(), NOW(), 'Y')";
+					String adminInsertSql = "INSERT INTO public.project_admin (project_code, admin_user_id, assigned_by, assigned_at, created_at, updated_at, use_yn) VALUES (?, ?, ?, NOW(), NOW(), NOW(), 'Y')";
 					try (PreparedStatement adminPstmt = pgConn.prepareStatement(adminInsertSql)) {
 						adminPstmt.setString(1, projectCode.trim());
 						adminPstmt.setString(2, pmId.trim());
@@ -2345,7 +2345,7 @@ public class ProjectController extends HttpServlet {
 	 * PM 프로젝트 이관 (A → B). Request: JSON { "fromProjectCode", "toProjectCode" }
 	 * POST /api/project/transfer
 	 * - 현재 사용자가 fromProjectCode의 PM(관리자/기본 PM/VIEW PM/project_members PM)인 경우에만 허용
-	 * - toProjectCode는 VIEW_PROJ_INFO 또는 test.project에 존재해야 하며, 사용자가 접근 가능한 사업이어야 함
+	 * - toProjectCode는 VIEW_PROJ_INFO 또는 public.project에 존재해야 하며, 사용자가 접근 가능한 사업이어야 함
 	 * - 이관 후 B 프로젝트 PM은 유지, A 프로젝트 PM은 B에서 PM이 아니도록 정리
 	 */
 	private void handleTransferProject(HttpServletRequest req, HttpServletResponse resp) throws Exception {
@@ -2386,7 +2386,7 @@ public class ProjectController extends HttpServlet {
 			// 사용자 권한/부서 정보 재조회
 			int userAuthority = 2;
 			String userDeptName = null;
-			try (PreparedStatement ps = pgConn.prepareStatement("SELECT authority, dept_name FROM test.\"user\" WHERE id = ?")) {
+			try (PreparedStatement ps = pgConn.prepareStatement("SELECT authority, dept_name FROM public.\"user\" WHERE id = ?")) {
 				ps.setString(1, userId.trim());
 				try (ResultSet rs = ps.executeQuery()) {
 					if (rs.next()) {
@@ -2408,7 +2408,7 @@ public class ProjectController extends HttpServlet {
 			}
 			if (!existsProjectCodeForTransfer(pgConn, msConn, toProjectCode)) {
 				resp.setStatus(400);
-				writeJson(resp, "{\"success\":false,\"message\":\"도착 사업번호가 VIEW_PROJ_INFO 또는 test.project에 존재하지 않습니다.\"}");
+				writeJson(resp, "{\"success\":false,\"message\":\"도착 사업번호가 VIEW_PROJ_INFO 또는 public.project에 존재하지 않습니다.\"}");
 				return;
 			}
 			if (!isProjectAccessibleForTransfer(pgConn, msConn, userId.trim(), userAuthority, userDeptName, toProjectCode)) {
@@ -2429,52 +2429,52 @@ public class ProjectController extends HttpServlet {
 
 				// project_members: 중복 제거 후 변경
 				try (PreparedStatement delPstmt = pgConn.prepareStatement(
-						"DELETE FROM test.project_members a WHERE a.project_code = ? AND EXISTS (SELECT 1 FROM test.project_members b WHERE b.project_code = ? AND b.user_id = a.user_id)")) {
+						"DELETE FROM public.project_members a WHERE a.project_code = ? AND EXISTS (SELECT 1 FROM public.project_members b WHERE b.project_code = ? AND b.user_id = a.user_id)")) {
 					delPstmt.setString(1, fromProjectCode);
 					delPstmt.setString(2, toProjectCode);
 					delPstmt.executeUpdate();
 				}
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.project_members SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.project_members SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, toProjectCode);
 					upPstmt.setString(2, fromProjectCode);
 					upPstmt.executeUpdate();
 				}
 				// project_admin: 중복 제거 후 변경
 				try (PreparedStatement delPstmt = pgConn.prepareStatement(
-						"DELETE FROM test.project_admin a WHERE a.project_code = ? AND EXISTS (SELECT 1 FROM test.project_admin b WHERE b.project_code = ? AND b.admin_user_id = a.admin_user_id)")) {
+						"DELETE FROM public.project_admin a WHERE a.project_code = ? AND EXISTS (SELECT 1 FROM public.project_admin b WHERE b.project_code = ? AND b.admin_user_id = a.admin_user_id)")) {
 					delPstmt.setString(1, fromProjectCode);
 					delPstmt.setString(2, toProjectCode);
 					delPstmt.executeUpdate();
 				}
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.project_admin SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.project_admin SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, toProjectCode);
 					upPstmt.setString(2, fromProjectCode);
 					upPstmt.executeUpdate();
 				}
 				// project_permission_request: 중복 제거 후 변경
 				try (PreparedStatement delPstmt = pgConn.prepareStatement(
-						"DELETE FROM test.project_permission_request a WHERE a.project_code = ? AND EXISTS (SELECT 1 FROM test.project_permission_request b WHERE b.project_code = ? AND b.req_user_id = a.req_user_id)")) {
+						"DELETE FROM public.project_permission_request a WHERE a.project_code = ? AND EXISTS (SELECT 1 FROM public.project_permission_request b WHERE b.project_code = ? AND b.req_user_id = a.req_user_id)")) {
 					delPstmt.setString(1, fromProjectCode);
 					delPstmt.setString(2, toProjectCode);
 					delPstmt.executeUpdate();
 				}
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.project_permission_request SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.project_permission_request SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, toProjectCode);
 					upPstmt.setString(2, fromProjectCode);
 					upPstmt.executeUpdate();
 				}
 				// shp_layer / shp_layer_user_preference / free_shp_layer
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.shp_layer SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.shp_layer SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, toProjectCode);
 					upPstmt.setString(2, fromProjectCode);
 					upPstmt.executeUpdate();
 				}
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.shp_layer_user_preference SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.shp_layer_user_preference SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, toProjectCode);
 					upPstmt.setString(2, fromProjectCode);
 					upPstmt.executeUpdate();
 				}
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.free_shp_layer SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.free_shp_layer SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, toProjectCode);
 					upPstmt.setString(2, fromProjectCode);
 					upPstmt.executeUpdate();
@@ -2482,18 +2482,18 @@ public class ProjectController extends HttpServlet {
 					if (!e.getMessage().contains("does not exist")) throw e;
 				}
 				// gis_a_layer / field
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.gis_a_layer SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.gis_a_layer SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, toProjectCode);
 					upPstmt.setString(2, fromProjectCode);
 					upPstmt.executeUpdate();
 				}
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.field SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.field SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, toProjectCode);
 					upPstmt.setString(2, fromProjectCode);
 					upPstmt.executeUpdate();
 				}
 				// project_member_history (있을 경우)
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.project_member_history SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.project_member_history SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, toProjectCode);
 					upPstmt.setString(2, fromProjectCode);
 					upPstmt.executeUpdate();
@@ -2502,8 +2502,8 @@ public class ProjectController extends HttpServlet {
 				}
 
 				applyMergeProjectPmRetention(pgConn, toProjectCode, fromPmUserId, toPmUserId);
-				// 이관 완료 후 출발 프로젝트(test.project)는 더 이상 필요 없으므로 자동 삭제
-				try (PreparedStatement delPstmt = pgConn.prepareStatement("DELETE FROM test.project WHERE project_code = ?")) {
+				// 이관 완료 후 출발 프로젝트(public.project)는 더 이상 필요 없으므로 자동 삭제
+				try (PreparedStatement delPstmt = pgConn.prepareStatement("DELETE FROM public.project WHERE project_code = ?")) {
 					delPstmt.setString(1, fromProjectCode);
 					delPstmt.executeUpdate();
 				}
@@ -2528,7 +2528,7 @@ public class ProjectController extends HttpServlet {
 	private boolean existsProjectCodeForTransfer(Connection pgConn, Connection msConn, String projectCode) throws SQLException {
 		if (projectCode == null || projectCode.trim().isEmpty()) return false;
 		String pc = projectCode.trim();
-		try (PreparedStatement ps = pgConn.prepareStatement("SELECT 1 FROM test.project WHERE project_code = ?")) {
+		try (PreparedStatement ps = pgConn.prepareStatement("SELECT 1 FROM public.project WHERE project_code = ?")) {
 			ps.setString(1, pc);
 			try (ResultSet rs = ps.executeQuery()) {
 				if (rs.next()) return true;
@@ -2549,7 +2549,7 @@ public class ProjectController extends HttpServlet {
 		if (userId == null || userId.trim().isEmpty() || projectCode == null || projectCode.trim().isEmpty()) return false;
 		String uid = userId.trim();
 		String pc = projectCode.trim();
-		try (PreparedStatement ps = pgConn.prepareStatement("SELECT 1 FROM test.project_admin WHERE project_code = ? AND admin_user_id = ? AND use_yn = 'Y'")) {
+		try (PreparedStatement ps = pgConn.prepareStatement("SELECT 1 FROM public.project_admin WHERE project_code = ? AND admin_user_id = ? AND use_yn = 'Y'")) {
 			ps.setString(1, pc);
 			ps.setString(2, uid);
 			try (ResultSet rs = ps.executeQuery()) {
@@ -2557,7 +2557,7 @@ public class ProjectController extends HttpServlet {
 			}
 		}
 		try (PreparedStatement ps = pgConn.prepareStatement(
-				"SELECT 1 FROM test.project WHERE project_code = ? AND pm_id = ? AND ((project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL))")) {
+				"SELECT 1 FROM public.project WHERE project_code = ? AND pm_id = ? AND ((project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL))")) {
 			ps.setString(1, pc);
 			ps.setString(2, uid);
 			try (ResultSet rs = ps.executeQuery()) {
@@ -2565,7 +2565,7 @@ public class ProjectController extends HttpServlet {
 			}
 		}
 		try (PreparedStatement ps = pgConn.prepareStatement(
-				"SELECT 1 FROM test.project_members WHERE project_code = ? AND user_id = ? AND role = 'PM' AND status = 'ACTIVE'")) {
+				"SELECT 1 FROM public.project_members WHERE project_code = ? AND user_id = ? AND role = 'PM' AND status = 'ACTIVE'")) {
 			ps.setString(1, pc);
 			ps.setString(2, uid);
 			try (ResultSet rs = ps.executeQuery()) {
@@ -2590,21 +2590,21 @@ public class ProjectController extends HttpServlet {
 		String uid = userId != null ? userId.trim() : "";
 		if (userAuthority == 1 || ProjectDeptAccessUtil.isUnrestrictedResearchDept(userDeptName)) return true;
 
-		try (PreparedStatement ps = pgConn.prepareStatement("SELECT 1 FROM test.project_members WHERE project_code = ? AND user_id = ? AND status = 'ACTIVE'")) {
+		try (PreparedStatement ps = pgConn.prepareStatement("SELECT 1 FROM public.project_members WHERE project_code = ? AND user_id = ? AND status = 'ACTIVE'")) {
 			ps.setString(1, pc);
 			ps.setString(2, uid);
 			try (ResultSet rs = ps.executeQuery()) {
 				if (rs.next()) return true;
 			}
 		}
-		try (PreparedStatement ps = pgConn.prepareStatement("SELECT 1 FROM test.project_admin WHERE project_code = ? AND admin_user_id = ? AND use_yn = 'Y'")) {
+		try (PreparedStatement ps = pgConn.prepareStatement("SELECT 1 FROM public.project_admin WHERE project_code = ? AND admin_user_id = ? AND use_yn = 'Y'")) {
 			ps.setString(1, pc);
 			ps.setString(2, uid);
 			try (ResultSet rs = ps.executeQuery()) {
 				if (rs.next()) return true;
 			}
 		}
-		try (PreparedStatement ps = pgConn.prepareStatement("SELECT 1 FROM test.project WHERE project_code = ? AND pm_id = ?")) {
+		try (PreparedStatement ps = pgConn.prepareStatement("SELECT 1 FROM public.project WHERE project_code = ? AND pm_id = ?")) {
 			ps.setString(1, pc);
 			ps.setString(2, uid);
 			try (ResultSet rs = ps.executeQuery()) {
@@ -2612,7 +2612,7 @@ public class ProjectController extends HttpServlet {
 			}
 		}
 		if (userDeptName != null && !userDeptName.trim().isEmpty()) {
-			try (PreparedStatement ps = pgConn.prepareStatement("SELECT 1 FROM test.project WHERE project_code = ? AND main_dept_name = ?")) {
+			try (PreparedStatement ps = pgConn.prepareStatement("SELECT 1 FROM public.project WHERE project_code = ? AND main_dept_name = ?")) {
 				ps.setString(1, pc);
 				ps.setString(2, userDeptName.trim());
 				try (ResultSet rs = ps.executeQuery()) {
@@ -2644,8 +2644,8 @@ public class ProjectController extends HttpServlet {
 	/**
 	 * 임시 프로젝트를 공식 프로젝트(VIEW_PROJ_INFO 존재)로 이관 (관리자 Authority 1 전용)
 	 * POST /api/project/merge
-	 * Body: tempProjectCode (test.project에 있는 임시 프로젝트), officialProjectCode (VIEW_PROJ_INFO에 생성된 사업번호)
-	 * - 임시 프로젝트의 project_code 및 연동/조사 데이터의 project_code를 공식 사업번호로 일괄 변경 후, test.project에서 임시 행 삭제
+	 * Body: tempProjectCode (public.project에 있는 임시 프로젝트), officialProjectCode (VIEW_PROJ_INFO에 생성된 사업번호)
+	 * - 임시 프로젝트의 project_code 및 연동/조사 데이터의 project_code를 공식 사업번호로 일괄 변경 후, public.project에서 임시 행 삭제
 	 * - 이관 후 공식(B) 프로젝트의 PM은 기존 B의 PM을 유지하고, 임시(A)의 PM은 통합된 사업(B)에서 PM이 아니도록 project_admin·project_members를 정리함
 	 */
 	private void handleMergeProject(HttpServletRequest req, HttpServletResponse resp) throws Exception {
@@ -2666,7 +2666,7 @@ public class ProjectController extends HttpServlet {
 			String dbUser = getServletContext().getInitParameter("DB_USER");
 			String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
 			try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
-				try (PreparedStatement pstmt = conn.prepareStatement("SELECT authority FROM test.\"user\" WHERE id = ?")) {
+				try (PreparedStatement pstmt = conn.prepareStatement("SELECT authority FROM public.\"user\" WHERE id = ?")) {
 					pstmt.setString(1, userId.trim());
 					try (ResultSet rs = pstmt.executeQuery()) {
 						if (rs.next()) userAuthority = rs.getInt("authority");
@@ -2705,13 +2705,13 @@ public class ProjectController extends HttpServlet {
 		try {
 			Class.forName("org.postgresql.Driver");
 			pgConn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-			// 1) 임시 프로젝트가 test.project에 존재하는지 확인
-			try (PreparedStatement pstmt = pgConn.prepareStatement("SELECT 1 FROM test.project WHERE project_code = ?")) {
+			// 1) 임시 프로젝트가 public.project에 존재하는지 확인
+			try (PreparedStatement pstmt = pgConn.prepareStatement("SELECT 1 FROM public.project WHERE project_code = ?")) {
 				pstmt.setString(1, tempProjectCode);
 				try (ResultSet rs = pstmt.executeQuery()) {
 					if (!rs.next()) {
 						resp.setStatus(400);
-						writeJson(resp, "{\"success\":false,\"message\":\"임시 프로젝트가 test.project에 존재하지 않습니다.\"}");
+						writeJson(resp, "{\"success\":false,\"message\":\"임시 프로젝트가 public.project에 존재하지 않습니다.\"}");
 						return;
 					}
 				}
@@ -2746,60 +2746,60 @@ public class ProjectController extends HttpServlet {
 				}
 				// project_members: 충돌 제거 후 변경 (official에 이미 있는 user_id는 temp 쪽 삭제)
 				try (PreparedStatement delPstmt = pgConn.prepareStatement(
-						"DELETE FROM test.project_members a WHERE a.project_code = ? AND EXISTS (SELECT 1 FROM test.project_members b WHERE b.project_code = ? AND b.user_id = a.user_id)")) {
+						"DELETE FROM public.project_members a WHERE a.project_code = ? AND EXISTS (SELECT 1 FROM public.project_members b WHERE b.project_code = ? AND b.user_id = a.user_id)")) {
 					delPstmt.setString(1, tempProjectCode);
 					delPstmt.setString(2, officialProjectCode);
 					delPstmt.executeUpdate();
 				}
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.project_members SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.project_members SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, officialProjectCode);
 					upPstmt.setString(2, tempProjectCode);
 					upPstmt.executeUpdate();
 				}
 				// project_admin: 충돌 제거 후 변경
 				try (PreparedStatement delPstmt = pgConn.prepareStatement(
-						"DELETE FROM test.project_admin a WHERE a.project_code = ? AND EXISTS (SELECT 1 FROM test.project_admin b WHERE b.project_code = ? AND b.admin_user_id = a.admin_user_id)")) {
+						"DELETE FROM public.project_admin a WHERE a.project_code = ? AND EXISTS (SELECT 1 FROM public.project_admin b WHERE b.project_code = ? AND b.admin_user_id = a.admin_user_id)")) {
 					delPstmt.setString(1, tempProjectCode);
 					delPstmt.setString(2, officialProjectCode);
 					delPstmt.executeUpdate();
 				}
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.project_admin SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.project_admin SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, officialProjectCode);
 					upPstmt.setString(2, tempProjectCode);
 					upPstmt.executeUpdate();
 				}
 				// project_permission_request: req_user_id 기준 충돌 제거 후 변경 (컬럼명 확인)
 				try (PreparedStatement delPstmt = pgConn.prepareStatement(
-						"DELETE FROM test.project_permission_request a WHERE a.project_code = ? AND EXISTS (SELECT 1 FROM test.project_permission_request b WHERE b.project_code = ? AND b.req_user_id = a.req_user_id)")) {
+						"DELETE FROM public.project_permission_request a WHERE a.project_code = ? AND EXISTS (SELECT 1 FROM public.project_permission_request b WHERE b.project_code = ? AND b.req_user_id = a.req_user_id)")) {
 					delPstmt.setString(1, tempProjectCode);
 					delPstmt.setString(2, officialProjectCode);
 					delPstmt.executeUpdate();
 				}
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.project_permission_request SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.project_permission_request SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, officialProjectCode);
 					upPstmt.setString(2, tempProjectCode);
 					upPstmt.executeUpdate();
 				}
 				// shp_layer
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.shp_layer SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.shp_layer SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, officialProjectCode);
 					upPstmt.setString(2, tempProjectCode);
 					upPstmt.executeUpdate();
 				}
 				// shp_layer_user_preference
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.shp_layer_user_preference SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.shp_layer_user_preference SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, officialProjectCode);
 					upPstmt.setString(2, tempProjectCode);
 					upPstmt.executeUpdate();
 				}
 				// gis_a_layer
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.gis_a_layer SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.gis_a_layer SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, officialProjectCode);
 					upPstmt.setString(2, tempProjectCode);
 					upPstmt.executeUpdate();
 				}
 				// project_member_history (있을 경우)
-				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE test.project_member_history SET project_code = ? WHERE project_code = ?")) {
+				try (PreparedStatement upPstmt = pgConn.prepareStatement("UPDATE public.project_member_history SET project_code = ? WHERE project_code = ?")) {
 					upPstmt.setString(1, officialProjectCode);
 					upPstmt.setString(2, tempProjectCode);
 					upPstmt.executeUpdate();
@@ -2810,7 +2810,7 @@ public class ProjectController extends HttpServlet {
 				// 공식(B) PM 유지, 임시(A) PM은 통합 사업에서 PM 아님
 				applyMergeProjectPmRetention(pgConn, officialProjectCode, fromPmUserId, toPmUserId);
 				// 임시 프로젝트 행 삭제
-				try (PreparedStatement delPstmt = pgConn.prepareStatement("DELETE FROM test.project WHERE project_code = ?")) {
+				try (PreparedStatement delPstmt = pgConn.prepareStatement("DELETE FROM public.project WHERE project_code = ?")) {
 					delPstmt.setString(1, tempProjectCode);
 					delPstmt.executeUpdate();
 				}
@@ -2832,12 +2832,12 @@ public class ProjectController extends HttpServlet {
 		}
 	}
 
-	/** project_admin(use_yn=Y) 우선, 없으면 test.project.pm_id */
+	/** project_admin(use_yn=Y) 우선, 없으면 public.project.pm_id */
 	private String resolvePmUserIdForMerge(Connection pgConn, String projectCode) throws SQLException {
 		if (projectCode == null || projectCode.trim().isEmpty()) return null;
 		String pc = projectCode.trim();
 		try (PreparedStatement ps = pgConn.prepareStatement(
-				"SELECT admin_user_id FROM test.project_admin WHERE project_code = ? AND COALESCE(use_yn, 'Y') = 'Y' ORDER BY assigned_at ASC NULLS LAST, id ASC LIMIT 1")) {
+				"SELECT admin_user_id FROM public.project_admin WHERE project_code = ? AND COALESCE(use_yn, 'Y') = 'Y' ORDER BY assigned_at ASC NULLS LAST, id ASC LIMIT 1")) {
 			ps.setString(1, pc);
 			try (ResultSet rs = ps.executeQuery()) {
 				if (rs.next()) {
@@ -2846,7 +2846,7 @@ public class ProjectController extends HttpServlet {
 				}
 			}
 		}
-		try (PreparedStatement ps = pgConn.prepareStatement("SELECT pm_id FROM test.project WHERE project_code = ?")) {
+		try (PreparedStatement ps = pgConn.prepareStatement("SELECT pm_id FROM public.project WHERE project_code = ?")) {
 			ps.setString(1, pc);
 			try (ResultSet rs = ps.executeQuery()) {
 				if (rs.next()) {
@@ -2885,21 +2885,21 @@ public class ProjectController extends HttpServlet {
 		boolean samePerson = fromPm != null && targetPm.equals(fromPm);
 
 		try (PreparedStatement p = pgConn.prepareStatement(
-				"UPDATE test.project_admin SET use_yn = 'N' WHERE project_code = ? AND COALESCE(use_yn, 'Y') = 'Y' AND admin_user_id <> ?")) {
+				"UPDATE public.project_admin SET use_yn = 'N' WHERE project_code = ? AND COALESCE(use_yn, 'Y') = 'Y' AND admin_user_id <> ?")) {
 			p.setString(1, off);
 			p.setString(2, targetPm);
 			p.executeUpdate();
 		}
 		int promoted = 0;
 		try (PreparedStatement p = pgConn.prepareStatement(
-				"UPDATE test.project_admin SET use_yn = 'Y' WHERE project_code = ? AND admin_user_id = ?")) {
+				"UPDATE public.project_admin SET use_yn = 'Y' WHERE project_code = ? AND admin_user_id = ?")) {
 			p.setString(1, off);
 			p.setString(2, targetPm);
 			promoted = p.executeUpdate();
 		}
 		if (promoted == 0) {
 			boolean hasProjectRow = false;
-			try (PreparedStatement chk = pgConn.prepareStatement("SELECT 1 FROM test.project WHERE project_code = ?")) {
+			try (PreparedStatement chk = pgConn.prepareStatement("SELECT 1 FROM public.project WHERE project_code = ?")) {
 				chk.setString(1, off);
 				try (ResultSet rs = chk.executeQuery()) {
 					hasProjectRow = rs.next();
@@ -2907,7 +2907,7 @@ public class ProjectController extends HttpServlet {
 			}
 			if (hasProjectRow) {
 				try (PreparedStatement ins = pgConn.prepareStatement(
-						"INSERT INTO test.project_admin (project_code, admin_user_id, assigned_by, assigned_at, created_at, updated_at, use_yn) VALUES (?, ?, NULL, NOW(), NOW(), NOW(), 'Y')")) {
+						"INSERT INTO public.project_admin (project_code, admin_user_id, assigned_by, assigned_at, created_at, updated_at, use_yn) VALUES (?, ?, NULL, NOW(), NOW(), NOW(), 'Y')")) {
 					ins.setString(1, off);
 					ins.setString(2, targetPm);
 					ins.executeUpdate();
@@ -2921,14 +2921,14 @@ public class ProjectController extends HttpServlet {
 
 		if (fromPm != null) {
 			try (PreparedStatement p = pgConn.prepareStatement(
-					"UPDATE test.project_members SET role = 'MEMBER', updated_at = NOW() WHERE project_code = ? AND user_id = ? AND role = 'PM' AND status = 'ACTIVE'")) {
+					"UPDATE public.project_members SET role = 'MEMBER', updated_at = NOW() WHERE project_code = ? AND user_id = ? AND role = 'PM' AND status = 'ACTIVE'")) {
 				p.setString(1, off);
 				p.setString(2, fromPm);
 				p.executeUpdate();
 			}
 		}
 		try (PreparedStatement p = pgConn.prepareStatement(
-				"UPDATE test.project_members SET role = 'PM', updated_at = NOW() WHERE project_code = ? AND user_id = ? AND status = 'ACTIVE'")) {
+				"UPDATE public.project_members SET role = 'PM', updated_at = NOW() WHERE project_code = ? AND user_id = ? AND status = 'ACTIVE'")) {
 			p.setString(1, off);
 			p.setString(2, targetPm);
 			p.executeUpdate();
@@ -2939,7 +2939,7 @@ public class ProjectController extends HttpServlet {
 	 * 프로젝트 수정
 	 * PUT /api/project/{projectCode}
 	 * Body: { "projectName": "..." }
-	 * — test.project에만 있고 VIEW_PROJ_INFO에 없으며, 생성 시 본인이 PM으로 등록된(assigned_by=본인) 프로젝트만 허용
+	 * — public.project에만 있고 VIEW_PROJ_INFO에 없으며, 생성 시 본인이 PM으로 등록된(assigned_by=본인) 프로젝트만 허용
 	 */
 	private void handleUpdateProject(HttpServletRequest req, HttpServletResponse resp, String projectCode) throws Exception {
 		String userId = resolveUserIdForProjectApi(req);
@@ -2980,10 +2980,10 @@ public class ProjectController extends HttpServlet {
 				}
 				if (!canManageOwnCreatedProject(pgConn, msConn, userId.trim(), pc)) {
 					resp.setStatus(403);
-					writeJson(resp, "{\"success\":false,\"message\":\"수정할 수 없는 프로젝트입니다. (본인이 생성한 test.project 전용 사업만 가능)\"}");
+					writeJson(resp, "{\"success\":false,\"message\":\"수정할 수 없는 프로젝트입니다. (본인이 생성한 public.project 전용 사업만 가능)\"}");
 					return;
 				}
-				String upd = "UPDATE test.project SET project_name = ?, mod_dt = NOW() WHERE project_code = ?";
+				String upd = "UPDATE public.project SET project_name = ?, mod_dt = NOW() WHERE project_code = ?";
 				try (PreparedStatement pstmt = pgConn.prepareStatement(upd)) {
 					pstmt.setString(1, trimmedName);
 					pstmt.setString(2, pc);
@@ -3041,43 +3041,43 @@ public class ProjectController extends HttpServlet {
 				}
 				if (!canManageOwnCreatedProject(pgConn, msConn, userId.trim(), pc)) {
 					resp.setStatus(403);
-					writeJson(resp, "{\"success\":false,\"message\":\"삭제할 수 없는 프로젝트입니다. (본인이 생성한 test.project 전용 사업만 가능)\"}");
+					writeJson(resp, "{\"success\":false,\"message\":\"삭제할 수 없는 프로젝트입니다. (본인이 생성한 public.project 전용 사업만 가능)\"}");
 					return;
 				}
 
 				pgConn.setAutoCommit(false);
 				try {
 					cleanupProjectRelatedDataBeforeOwnProjectDelete(pgConn, pc);
-					try (PreparedStatement p = pgConn.prepareStatement("DELETE FROM test.project_members WHERE project_code = ?")) {
+					try (PreparedStatement p = pgConn.prepareStatement("DELETE FROM public.project_members WHERE project_code = ?")) {
 						p.setString(1, pc);
 						p.executeUpdate();
 					}
-					try (PreparedStatement p = pgConn.prepareStatement("DELETE FROM test.project_permission_request WHERE project_code = ?")) {
+					try (PreparedStatement p = pgConn.prepareStatement("DELETE FROM public.project_permission_request WHERE project_code = ?")) {
 						p.setString(1, pc);
 						p.executeUpdate();
 					}
-					try (PreparedStatement p = pgConn.prepareStatement("DELETE FROM test.project_admin WHERE project_code = ?")) {
+					try (PreparedStatement p = pgConn.prepareStatement("DELETE FROM public.project_admin WHERE project_code = ?")) {
 						p.setString(1, pc);
 						p.executeUpdate();
 					}
 					try (PreparedStatement p = pgConn.prepareStatement(
-							"DELETE FROM test.shp_layer_user_preference WHERE shp_layer_idx IN (SELECT idx FROM test.shp_layer WHERE project_code = ?)")) {
+							"DELETE FROM public.shp_layer_user_preference WHERE shp_layer_idx IN (SELECT idx FROM public.shp_layer WHERE project_code = ?)")) {
 						p.setString(1, pc);
 						p.executeUpdate();
 					} catch (Exception e) {
 						if (e.getMessage() == null || !e.getMessage().contains("does not exist")) throw e;
 					}
-					try (PreparedStatement p = pgConn.prepareStatement("UPDATE test.shp_layer SET use_yn = 'N', mod_dt = NOW() WHERE project_code = ?")) {
+					try (PreparedStatement p = pgConn.prepareStatement("UPDATE public.shp_layer SET use_yn = 'N', mod_dt = NOW() WHERE project_code = ?")) {
 						p.setString(1, pc);
 						p.executeUpdate();
 					}
-					try (PreparedStatement p = pgConn.prepareStatement("UPDATE test.free_shp_layer SET use_yn = 'N', mod_dt = NOW() WHERE project_code = ?")) {
+					try (PreparedStatement p = pgConn.prepareStatement("UPDATE public.free_shp_layer SET use_yn = 'N', mod_dt = NOW() WHERE project_code = ?")) {
 						p.setString(1, pc);
 						p.executeUpdate();
 					} catch (Exception e) {
 						if (e.getMessage() == null || !e.getMessage().contains("does not exist")) throw e;
 					}
-					try (PreparedStatement p = pgConn.prepareStatement("DELETE FROM test.project WHERE project_code = ?")) {
+					try (PreparedStatement p = pgConn.prepareStatement("DELETE FROM public.project WHERE project_code = ?")) {
 						p.setString(1, pc);
 						int n = p.executeUpdate();
 						if (n == 0) {
@@ -3154,7 +3154,7 @@ public class ProjectController extends HttpServlet {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 			
-			// 4. 프로젝트 존재 확인 (VIEW_PROJ_INFO 또는 test.project)
+			// 4. 프로젝트 존재 확인 (VIEW_PROJ_INFO 또는 public.project)
 			boolean projectExists = false;
 			if (dbViewUrl != null && dbViewUser != null && dbViewPassword != null) {
 				try {
@@ -3167,13 +3167,13 @@ public class ProjectController extends HttpServlet {
 						}
 					}
 				} catch (Exception e) {
-					System.err.println("[ProjectController] VIEW_PROJ_INFO 조회 실패, test.project 폴백: " + e.getMessage());
+					System.err.println("[ProjectController] VIEW_PROJ_INFO 조회 실패, public.project 폴백: " + e.getMessage());
 				} finally {
 					if (msConn != null) try { msConn.close(); } catch (Exception ignore) {}
 				}
 			}
 			if (!projectExists) {
-				String checkProjectSql = "SELECT project_code FROM test.project WHERE project_code = ? AND ((project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL))";
+				String checkProjectSql = "SELECT project_code FROM public.project WHERE project_code = ? AND ((project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL))";
 				pstmt = conn.prepareStatement(checkProjectSql);
 				pstmt.setString(1, projectCode.trim());
 				rs = pstmt.executeQuery();
@@ -3188,7 +3188,7 @@ public class ProjectController extends HttpServlet {
 			}
 
 			// 5. 중복 신청 확인 (PENDING 상태가 있으면 중복 신청 불가)
-			String checkDuplicateSql = "SELECT id FROM test.project_permission_request " +
+			String checkDuplicateSql = "SELECT id FROM public.project_permission_request " +
 					"WHERE project_code = ? AND req_user_id = ? AND req_status = 'PENDING'";
 			pstmt = conn.prepareStatement(checkDuplicateSql);
 			pstmt.setString(1, projectCode.trim());
@@ -3203,7 +3203,7 @@ public class ProjectController extends HttpServlet {
 			pstmt.close();
 			
 			// 6. 권한 요청 테이블에 INSERT
-			String insertSql = "INSERT INTO test.project_permission_request " +
+			String insertSql = "INSERT INTO public.project_permission_request " +
 					"(project_code, req_user_id, req_status, req_at) " +
 					"VALUES (?, ?, 'PENDING', NOW()) RETURNING id";
 			pstmt = conn.prepareStatement(insertSql);
@@ -3292,7 +3292,7 @@ public class ProjectController extends HttpServlet {
 				return;
 			}
 			
-			String checkDeptAdminSql = "SELECT id FROM test.\"user\" WHERE id = ? AND dept_name = ? AND is_dept_admin = TRUE";
+			String checkDeptAdminSql = "SELECT id FROM public.\"user\" WHERE id = ? AND dept_name = ? AND is_dept_admin = TRUE";
 			pstmt = conn.prepareStatement(checkDeptAdminSql);
 			pstmt.setString(1, userId.trim());
 			pstmt.setString(2, userDeptName.trim());
@@ -3305,7 +3305,7 @@ public class ProjectController extends HttpServlet {
 			rs.close();
 			pstmt.close();
 			
-			// 5. 프로젝트의 주관 부서 확인 (VIEW_PROJ_INFO 또는 test.project)
+			// 5. 프로젝트의 주관 부서 확인 (VIEW_PROJ_INFO 또는 public.project)
 			String projectDeptName = null;
 			if (dbViewUrl != null && dbViewUser != null && dbViewPassword != null) {
 				try {
@@ -3324,7 +3324,7 @@ public class ProjectController extends HttpServlet {
 				}
 			}
 			if (projectDeptName == null) {
-				pstmt = conn.prepareStatement("SELECT main_dept_name FROM test.project WHERE project_code = ?");
+				pstmt = conn.prepareStatement("SELECT main_dept_name FROM public.project WHERE project_code = ?");
 				pstmt.setString(1, projectCode.trim());
 				rs = pstmt.executeQuery();
 				if (rs.next()) projectDeptName = rs.getString("main_dept_name");
@@ -3343,7 +3343,7 @@ public class ProjectController extends HttpServlet {
 			}
 			
 			// 6. 기존 관리자 레코드 확인 (이 사용자)
-			String checkExistingSql = "SELECT id, use_yn FROM test.project_admin WHERE project_code = ? AND admin_user_id = ?";
+			String checkExistingSql = "SELECT id, use_yn FROM public.project_admin WHERE project_code = ? AND admin_user_id = ?";
 			pstmt = conn.prepareStatement(checkExistingSql);
 			pstmt.setString(1, projectCode.trim());
 			pstmt.setString(2, adminUserId.trim());
@@ -3365,7 +3365,7 @@ public class ProjectController extends HttpServlet {
 					writeJson(resp, "{\"success\":false,\"message\":\"활성화된 관리자를 찾을 수 없습니다.\"}");
 					return;
 				}
-				String updateSql = "UPDATE test.project_admin SET use_yn = 'N' WHERE id = ?";
+				String updateSql = "UPDATE public.project_admin SET use_yn = 'N' WHERE id = ?";
 				pstmt = conn.prepareStatement(updateSql);
 				pstmt.setInt(1, existingId);
 				int updated = pstmt.executeUpdate();
@@ -3383,7 +3383,7 @@ public class ProjectController extends HttpServlet {
 			conn.setAutoCommit(false);
 			try {
 				// 6-1. 해당 프로젝트의 use_yn='Y'인 레코드 전부 use_yn='N'으로
-				String deactivateOthersSql = "UPDATE test.project_admin SET use_yn = 'N' WHERE project_code = ? AND use_yn = 'Y'";
+				String deactivateOthersSql = "UPDATE public.project_admin SET use_yn = 'N' WHERE project_code = ? AND use_yn = 'Y'";
 				pstmt = conn.prepareStatement(deactivateOthersSql);
 				pstmt.setString(1, projectCode.trim());
 				pstmt.executeUpdate();
@@ -3392,7 +3392,7 @@ public class ProjectController extends HttpServlet {
 				// 6-2. 이 사용자 레코드가 있으면 use_yn='Y'로 갱신, 없으면 INSERT
 				int adminId;
 				if (exists) {
-				String updateSql = "UPDATE test.project_admin SET use_yn = 'Y', assigned_by = ?, assigned_at = NOW() WHERE id = ? RETURNING id";
+				String updateSql = "UPDATE public.project_admin SET use_yn = 'Y', assigned_by = ?, assigned_at = NOW() WHERE id = ? RETURNING id";
 				pstmt = conn.prepareStatement(updateSql);
 				pstmt.setString(1, userId.trim());
 				pstmt.setInt(2, existingId);
@@ -3408,7 +3408,7 @@ public class ProjectController extends HttpServlet {
 				rs.close();
 				pstmt.close();
 			} else {
-				String insertSql = "INSERT INTO test.project_admin (project_code, admin_user_id, assigned_by, assigned_at, created_at, updated_at, use_yn) VALUES (?, ?, ?, NOW(), NOW(), NOW(), 'Y') RETURNING id";
+				String insertSql = "INSERT INTO public.project_admin (project_code, admin_user_id, assigned_by, assigned_at, created_at, updated_at, use_yn) VALUES (?, ?, ?, NOW(), NOW(), NOW(), 'Y') RETURNING id";
 				pstmt = conn.prepareStatement(insertSql);
 				pstmt.setString(1, projectCode.trim());
 				pstmt.setString(2, adminUserId.trim());
@@ -3427,7 +3427,7 @@ public class ProjectController extends HttpServlet {
 			}
 			
 			// Authority 2 부여
-			String updateAuthoritySql = "UPDATE test.\"user\" SET authority = 2 WHERE id = ? AND (authority IS NULL OR authority != 1)";
+			String updateAuthoritySql = "UPDATE public.\"user\" SET authority = 2 WHERE id = ? AND (authority IS NULL OR authority != 1)";
 			pstmt = conn.prepareStatement(updateAuthoritySql);
 			pstmt.setString(1, adminUserId.trim());
 			pstmt.executeUpdate();
@@ -3463,7 +3463,7 @@ public class ProjectController extends HttpServlet {
 	 * 프로젝트 관리자 목록 조회 (현 PM·이전 PM·승인된 인원 통합)
 	 * GET /api/project/admin/list?projectCode=J1234567
 	 * - admins: project_admin 전부(use_yn Y/N) + 지정 없을 때 뷰/테이블 기본 PM. role=PM, use_yn으로 현/이전 구분.
-	 * - members: test.project_members(status=ACTIVE). role=MEMBER. 한 API로 관리자·인원 목록 모두 제공.
+	 * - members: public.project_members(status=ACTIVE). role=MEMBER. 한 API로 관리자·인원 목록 모두 제공.
 	 */
 	private void handleGetProjectAdmins(HttpServletRequest req, HttpServletResponse resp) throws Exception {
 		String projectCode = req.getParameter("projectCode");
@@ -3503,7 +3503,7 @@ public class ProjectController extends HttpServlet {
 			// 1) project_admin 전부 조회 (use_yn Y=현 PM, N=이전 PM). role=PM으로 통일.
 			if (pgConn != null) {
 				String sql = "SELECT pa.id, pa.admin_user_id, pa.assigned_by, pa.assigned_at, pa.use_yn " +
-						"FROM test.project_admin pa " +
+						"FROM public.project_admin pa " +
 						"WHERE pa.project_code = ? " +
 						"ORDER BY CASE WHEN pa.use_yn = 'Y' THEN 0 ELSE 1 END, pa.assigned_at";
 				pstmt = pgConn.prepareStatement(sql);
@@ -3556,7 +3556,7 @@ public class ProjectController extends HttpServlet {
 					}
 				}
 				if ((viewPmId == null || viewPmId.isEmpty()) && pgConn != null) {
-					try (PreparedStatement pmPstmt = pgConn.prepareStatement("SELECT pm_id FROM test.project WHERE project_code = ?")) {
+					try (PreparedStatement pmPstmt = pgConn.prepareStatement("SELECT pm_id FROM public.project WHERE project_code = ?")) {
 						pmPstmt.setString(1, projectCode.trim());
 						try (ResultSet pmRs = pmPstmt.executeQuery()) {
 							if (pmRs.next()) {
@@ -3594,13 +3594,13 @@ public class ProjectController extends HttpServlet {
 				}
 			}
 			
-			// 3) test.project_members (status=ACTIVE) → role=MEMBER, 승인된 인원
+			// 3) public.project_members (status=ACTIVE) → role=MEMBER, 승인된 인원
 			List<Map<String, Object>> memberList = new ArrayList<>();
 			if (pgConn != null) {
 				try (PreparedStatement memPstmt = pgConn.prepareStatement(
 						"SELECT pm.user_id, pm.role, pm.dept_code, pm.dept_name, pm.joined_at, u.name AS user_name, u.authority, u.company " +
-						"FROM test.project_members pm " +
-						"LEFT JOIN test.\"user\" u ON u.id = pm.user_id " +
+						"FROM public.project_members pm " +
+						"LEFT JOIN public.\"user\" u ON u.id = pm.user_id " +
 						"WHERE pm.project_code = ? AND pm.status = 'ACTIVE' " +
 						"ORDER BY pm.role DESC, pm.joined_at ASC")) {
 					memPstmt.setString(1, projectCode);
@@ -3750,7 +3750,7 @@ public class ProjectController extends HttpServlet {
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 			
 			// 4. 대상 사용자 존재 및 부서 확인
-			String checkUserSql = "SELECT id, dept_name FROM test.\"user\" WHERE id = ?";
+			String checkUserSql = "SELECT id, dept_name FROM public.\"user\" WHERE id = ?";
 			pstmt = conn.prepareStatement(checkUserSql);
 			pstmt.setString(1, targetUserId.trim());
 			ResultSet rs = pstmt.executeQuery();
@@ -3769,14 +3769,14 @@ public class ProjectController extends HttpServlet {
 			pstmt.close();
 			
 			// 5. 기존 부서 최고 관리자 확인 및 해제 (각 부서당 1명만 허용)
-			String checkExistingAdminSql = "SELECT id FROM test.\"user\" WHERE dept_name = ? AND is_dept_admin = TRUE AND id != ?";
+			String checkExistingAdminSql = "SELECT id FROM public.\"user\" WHERE dept_name = ? AND is_dept_admin = TRUE AND id != ?";
 			pstmt = conn.prepareStatement(checkExistingAdminSql);
 			pstmt.setString(1, deptName.trim());
 			pstmt.setString(2, targetUserId.trim());
 			rs = pstmt.executeQuery();
 			if (rs.next()) {
 				// 기존 부서 최고 관리자가 있으면 해제
-				String unsetOldAdminSql = "UPDATE test.\"user\" SET is_dept_admin = FALSE WHERE dept_name = ? AND is_dept_admin = TRUE AND id != ?";
+				String unsetOldAdminSql = "UPDATE public.\"user\" SET is_dept_admin = FALSE WHERE dept_name = ? AND is_dept_admin = TRUE AND id != ?";
 				pstmt.close();
 				pstmt = conn.prepareStatement(unsetOldAdminSql);
 				pstmt.setString(1, deptName.trim());
@@ -3787,7 +3787,7 @@ public class ProjectController extends HttpServlet {
 			pstmt.close();
 			
 			// 6. 새로운 부서 최고 관리자 지정
-			String setAdminSql = "UPDATE test.\"user\" SET is_dept_admin = TRUE WHERE id = ? AND dept_name = ?";
+			String setAdminSql = "UPDATE public.\"user\" SET is_dept_admin = TRUE WHERE id = ? AND dept_name = ?";
 			pstmt = conn.prepareStatement(setAdminSql);
 			pstmt.setString(1, targetUserId.trim());
 			pstmt.setString(2, deptName.trim());
@@ -3864,7 +3864,7 @@ public class ProjectController extends HttpServlet {
 	}
 
 	/**
-	 * 사용자 ID 목록에 대한 이름 조회. VIEW_INSA_INFO(인사) 우선, 없으면 test.user(게스트 등)에서 조회.
+	 * 사용자 ID 목록에 대한 이름 조회. VIEW_INSA_INFO(인사) 우선, 없으면 public.user(게스트 등)에서 조회.
 	 */
 	private Map<String, String> resolveUserNames(Connection pgConn, Connection msConn, Set<String> userIds) {
 		Map<String, String> map = new HashMap<>();
@@ -3893,7 +3893,7 @@ public class ProjectController extends HttpServlet {
 					if (i > 0) inList.append(",");
 					inList.append("?");
 				}
-				String sql = "SELECT id, name FROM test.\"user\" WHERE id IN (" + inList.toString() + ")";
+				String sql = "SELECT id, name FROM public.\"user\" WHERE id IN (" + inList.toString() + ")";
 				try (PreparedStatement p = pgConn.prepareStatement(sql)) {
 					for (int i = 0; i < missingList.size(); i++) { p.setString(i + 1, missingList.get(i)); }
 					try (ResultSet r = p.executeQuery()) {
@@ -4023,7 +4023,7 @@ public class ProjectController extends HttpServlet {
 			if (dbUrl != null && dbUser != null && dbPassword != null) {
 				Class.forName("org.postgresql.Driver");
 				pgConn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
-				pstmt = pgConn.prepareStatement("SELECT id, name, company, dept_name FROM test.\"user\" WHERE authority = 4 AND enabled = 'Y' ORDER BY id");
+				pstmt = pgConn.prepareStatement("SELECT id, name, company, dept_name FROM public.\"user\" WHERE authority = 4 AND enabled = 'Y' ORDER BY id");
 				rs = pstmt.executeQuery();
 				while (rs.next()) {
 					String id = rs.getString("id");
@@ -4114,9 +4114,9 @@ public class ProjectController extends HttpServlet {
 			
 			// 3. 현재 사용자가 관리자인 프로젝트 목록 조회
 			//    - project_admin에 등록된 PM(관리자)인 경우
-			//    - project_admin에 PM이 없는 프로젝트에서 test.project.pm_id인 경우
+			//    - project_admin에 PM이 없는 프로젝트에서 public.project.pm_id인 경우
 			java.util.List<String> projectCodes = new java.util.ArrayList<>();
-			String adminProjectsSql = "SELECT DISTINCT project_code FROM test.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'";
+			String adminProjectsSql = "SELECT DISTINCT project_code FROM public.project_admin WHERE admin_user_id = ? AND use_yn = 'Y'";
 			pstmt = pgConn.prepareStatement(adminProjectsSql);
 			pstmt.setString(1, userId.trim());
 			rs = pstmt.executeQuery();
@@ -4127,10 +4127,10 @@ public class ProjectController extends HttpServlet {
 			rs.close();
 			pstmt.close();
 
-			// project_admin에 PM이 없는 프로젝트 중 test.project.pm_id = 현재 사용자인 프로젝트 추가
-			String pmProjectsSql = "SELECT p.project_code FROM test.project p " +
+			// project_admin에 PM이 없는 프로젝트 중 public.project.pm_id = 현재 사용자인 프로젝트 추가
+			String pmProjectsSql = "SELECT p.project_code FROM public.project p " +
 					"WHERE p.pm_id = ? AND ((p.project_status = 'ACTIVE' OR p.project_status = '사전기획' OR p.project_status IS NULL)) " +
-					"AND NOT EXISTS (SELECT 1 FROM test.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')";
+					"AND NOT EXISTS (SELECT 1 FROM public.project_admin pa WHERE pa.project_code = p.project_code AND pa.use_yn = 'Y')";
 			pstmt = pgConn.prepareStatement(pmProjectsSql);
 			pstmt.setString(1, userId.trim());
 			rs = pstmt.executeQuery();
@@ -4180,8 +4180,8 @@ public class ProjectController extends HttpServlet {
 			String requestsSql = "SELECT pr.id, pr.project_code, pr.req_user_id, pr.req_status, pr.req_at, " +
 					"pr.reviewed_by, pr.reviewed_at, pr.review_comment, " +
 					"p.project_name " +
-					"FROM test.project_permission_request pr " +
-					"LEFT JOIN test.project p ON pr.project_code = p.project_code " +
+					"FROM public.project_permission_request pr " +
+					"LEFT JOIN public.project p ON pr.project_code = p.project_code " +
 					"WHERE pr.project_code IN (" + placeholders + ") " +
 					"ORDER BY pr.req_at DESC";
 			
@@ -4303,7 +4303,7 @@ public class ProjectController extends HttpServlet {
 	}
 	
 	/**
-	 * 프로젝트 인원 목록 조회 (test.project_members만, PM 승인으로 추가된 인원)
+	 * 프로젝트 인원 목록 조회 (public.project_members만, PM 승인으로 추가된 인원)
 	 * GET /api/project/members?projectCode=XXX
 	 * 호출자는 해당 프로젝트 PM이어야 함.
 	 */
@@ -4342,9 +4342,9 @@ public class ProjectController extends HttpServlet {
 			Class.forName("org.postgresql.Driver");
 			pgConn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 			
-			// PM 여부 확인 (1=project_admin, 2=test.project.pm_id, 3=VIEW_PROJ_INFO.PM_EMP_NO)
+			// PM 여부 확인 (1=project_admin, 2=public.project.pm_id, 3=VIEW_PROJ_INFO.PM_EMP_NO)
 			boolean isPm = false;
-			pstmt = pgConn.prepareStatement("SELECT 1 FROM test.project_admin WHERE project_code = ? AND admin_user_id = ? AND use_yn = 'Y'");
+			pstmt = pgConn.prepareStatement("SELECT 1 FROM public.project_admin WHERE project_code = ? AND admin_user_id = ? AND use_yn = 'Y'");
 			pstmt.setString(1, projectCode);
 			pstmt.setString(2, userId);
 			rs = pstmt.executeQuery();
@@ -4352,7 +4352,7 @@ public class ProjectController extends HttpServlet {
 			rs.close();
 			pstmt.close();
 			if (!isPm) {
-				pstmt = pgConn.prepareStatement("SELECT 1 FROM test.project WHERE project_code = ? AND pm_id = ? AND ((project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL))");
+				pstmt = pgConn.prepareStatement("SELECT 1 FROM public.project WHERE project_code = ? AND pm_id = ? AND ((project_status = 'ACTIVE' OR project_status = '사전기획' OR project_status IS NULL))");
 				pstmt.setString(1, projectCode);
 				pstmt.setString(2, userId);
 				rs = pstmt.executeQuery();
@@ -4382,10 +4382,10 @@ public class ProjectController extends HttpServlet {
 				return;
 			}
 			
-			// test.project_members만 조회 (PM 승인으로 추가된 인원, status = 'ACTIVE')
+			// public.project_members만 조회 (PM 승인으로 추가된 인원, status = 'ACTIVE')
 			String membersSql = "SELECT pm.user_id, pm.role, pm.dept_code, pm.dept_name, pm.joined_at, u.name AS user_name, u.authority, u.company " +
-					"FROM test.project_members pm " +
-					"LEFT JOIN test.\"user\" u ON u.id = pm.user_id " +
+					"FROM public.project_members pm " +
+					"LEFT JOIN public.\"user\" u ON u.id = pm.user_id " +
 					"WHERE pm.project_code = ? AND pm.status = 'ACTIVE' " +
 					"ORDER BY pm.role DESC, pm.joined_at ASC";
 			pstmt = pgConn.prepareStatement(membersSql);
@@ -4499,7 +4499,7 @@ public class ProjectController extends HttpServlet {
 			
 			// 4. 요청 정보 조회 및 권한 확인
 			String checkRequestSql = "SELECT pr.project_code, pr.req_user_id, pr.req_status " +
-					"FROM test.project_permission_request pr " +
+					"FROM public.project_permission_request pr " +
 					"WHERE pr.id = ?";
 			pstmt = conn.prepareStatement(checkRequestSql);
 			pstmt.setInt(1, Integer.parseInt(requestId));
@@ -4524,9 +4524,9 @@ public class ProjectController extends HttpServlet {
 			rs.close();
 			pstmt.close();
 			
-			// 5. 현재 사용자가 해당 프로젝트의 PM인지 확인 (1=project_admin, 2=test.project.pm_id, 3=VIEW_PROJ_INFO.PM_EMP_NO)
+			// 5. 현재 사용자가 해당 프로젝트의 PM인지 확인 (1=project_admin, 2=public.project.pm_id, 3=VIEW_PROJ_INFO.PM_EMP_NO)
 			boolean isPm = false;
-			String checkAdminSql = "SELECT id FROM test.project_admin WHERE project_code = ? AND admin_user_id = ? AND use_yn = 'Y'";
+			String checkAdminSql = "SELECT id FROM public.project_admin WHERE project_code = ? AND admin_user_id = ? AND use_yn = 'Y'";
 			pstmt = conn.prepareStatement(checkAdminSql);
 			pstmt.setString(1, projectCode);
 			pstmt.setString(2, userId.trim());
@@ -4536,8 +4536,8 @@ public class ProjectController extends HttpServlet {
 			pstmt.close();
 			
 			if (!isPm) {
-				// test.project.pm_id
-				try (PreparedStatement pmPstmt = conn.prepareStatement("SELECT 1 FROM test.project WHERE project_code = ? AND pm_id = ?")) {
+				// public.project.pm_id
+				try (PreparedStatement pmPstmt = conn.prepareStatement("SELECT 1 FROM public.project WHERE project_code = ? AND pm_id = ?")) {
 					pmPstmt.setString(1, projectCode);
 					pmPstmt.setString(2, userId.trim());
 					try (ResultSet pmRs = pmPstmt.executeQuery()) {
@@ -4574,7 +4574,7 @@ public class ProjectController extends HttpServlet {
 			// 6. 승인/거부 처리
 			if (approved) {
 				// 승인: 상태를 APPROVED로 업데이트
-				String updateSql = "UPDATE test.project_permission_request " +
+				String updateSql = "UPDATE public.project_permission_request " +
 						"SET req_status = 'APPROVED', reviewed_by = ?, reviewed_at = NOW() " +
 						"WHERE id = ?";
 				pstmt = conn.prepareStatement(updateSql);
@@ -4583,10 +4583,10 @@ public class ProjectController extends HttpServlet {
 				int updated = pstmt.executeUpdate();
 				
 				if (updated > 0) {
-					// 요청자(requesterUserId)의 부서코드/부서명·권한·회사명 조회 (test.user)
+					// 요청자(requesterUserId)의 부서코드/부서명·권한·회사명 조회 (public.user)
 					String requesterDeptCode = null;
 					String requesterDeptName = null;
-					try (PreparedStatement userPstmt = conn.prepareStatement("SELECT dept_code, dept_name, authority, company FROM test.\"user\" WHERE id = ?")) {
+					try (PreparedStatement userPstmt = conn.prepareStatement("SELECT dept_code, dept_name, authority, company FROM public.\"user\" WHERE id = ?")) {
 						userPstmt.setString(1, requesterUserId);
 						try (ResultSet userRs = userPstmt.executeQuery()) {
 							if (userRs.next()) {
@@ -4602,7 +4602,7 @@ public class ProjectController extends HttpServlet {
 						}
 					}
 					// 프로젝트 멤버에 추가 (권한 부여, 부서코드/부서명(또는 게스트 시 회사명) 포함)
-					String insertMemberSql = "INSERT INTO test.project_members (project_code, user_id, role, status, joined_at, updated_at, dept_code, dept_name) " +
+					String insertMemberSql = "INSERT INTO public.project_members (project_code, user_id, role, status, joined_at, updated_at, dept_code, dept_name) " +
 							"VALUES (?, ?, 'MEMBER', 'ACTIVE', NOW(), NOW(), ?, ?) " +
 							"ON CONFLICT (project_code, user_id) DO NOTHING";
 					pstmt.close();
@@ -4620,7 +4620,7 @@ public class ProjectController extends HttpServlet {
 				}
 			} else {
 				// 거부: 상태를 REJECTED로 업데이트
-				String updateSql = "UPDATE test.project_permission_request " +
+				String updateSql = "UPDATE public.project_permission_request " +
 						"SET req_status = 'REJECTED', reviewed_by = ?, reviewed_at = NOW(), review_comment = ? " +
 						"WHERE id = ?";
 				pstmt = conn.prepareStatement(updateSql);
@@ -4680,7 +4680,7 @@ public class ProjectController extends HttpServlet {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
 
-			String checkSql = "SELECT id, req_user_id, req_status FROM test.project_permission_request WHERE id = ?";
+			String checkSql = "SELECT id, req_user_id, req_status FROM public.project_permission_request WHERE id = ?";
 			pstmt = conn.prepareStatement(checkSql);
 			pstmt.setInt(1, Integer.parseInt(requestId.trim()));
 			rs = pstmt.executeQuery();
@@ -4705,7 +4705,7 @@ public class ProjectController extends HttpServlet {
 				return;
 			}
 
-			String updateSql = "UPDATE test.project_permission_request SET req_status = 'CANCELLED' WHERE id = ?";
+			String updateSql = "UPDATE public.project_permission_request SET req_status = 'CANCELLED' WHERE id = ?";
 			pstmt = conn.prepareStatement(updateSql);
 			pstmt.setInt(1, Integer.parseInt(requestId.trim()));
 			int updated = pstmt.executeUpdate();
@@ -4732,7 +4732,7 @@ public class ProjectController extends HttpServlet {
 	}
 
 	/**
-	 * 세션 deptName 우선, 없으면 test.user.dept_name (API 파라미터 추가 없음)
+	 * 세션 deptName 우선, 없으면 public.user.dept_name (API 파라미터 추가 없음)
 	 */
 	private String resolveDeptNameFromUser(Connection pgConn, HttpSession session, String userId) throws Exception {
 		if (session != null) {
@@ -4744,7 +4744,7 @@ public class ProjectController extends HttpServlet {
 		if (userId == null || userId.trim().isEmpty() || pgConn == null) {
 			return null;
 		}
-		try (PreparedStatement ps = pgConn.prepareStatement("SELECT dept_name FROM test.\"user\" WHERE id = ?")) {
+		try (PreparedStatement ps = pgConn.prepareStatement("SELECT dept_name FROM public.\"user\" WHERE id = ?")) {
 			ps.setString(1, userId.trim());
 			try (ResultSet rs = ps.executeQuery()) {
 				if (rs.next()) {
@@ -4812,7 +4812,7 @@ public class ProjectController extends HttpServlet {
 	}
 
 	/**
-	 * 지도에서 추가한 임시(test.project) 사업: 본인이 PM이고, 생성 시 project_admin에 본인을 본인이 지정(assigned_by)한 경우만 true.
+	 * 지도에서 추가한 임시(public.project) 사업: 본인이 PM이고, 생성 시 project_admin에 본인을 본인이 지정(assigned_by)한 경우만 true.
 	 * VIEW_PROJ_INFO에 등록된 공식 사업번호는 false.
 	 */
 	private boolean canManageOwnCreatedProject(Connection pgConn, Connection msConn, String userId, String projectCode) throws Exception {
@@ -4827,9 +4827,9 @@ public class ProjectController extends HttpServlet {
 		if (projectExistsInViewProjInfo(msConn, pc)) {
 			return false;
 		}
-		String sql = "SELECT 1 FROM test.project p "
+		String sql = "SELECT 1 FROM public.project p "
 				+ "WHERE p.project_code = ? AND TRIM(COALESCE(p.pm_id, '')) = ? "
-				+ "AND EXISTS (SELECT 1 FROM test.project_admin pa WHERE pa.project_code = p.project_code AND COALESCE(pa.use_yn, 'Y') = 'Y' "
+				+ "AND EXISTS (SELECT 1 FROM public.project_admin pa WHERE pa.project_code = p.project_code AND COALESCE(pa.use_yn, 'Y') = 'Y' "
 				+ "AND TRIM(COALESCE(pa.admin_user_id, '')) = ? AND TRIM(COALESCE(pa.assigned_by, '')) = ?)";
 		try (PreparedStatement ps = pgConn.prepareStatement(sql)) {
 			ps.setString(1, pc);
@@ -4848,17 +4848,17 @@ public class ProjectController extends HttpServlet {
 	private void cleanupProjectRelatedDataBeforeOwnProjectDelete(Connection pgConn, String projectCode) throws Exception {
 		String pc = projectCode.trim();
 		try (PreparedStatement p = pgConn.prepareStatement(
-				"UPDATE test.field SET use_yn = 'N', project_code = NULL WHERE project_code = ?")) {
+				"UPDATE public.field SET use_yn = 'N', project_code = NULL WHERE project_code = ?")) {
 			p.setString(1, pc);
 			p.executeUpdate();
 		} catch (Exception e) {
 			try (PreparedStatement p2 = pgConn.prepareStatement(
-					"UPDATE test.field SET use_yn = 'N', project_code = '' WHERE project_code = ?")) {
+					"UPDATE public.field SET use_yn = 'N', project_code = '' WHERE project_code = ?")) {
 				p2.setString(1, pc);
 				p2.executeUpdate();
 			}
 		}
-		try (PreparedStatement p = pgConn.prepareStatement("DELETE FROM test.gis_a_layer WHERE project_code = ?")) {
+		try (PreparedStatement p = pgConn.prepareStatement("DELETE FROM public.gis_a_layer WHERE project_code = ?")) {
 			p.setString(1, pc);
 			p.executeUpdate();
 		} catch (Exception e) {

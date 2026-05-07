@@ -31,6 +31,11 @@ public class FacServiceImpl implements FacService {
 	}
 
 	@Override
+	public List<String> listAllFieldImagesByCodeAndGroup(String code, int groupIndex) throws Exception {
+		return dao.selectAllFieldImagesByCodeAndGroup(code, groupIndex);
+	}
+
+	@Override
 	public void updateFieldItem(FacFieldVO vo) throws Exception {
 		dao.updateFieldItem(vo);
 	}

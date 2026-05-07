@@ -49,6 +49,28 @@
 		<param-name>DEFAULT_ZOOM</param-name>
 		<param-value>13</param-value>
 	</context-param>
+	<!-- 조사 보고서 HWP 파싱용 kordoc 루트 (dist/cli.js 포함). 미설정 시 환경변수 KORDOC_HOME 또는 웹앱 상위 kordoc 폴더를 시도 -->
+	<!--
+	<context-param>
+		<param-name>KORDOC_HOME</param-name>
+		<param-value>D:/PROJECT/Db-Field/New_Db-Field/kordoc</param-value>
+	</context-param>
+	-->
+	<!-- 조사 보고서 AI 초안: OpenAI 호환 Chat Completions **전체 URL** 필수. Ollama: 키 비움 + ollama serve + ollama pull <모델> -->
+	<context-param>
+		<param-name>SURVEY_LLM_API_URL</param-name>
+		<param-value>https://api.openai.com/v1/chat/completions</param-value>
+	</context-param>
+	<context-param>
+		<param-name>SURVEY_LLM_API_KEY</param-name>
+		<param-value></param-value>
+	</context-param>
+	<context-param>
+		<param-name>SURVEY_LLM_MODEL</param-name>
+		<!-- OpenAI: gpt-5.5(현재 사용), gpt-5.5-pro(고난도), gpt-4o(이전 세대 vision)
+		     / Ollama 로컬일 때만 llama3.2 등 -->
+		<param-value>gpt-5.5</param-value>
+	</context-param>
 	<context-param>
 		<param-name>KAKAO_REST_KEY</param-name>
 		<param-value>6314ef6362351ee6431306db0b63b1ee</param-value>
@@ -61,7 +83,7 @@
 	<!-- Modify these values to match your PostgreSQL setup -->
 	<context-param>
 		<param-name>DB_URL</param-name>
-		<param-value>jdbc:postgresql://172.21.15.134:5433/postgresLocal</param-value>
+		<param-value>jdbc:postgresql://172.21.15.134:5433/dbfieldDB</param-value>
 	</context-param>
 	<context-param>
 		<param-name>DB_USER</param-name>
@@ -145,6 +167,12 @@
 		<servlet-name>FacCommController</servlet-name>
 		<servlet-class>com.newdbfield.web.FacCommController</servlet-class>
 		<load-on-startup>2</load-on-startup>
+		<!-- Tomcat 기본 maxPostSize(2MB)와 별도로 서블릿 파트 한도; nf-patch-tomcat-connector로 Connector도 상향 -->
+		<multipart-config>
+			<max-file-size>104857600</max-file-size>
+			<max-request-size>134217728</max-request-size>
+			<file-size-threshold>1048576</file-size-threshold>
+		</multipart-config>
 	</servlet>
 	<servlet-mapping>
 		<servlet-name>FacCommController</servlet-name>
@@ -159,6 +187,11 @@
 	<!-- Project Migration Listener (자동 마이그레이션) -->
 	<listener>
 		<listener-class>com.newdbfield.web.ProjectMigrationListener</listener-class>
+	</listener>
+
+	<!-- 조사 보고서 양식 JSONB 테이블 (test.facility_survey_report) -->
+	<listener>
+		<listener-class>com.newdbfield.web.SurveyReportSchemaListener</listener-class>
 	</listener>
 
 	<!-- Auth Controller -->

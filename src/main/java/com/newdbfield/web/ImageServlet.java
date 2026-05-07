@@ -50,9 +50,34 @@ public class ImageServlet extends HttpServlet {
 				out.write(buffer, 0, bytesRead);
 			}
 		} catch (IOException e) {
-			System.err.println("[ImageServlet] Error serving image: " + filename);
-			e.printStackTrace();
+			if (isClientAbort(e)) {
+				// 브라우저/탭 전환 등으로 이미지 응답 도중 연결이 끊기는 경우는 정상 취소로 본다.
+				System.out.println("[ImageServlet] Client aborted image stream: " + filename);
+			} else {
+				System.err.println("[ImageServlet] Error serving image: " + filename);
+				e.printStackTrace();
+			}
 		}
+	}
+
+	private boolean isClientAbort(Throwable t) {
+		Throwable cur = t;
+		while (cur != null) {
+			String className = cur.getClass().getName();
+			if (className != null && className.endsWith("ClientAbortException")) {
+				return true;
+			}
+			String msg = cur.getMessage();
+			if (msg != null) {
+				String lower = msg.toLowerCase();
+				if (lower.contains("broken pipe") || lower.contains("connection reset")
+						|| lower.contains("software caused connection abort")) {
+					return true;
+				}
+			}
+			cur = cur.getCause();
+		}
+		return false;
 	}
 
 	private String resolveUploadDir() {
