@@ -22,7 +22,8 @@
 4. [프로젝트](#4-프로젝트)
 5. [SHP](#5-shp)
 6. [공통 / 외부 연동](#6-공통--외부-연동)
-7. [부록: 상세 스펙](#부록-상세-스펙)
+7. [모바일 푸시 / 기기 토큰](#7-모바일-푸시--기기-토큰)
+8. [부록: 상세 스펙](#부록-상세-스펙)
 
 ---
 
@@ -2284,6 +2285,95 @@ fetch('/api/vworld/revgeocode?lng=127.0&lat=37.5', { credentials: 'include' }).t
 ```javascript
 fetch('/api/health').then(r => r.json());
 ```
+
+---
+
+## 7. 모바일 푸시 / 기기 토큰
+
+Firebase Cloud Messaging(FCM) 등으로 **알림을 내려면** 모바일 앱이 발급받은 **기기 토큰**을 서버에 등록해야 합니다. DB 테이블 `public.device_push_token`은 앱 기동 시 `DevicePushTokenListener`로 자동 생성됩니다.
+
+서버에서 실제 FCM 전송을 켜려면 **Firebase 서비스 계정 JSON** 파일 경로를 설정합니다.
+
+| 설정 | 설명 |
+| --- | --- |
+| 환경 변수 `FCM_SERVICE_ACCOUNT_PATH` | JSON 파일 절대 경로 (우선) |
+| web.xml `FCM_SERVICE_ACCOUNT_PATH` | 동일 (환경 변수 없을 때) |
+
+미설정이면 `PushNotificationService.notifyUser` / `FcmMessagingClient.sendToToken` 은 전송을 시도하지 않습니다.
+
+### 7.1 푸시 토큰 등록
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/devices/push-token` |
+| Method | `POST` |
+| Content-Type | `application/json` |
+| 인증 | **필요** — `X-Auth-Token` 또는 `Authorization: Bearer` 또는 세션 (`AuthFilter`) |
+
+**Request Body (JSON)**
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| pushToken | string | O* | FCM 등 기기 토큰 (* `token` 필드와 동일 의미, 둘 중 하나 필수) |
+| token | string | O* | `pushToken` 별칭 |
+| platform | string | N | 예: `android`, `ios`, `web` (32자 이내) |
+| deviceId | string | N | 앱에서 구분하는 기기 ID (256자 이내) |
+
+동일 `pushToken`이 다시 오면 **행을 갱신**(다른 사용자에게 재할당된 토큰 등)합니다.
+
+**Response (Success)**
+
+```json
+{ "success": true, "message": "등록되었습니다." }
+```
+
+**Response (Failure)**
+
+- **401**: 미로그인  
+- **400**: 토큰 누락·과도한 길이  
+- **500**: DB 오류 등
+
+**사용 예시**
+
+```javascript
+fetch('/api/devices/push-token', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Auth-Token': localStorage.getItem('token')
+  },
+  body: JSON.stringify({ pushToken: fcmToken, platform: 'android', deviceId: 'optional-id' })
+}).then(r => r.json());
+```
+
+### 7.2 푸시 토큰 삭제 (로그아웃·앱 삭제 시)
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/devices/push-token` |
+| Method | `DELETE` |
+| Content-Type | `application/json` |
+| 인증 | **필요** |
+
+**Request Body**
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| pushToken 또는 token | string | O | 등록 해제할 토큰 |
+
+**Response**
+
+```json
+{ "success": true, "deleted": 1 }
+```
+
+### 7.3 서버에서 특정 사용자에게 알림 보내기 (구현 참고)
+
+Java 코드에서 업데이트 등의 이벤트 시 호출:
+
+- `com.newdbfield.web.PushNotificationService.notifyUser(javax.servlet.ServletContext ctx, String userId, String title, String body, java.util.Map<String,String> data)`
+
+`data` 맵의 값은 FCM 규칙에 맞게 **문자열**이어야 합니다. 담당 컨트롤러·유틸: `DeviceApiController`, `DevicePushTokenDAO`, `FcmMessagingClient`.
 
 ---
 

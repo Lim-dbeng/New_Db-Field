@@ -642,10 +642,12 @@
 			return;
 		}
 		var title = popup.getAttribute("data-popup-title") || "선택 지점";
-		setFacSearchRouteFlowPoint(role, [lng, lat], title + " (" + formatLonLatText([lng, lat]) + ")");
+		// 길찾기 패널을 먼저 연다 (open → startRouteFlow가 상태를 리셋하므로,
+		// 그 다음에 point를 set해야 입력칸에 값이 남는다.)
 		if (window.NewDbField && window.NewDbField.routePanel && window.NewDbField.routePanel.open) {
 			window.NewDbField.routePanel.open();
 		}
+		setFacSearchRouteFlowPoint(role, [lng, lat], title + " (" + formatLonLatText([lng, lat]) + ")");
 	}
 
 	function showSearchMarkerPopup(feature, coordinate3857) {
@@ -2994,21 +2996,40 @@
 			var label = f.label || id;
 			var val = answers[id] != null ? answers[id] : "";
 			var type = (f.type || "text").toLowerCase();
+			var kind = (f.kind || "").toLowerCase();
 			var safeId = escapeHtml(id);
 			var safeLabel = escapeHtml(label);
 			var safeVal = escapeHtml(String(val));
 			var idAttr = "fac-survey-in-" + String(id).replace(/[^a-zA-Z0-9_-]/g, "_");
 			var labelCol = "<div class=\"col-12 col-md-4 col-lg-3\"><label class=\"form-label mb-md-0\" for=\"" + escapeHtml(idAttr) + "\">" + safeLabel + "</label></div>";
 			var inputCol = "<div class=\"col-12 col-md-8 col-lg-9\">";
-			if (type === "textarea") {
-				inputCol += "<textarea id=\"" + escapeHtml(idAttr) + "\" class=\"form-control form-control-sm fac-survey-input\" rows=\"3\" data-field-id=\"" + safeId + "\">" + safeVal + "</textarea>";
+			// 모든 텍스트 입력을 textarea + 자동 확장으로 통일 (긴 답변/조사자의견 등 셀 안 다 보이게).
+			// 이미지 슬롯은 읽기전용 단일 input으로 (사진 매핑은 따로).
+			if (kind === "image") {
+				inputCol += "<input id=\"" + escapeHtml(idAttr) + "\" type=\"text\" class=\"form-control form-control-sm fac-survey-input\" data-field-id=\"" + safeId + "\" value=\"" + safeVal + "\" readonly placeholder=\"(이미지 슬롯 — 사진 업로드로 매핑)\" />";
 			} else {
-				inputCol += "<input id=\"" + escapeHtml(idAttr) + "\" type=\"text\" class=\"form-control form-control-sm fac-survey-input\" data-field-id=\"" + safeId + "\" value=\"" + safeVal + "\" />";
+				var initialRows = type === "textarea" ? 3 : 1;
+				inputCol += "<textarea id=\"" + escapeHtml(idAttr) + "\" class=\"form-control form-control-sm fac-survey-input fac-survey-autosize\" rows=\"" + initialRows + "\" data-field-id=\"" + safeId + "\" style=\"resize:vertical; overflow:hidden;\">" + safeVal + "</textarea>";
 			}
 			inputCol += "</div>";
 			return "<div class=\"fac-survey-field row g-2 mx-0 align-items-start\">" + labelCol + inputCol + "</div>";
 		}).join("");
 		return "<div class=\"fac-survey-fields-grid\">" + rows + "</div>";
+	}
+
+	function autosizeTextarea(el) {
+		if (!el) return;
+		// height 0으로 reset 후 scrollHeight로 다시 — content fit
+		el.style.height = "0px";
+		var h = Math.max(el.scrollHeight + 2, 32); // 최소 32px (한 줄)
+		el.style.height = h + "px";
+	}
+
+	function autosizeAllSurveyInputs() {
+		var root = document.getElementById("facSurveyReportModalBody");
+		if (!root) return;
+		var areas = root.querySelectorAll("textarea.fac-survey-autosize");
+		for (var i = 0; i < areas.length; i++) autosizeTextarea(areas[i]);
 	}
 
 	function normalizeSurveyJson(val, fallback) {
@@ -3177,6 +3198,8 @@
 			parts.push("<p class=\"small text-muted\">검수 상태를 확인할 수 없습니다.</p>");
 		}
 		body.innerHTML = parts.join("");
+		// 렌더 직후 모든 textarea 자동 확장
+		setTimeout(autosizeAllSurveyInputs, 0);
 	}
 
 	function loadSurveyReportForDetail(code) {
@@ -5844,6 +5867,13 @@
 				var btn = e.target && e.target.closest ? e.target.closest("[data-survey-action]") : null;
 				if (!btn || !modalSurveyEl.contains(btn)) return;
 				surveyActionDispatch(btn.getAttribute("data-survey-action"));
+			});
+			// textarea 입력 시 자동 높이 조정 (input 이벤트는 bubble 됨)
+			modalSurveyEl.addEventListener("input", function (e) {
+				var t = e.target;
+				if (t && t.classList && t.classList.contains("fac-survey-autosize")) {
+					autosizeTextarea(t);
+				}
 			});
 		}
 

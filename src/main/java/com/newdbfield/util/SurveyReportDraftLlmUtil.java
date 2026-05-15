@@ -90,15 +90,12 @@ public final class SurveyReportDraftLlmUtil {
 		if (servletContext == null) {
 			throw new IllegalArgumentException("ServletContext가 없습니다.");
 		}
-		String apiUrl = firstNonBlank(
-				trimOrNull(servletContext.getInitParameter("SURVEY_LLM_API_URL")),
-				trimOrNull(System.getenv("SURVEY_LLM_API_URL")));
+		String apiUrl = lookupConfig(servletContext, "SURVEY_LLM_API_URL");
+		// API 키: SURVEY_LLM_API_KEY → OPENAI_API_KEY 순서 fallback (둘 다 web.xml/env/.env 모두 검사)
 		String apiKey = firstNonBlank(
-				trimOrNull(servletContext.getInitParameter("SURVEY_LLM_API_KEY")),
-				trimOrNull(System.getenv("SURVEY_LLM_API_KEY")));
-		String model = firstNonBlank(
-				trimOrNull(servletContext.getInitParameter("SURVEY_LLM_MODEL")),
-				trimOrNull(System.getenv("SURVEY_LLM_MODEL")));
+				lookupConfig(servletContext, "SURVEY_LLM_API_KEY"),
+				lookupConfig(servletContext, "OPENAI_API_KEY"));
+		String model = lookupConfig(servletContext, "SURVEY_LLM_MODEL");
 		if (model == null || model.isEmpty()) {
 			// 시각 분류 정확도 위해 4o 권장 (web.xml에서 gpt-5.5 등으로 override 가능)
 			model = "gpt-4o";
@@ -244,6 +241,13 @@ public final class SurveyReportDraftLlmUtil {
 		// 그 외 모델만 분류 일관성 위해 0.1로 내림.
 		if (!isReasoningModel(model)) {
 			rootReq.put("temperature", 0.1);
+		}
+		// 출력 토큰 상한 — 비용·응답 시간 제어. JSON 답변은 6000 토큰이면 충분.
+		// reasoning 모델은 max_completion_tokens, 일반은 max_tokens
+		if (isReasoningModel(model)) {
+			rootReq.put("max_completion_tokens", 6000);
+		} else {
+			rootReq.put("max_tokens", 6000);
 		}
 		ArrayNode messages = rootReq.putArray("messages");
 		ObjectNode m0 = messages.addObject();
@@ -732,6 +736,12 @@ public final class SurveyReportDraftLlmUtil {
 		if (!isReasoningModel(model)) {
 			root.put("temperature", 0.0);
 		}
+		// Stage 1 응답은 짧은 JSON({type, confidence, reasoning}) 하나만 — 1500 토큰이면 충분
+		if (isReasoningModel(model)) {
+			root.put("max_completion_tokens", 1500);
+		} else {
+			root.put("max_tokens", 1500);
+		}
 		ArrayNode messages = root.putArray("messages");
 		ObjectNode m0 = messages.addObject();
 		m0.put("role", "system");
@@ -816,6 +826,72 @@ public final class SurveyReportDraftLlmUtil {
 			}
 		}
 		throw new IllegalStateException("LLM 호출 최대 재시도 초과: " + (lastError != null ? lastError.getMessage() : "unknown"));
+	}
+
+	/**
+	 * 설정값 조회 우선순위: web.xml ServletContext init-param → OS 환경변수 → .env 파일.
+	 * .env 파일은 Java 표준이 아니지만 Node 컨벤션을 흉내내 읽어준다.
+	 */
+	private static String lookupConfig(ServletContext ctx, String key) {
+		if (ctx != null) {
+			String v = trimOrNull(ctx.getInitParameter(key));
+			if (v != null && !v.isEmpty()) return v;
+		}
+		String env = trimOrNull(System.getenv(key));
+		if (env != null && !env.isEmpty()) return env;
+		String dot = trimOrNull(readDotEnv().get(key));
+		return (dot != null && !dot.isEmpty()) ? dot : null;
+	}
+
+	private static volatile java.util.Map<String, String> DOT_ENV_CACHE = null;
+	private static volatile long DOT_ENV_LOADED_AT = 0;
+
+	/** .env 파일을 후보 경로들에서 찾아 KEY=VALUE 라인을 파싱. 5분 캐시. */
+	private static java.util.Map<String, String> readDotEnv() {
+		long now = System.currentTimeMillis();
+		if (DOT_ENV_CACHE != null && (now - DOT_ENV_LOADED_AT) < 5 * 60 * 1000) {
+			return DOT_ENV_CACHE;
+		}
+		java.util.Map<String, String> map = new java.util.HashMap<>();
+		// 후보 경로들 — 일반적인 위치 순회
+		String[] candidates = new String[] {
+				System.getProperty("user.dir") + "/.env",
+				System.getProperty("catalina.base") != null ? System.getProperty("catalina.base") + "/../.env" : null,
+				System.getProperty("catalina.base") != null ? System.getProperty("catalina.base") + "/../../.env" : null,
+				"D:/PROJECT/Db-Field/New_Db-Field/.env",
+				"./.env"
+		};
+		for (String path : candidates) {
+			if (path == null) continue;
+			try {
+				File f = new File(path).getCanonicalFile();
+				if (!f.isFile()) continue;
+				try (java.io.BufferedReader r = new java.io.BufferedReader(
+						new java.io.InputStreamReader(new java.io.FileInputStream(f), StandardCharsets.UTF_8))) {
+					String line;
+					while ((line = r.readLine()) != null) {
+						line = line.trim();
+						if (line.isEmpty() || line.startsWith("#")) continue;
+						int eq = line.indexOf('=');
+						if (eq <= 0) continue;
+						String k = line.substring(0, eq).trim();
+						String v = line.substring(eq + 1).trim();
+						// quotes 제거
+						if (v.length() >= 2 && (v.startsWith("\"") && v.endsWith("\"") || v.startsWith("'") && v.endsWith("'"))) {
+							v = v.substring(1, v.length() - 1);
+						}
+						if (!k.isEmpty()) map.put(k, v);
+					}
+				}
+				System.out.println("[SurveyReportDraftLlmUtil] .env loaded from " + f.getAbsolutePath() + " (" + map.size() + " keys)");
+				break;
+			} catch (Exception ignore) {
+				// 다음 후보
+			}
+		}
+		DOT_ENV_CACHE = map;
+		DOT_ENV_LOADED_AT = now;
+		return map;
 	}
 
 	/** gpt-5.x / o1·o3 등 reasoning 모델 — temperature·top_p 커스텀 거부, default=1만 허용. */

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  This file is webapp-scoped (NOT global). Tomcat reads it on context start.
+
+  reloadable="true": Tomcat watches WEB-INF/classes and WEB-INF/lib for changes
+  and automatically reloads the context (NOT a full JVM restart).
+  - 이 옵션은 개발 편의용. 운영에서는 false 권장 (성능 영향).
+  - 변경 감지 후 reload까지 약 5~15초 (Tomcat이 background에서 watch).
+
+  reloadable이 true이면 nf-build.cmd 후 자동으로 새 클래스가 로드됨 → Tomcat 재시작 불필요.
+-->
+<Context reloadable="true">
+    <!-- 변경 감지 주기 (밀리초) — 기본 0(즉시). 더 짧게 하려면 watchedResources 추가 가능 -->
+    <WatchedResource>WEB-INF/web.xml</WatchedResource>
+    <WatchedResource>WEB-INF/tomcat-web.xml</WatchedResource>
+    <WatchedResource>${catalina.base}/conf/web.xml</WatchedResource>
+</Context>

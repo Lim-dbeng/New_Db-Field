@@ -83,7 +83,7 @@
 	<!-- Modify these values to match your PostgreSQL setup -->
 	<context-param>
 		<param-name>DB_URL</param-name>
-		<param-value>jdbc:postgresql://172.21.15.134:5433/dbfieldDB</param-value>
+		<param-value>jdbc:postgresql://172.21.15.140:5432/dbfield</param-value>
 	</context-param>
 	<context-param>
 		<param-name>DB_USER</param-name>
@@ -91,7 +91,7 @@
 	</context-param>
 	<context-param>
 		<param-name>DB_PASSWORD</param-name>
-		<param-value>postgres</param-value>
+		<param-value>gisteam01!</param-value>
 	</context-param>
 
 	<context-param>
@@ -137,6 +137,14 @@
 	<context-param>
 		<param-name>GEOJSON_ASSUME_CRS</param-name>
 		<param-value>EPSG:5186</param-value>
+	</context-param>
+	-->
+
+	<!-- FCM HTTP v1: Firebase 서비스 계정 JSON 파일 경로(서버 파일 시스템). 환경변수 FCM_SERVICE_ACCOUNT_PATH 가 있으면 우선. -->
+	<!--
+	<context-param>
+		<param-name>FCM_SERVICE_ACCOUNT_PATH</param-name>
+		<param-value>D:/secrets/firebase-adminsdk.json</param-value>
 	</context-param>
 	-->
 
@@ -192,6 +200,11 @@
 	<!-- 조사 보고서 양식 JSONB 테이블 (test.facility_survey_report) -->
 	<listener>
 		<listener-class>com.newdbfield.web.SurveyReportSchemaListener</listener-class>
+	</listener>
+
+	<!-- 모바일 푸시 토큰 테이블 (public.device_push_token) -->
+	<listener>
+		<listener-class>com.newdbfield.web.DevicePushTokenListener</listener-class>
 	</listener>
 
 	<!-- Auth Controller -->
@@ -252,6 +265,16 @@
 	<servlet-mapping>
 		<servlet-name>MobileAuthApiController</servlet-name>
 		<url-pattern>/api/mobile/auth/*</url-pattern>
+	</servlet-mapping>
+
+	<!-- 모바일 기기 푸시 토큰 등록 (FCM 등) -->
+	<servlet>
+		<servlet-name>DeviceApiController</servlet-name>
+		<servlet-class>com.newdbfield.web.DeviceApiController</servlet-class>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>DeviceApiController</servlet-name>
+		<url-pattern>/api/devices/*</url-pattern>
 	</servlet-mapping>
 
 	<welcome-file-list>

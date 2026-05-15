@@ -36,6 +36,10 @@ public final class SurveyReportRefUtil {
 	private static final int MAX_RECURSION_DEPTH = 8;
 	/** 단일 진입점에서 한 번에 추출할 최대 바이트 — 메모리 폭주 방지 (압축파일 1개당). 0=무제한 */
 	private static final long MAX_ARCHIVE_BYTES = 0; // no limit
+	/** 단일 파일 텍스트 최대 길이 (Korean ≈ 0.4 tokens/char → 80k chars ≈ 32k tokens) */
+	private static final int PER_FILE_CHAR_LIMIT = 80_000;
+	/** 전체 합쳐진 컨텍스트 최대 길이 — gpt-4o 128k context 절반 정도 */
+	private static final int TOTAL_CHAR_LIMIT = 200_000;
 
 	private SurveyReportRefUtil() { }
 
@@ -71,7 +75,12 @@ public final class SurveyReportRefUtil {
 		File kordocHome = SurveyReportKordocUtil.resolveKordocHome(ctx);
 		StringBuilder out = new StringBuilder();
 		int count = 0;
+		boolean truncated = false;
 		for (JsonNode ref : referencePaths) {
+			if (out.length() >= TOTAL_CHAR_LIMIT) {
+				truncated = true;
+				break;
+			}
 			String filename = ref.path("filename").asText("");
 			String storedPath = ref.path("storedPath").asText("");
 			File f = resolveRefFile(surveyHwpDir, storedPath);
@@ -84,6 +93,20 @@ public final class SurveyReportRefUtil {
 				System.err.println("[SurveyReportRefUtil] empty extract: " + filename);
 				continue;
 			}
+			// 단일 파일 상한
+			int origLen = text.length();
+			if (origLen > PER_FILE_CHAR_LIMIT) {
+				text = text.substring(0, PER_FILE_CHAR_LIMIT) + "\n…(파일 " + filename + " 일부 잘림 — 핵심은 보통 앞부분)";
+				System.out.println("[SurveyReportRefUtil] capped: " + filename + " " + origLen + " → " + PER_FILE_CHAR_LIMIT);
+			} else {
+				System.out.println("[SurveyReportRefUtil] file ok: " + filename + " " + origLen + " chars");
+			}
+			// 전체 상한 도달 직전이면 남은 만큼만
+			int remaining = TOTAL_CHAR_LIMIT - out.length();
+			if (text.length() > remaining) {
+				text = text.substring(0, Math.max(0, remaining - 100)) + "\n…(전체 한도로 잘림)";
+				truncated = true;
+			}
 			count++;
 			out.append("\n\n=== [근거자료 ").append(count).append("] ").append(filename).append(" ===\n");
 			out.append(text);
@@ -91,7 +114,10 @@ public final class SurveyReportRefUtil {
 		String s = out.toString().trim();
 		if (s.length() > 0) {
 			System.out.println("[SurveyReportRefUtil] context built: files=" + count
-					+ " totalChars=" + s.length());
+					+ " totalChars=" + s.length()
+					+ " perFileLimit=" + PER_FILE_CHAR_LIMIT
+					+ " totalLimit=" + TOTAL_CHAR_LIMIT
+					+ (truncated ? " (truncated)" : ""));
 		}
 		return s.isEmpty() ? null : s;
 	}

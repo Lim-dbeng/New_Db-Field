@@ -846,9 +846,9 @@ public class ProjectMigrationTool {
             String dbViewUser = "dbinfo";
             String dbViewPassword = "1q2w3e@@";
             
-            String dbUrl = "jdbc:postgresql://172.21.15.134:5433/dbfieldDB";
+            String dbUrl = "jdbc:postgresql://172.21.15.140:5432/dbfield";
             String dbUser = "postgres";
-            String dbPassword = "postgres";
+            String dbPassword = "gisteam01!";
             
             // gis_a_layer 기반 마이그레이션 실행
             if (args.length > 0 && "gis".equals(args[0])) {
