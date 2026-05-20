@@ -62,6 +62,10 @@ public final class FacImportPhotosUtil {
 		public int pointsCreated;
 		public int photosSaved;
 		public int skipped;
+		/** GPS 없음 등으로 포인트/field에는 넣지 않았지만, 업로드 원본 파일명 규칙으로 DCIM 루트에만 저장한 장수 */
+		public int dcimPlainSaved;
+		public final List<String> dcimPlainFiles = new ArrayList<>();
+		public final List<String> dcimPlainWarnings = new ArrayList<>();
 		public final List<String> errors = new ArrayList<>();
 		public final List<String> codes = new ArrayList<>();
 	}
@@ -179,14 +183,42 @@ public final class FacImportPhotosUtil {
 				conn);
 
 		ObjectNode root = JSON_MAPPER.createObjectNode();
-		boolean ok = commit.errors.isEmpty() || commit.pointsCreated > 0;
+		int imgCount = parse.json.path("count").asInt(0);
+		int withoutGpsCount = parse.json.path("withoutGps").asInt(0);
+		// 치명적 errors 없음 + (포인트 생성 또는 DCIM 원본명 저장) 시 성공
+		root.put("dcimPlainSaved", commit.dcimPlainSaved);
+		ArrayNode plainFiles = root.putArray("dcimPlainFiles");
+		for (String n : commit.dcimPlainFiles) {
+			plainFiles.add(n);
+		}
+		ArrayNode plainWarn = root.putArray("dcimPlainWarnings");
+		for (String w : commit.dcimPlainWarnings) {
+			plainWarn.add(w);
+		}
+		boolean ok = commit.errors.isEmpty() && (commit.pointsCreated > 0 || commit.dcimPlainSaved > 0);
 		root.put("success", ok);
+		root.put("sessionId", parse.sessionId);
+		root.put("multipartPartCount", photoParts.size());
 		root.put("pointsCreated", commit.pointsCreated);
 		root.put("photosSaved", commit.photosSaved);
 		root.put("skipped", commit.skipped);
 		root.put("withGps", parse.json.path("withGps").asInt(0));
-		root.put("withoutGps", parse.json.path("withoutGps").asInt(0));
-		root.put("count", parse.json.path("count").asInt(0));
+		root.put("withoutGps", withoutGpsCount);
+		root.put("count", imgCount);
+		if (commit.pointsCreated == 0 && commit.dcimPlainSaved > 0) {
+			root.put("resultHint", "DCIM_PLAIN_ONLY_NO_POINTS");
+			root.put("detailMessage",
+					"GPS 정보가 없거나 포인트로 묶이지 않은 사진은 지도에는 등록하지 않았지만, 업로드한 파일은 DCIM 폴더에 저장했습니다.");
+		} else if (!ok && commit.errors.isEmpty() && imgCount > 0 && commit.pointsCreated == 0 && commit.dcimPlainSaved == 0) {
+			if (withoutGpsCount >= imgCount) {
+				root.put("resultHint", "ALL_PHOTOS_MISSING_GPS_EXIF");
+				root.put("detailMessage",
+						"업로드된 사진의 EXIF에 GPS(위치) 정보가 없어 포인트를 만들 수 없습니다. "
+								+ "카메라/앱에서 위치 태그를 켠 뒤 촬영하거나, 웹에서 import-photos/parse 후 좌표를 지정해 commit 하세요.");
+			} else {
+				root.put("resultHint", "NO_POINTS_CREATED");
+			}
+		}
 		ArrayNode codes = root.putArray("codes");
 		for (String c : commit.codes) {
 			codes.add(c);
@@ -346,16 +378,27 @@ public final class FacImportPhotosUtil {
 			}
 		}
 
+		saveUnassignedPhotosToDcimPlain(uploadBaseDir, sessionDir, itemsNode, processed, out);
+
 		deleteImportSessionTree(sessionDir);
 		return out;
 	}
 
 	public static String commitResultToJson(CommitResult r) throws IOException {
 		ObjectNode root = JSON_MAPPER.createObjectNode();
-		root.put("success", r.errors.isEmpty() || r.pointsCreated > 0);
+		root.put("success", r.errors.isEmpty() && (r.pointsCreated > 0 || r.dcimPlainSaved > 0));
 		root.put("pointsCreated", r.pointsCreated);
 		root.put("photosSaved", r.photosSaved);
 		root.put("skipped", r.skipped);
+		root.put("dcimPlainSaved", r.dcimPlainSaved);
+		ArrayNode pf = root.putArray("dcimPlainFiles");
+		for (String n : r.dcimPlainFiles) {
+			pf.add(n);
+		}
+		ArrayNode pw = root.putArray("dcimPlainWarnings");
+		for (String w : r.dcimPlainWarnings) {
+			pw.add(w);
+		}
 		ArrayNode codes = root.putArray("codes");
 		for (String c : r.codes) {
 			codes.add(c);
@@ -388,6 +431,112 @@ public final class FacImportPhotosUtil {
 			}
 			ps.executeUpdate();
 		}
+	}
+
+	/**
+	 * 포인트에 편입되지 않은 임시 사진만 DCIM 루트에 원본 파일명(정규화·충돌 시 접미사)으로 복사한다. DB·gis 반영 없음.
+	 */
+	private static void saveUnassignedPhotosToDcimPlain(
+			File uploadBaseDir,
+			File sessionDir,
+			JsonNode itemsNode,
+			Set<Integer> processed,
+			CommitResult out) {
+		if (uploadBaseDir == null || sessionDir == null || itemsNode == null || !itemsNode.isArray()) {
+			return;
+		}
+		for (JsonNode item : itemsNode) {
+			int idx = item.path("index").asInt(-1);
+			if (idx < 0 || processed.contains(idx)) {
+				continue;
+			}
+			String storedName = item.path("storedName").asText("");
+			if (storedName.isEmpty()) {
+				continue;
+			}
+			File src = new File(sessionDir, storedName);
+			if (!src.isFile()) {
+				out.dcimPlainWarnings.add("DCIM(원본명) 생략(index=" + idx + "): 임시 파일 없음");
+				continue;
+			}
+			String original = item.path("originalName").asText("");
+			try {
+				String plainName = resolvePlainDcimFileName(uploadBaseDir, original, storedName, idx);
+				File dest = new File(uploadBaseDir, plainName);
+				Files.copy(src.toPath(), dest.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+				out.dcimPlainSaved++;
+				out.dcimPlainFiles.add(plainName);
+			} catch (IOException ex) {
+				out.dcimPlainWarnings.add("DCIM(원본명) 실패(index=" + idx + "): " + ex.getMessage());
+			}
+		}
+	}
+
+	private static String resolvePlainDcimFileName(File uploadBaseDir, String originalName, String storedName, int index) {
+		String extFromStored = extensionOf(storedName);
+		String plain = sanitizePlainOriginalFileName(originalName, index, extFromStored);
+		File f = new File(uploadBaseDir, plain);
+		if (!f.exists()) {
+			return plain;
+		}
+		int dot = plain.lastIndexOf('.');
+		String stem = dot > 0 ? plain.substring(0, dot) : plain;
+		String ext = dot > 0 ? plain.substring(dot) : "";
+		if (ext.isEmpty() && extFromStored != null) {
+			ext = extFromStored;
+		}
+		if (ext.isEmpty()) {
+			ext = ".jpg";
+		}
+		String candidate = stem + "_" + index + ext;
+		f = new File(uploadBaseDir, candidate);
+		if (!f.exists()) {
+			return candidate;
+		}
+		return stem + "_" + index + "_" + (System.nanoTime() % 1_000_000_000L) + ext;
+	}
+
+	/**
+	 * 경로 제거·길이 제한. 한글 등 비ASCII 파일명은 그대로 유지(사용자 요청: 보낸 이름에 가깝게).
+	 */
+	private static String sanitizePlainOriginalFileName(String originalName, int index, String extFallback) {
+		String name = originalName == null ? "" : originalName.trim();
+		name = new File(name).getName();
+		if (name.isEmpty()) {
+			String ext = extFallback != null ? extFallback : ".jpg";
+			return "photo_" + index + ext;
+		}
+		StringBuilder sb = new StringBuilder(name.length());
+		for (int i = 0; i < name.length(); i++) {
+			char c = name.charAt(i);
+			if (c == '/' || c == '\\' || c == '\0') {
+				sb.append('_');
+			} else {
+				sb.append(c);
+			}
+		}
+		String s = sb.toString();
+		while (s.startsWith(".")) {
+			s = s.substring(1);
+		}
+		if (s.isEmpty()) {
+			String ext = extFallback != null ? extFallback : ".jpg";
+			return "photo_" + index + ext;
+		}
+		if (s.length() > 200) {
+			int dot = s.lastIndexOf('.');
+			if (dot > 1 && dot < s.length() - 1) {
+				String ext = s.substring(dot);
+				int keep = Math.max(1, 200 - ext.length());
+				s = s.substring(0, keep) + ext;
+			} else {
+				s = s.substring(0, 200);
+			}
+		}
+		if (extensionOf(s) == null && extFallback != null) {
+			s = s + extFallback;
+		}
+		return s;
 	}
 
 	private static int createPointWithPhotos(

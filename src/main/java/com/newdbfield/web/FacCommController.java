@@ -1819,6 +1819,27 @@ public class FacCommController extends HttpServlet {
 		}
 	}
 
+	/** 콘솔 인코딩과 무관하게 읽을 수 있도록 ASCII만 쓰는 import-photos 진단 로그. */
+	private static void logImportPhotosLine(String remote, String message) {
+		String r = remote != null ? remote : "";
+		System.out.println("[fac-import-photos] remote=" + r + " " + message);
+	}
+
+	private static String asciiSafe(String s, int maxLen) {
+		if (s == null || maxLen <= 0) {
+			return "";
+		}
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < s.length() && sb.length() < maxLen; i++) {
+			char c = s.charAt(i);
+			sb.append((c >= 32 && c < 127) ? c : '_');
+		}
+		if (s.length() > maxLen) {
+			sb.append("...");
+		}
+		return sb.toString();
+	}
+
 	/**
 	 * POST multipart: file — SHP(zip)·GeoJSON·DXF·엑셀에서 경위도 포인트 목록 추출 (DB 저장 없음).
 	 */
@@ -1827,8 +1848,10 @@ public class FacCommController extends HttpServlet {
 	 * EXIF·그룹핑·gis_a_layer·field·DCIM까지 서버에서 한 번에 처리.
 	 */
 	private void handleImportPhotos(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		final String remote = req.getRemoteAddr();
 		UserInfo userInfo = getUserInfo(req);
 		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			logImportPhotosLine(remote, "fail http=401 reason=no_auth");
 			resp.setStatus(401);
 			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
 			return;
@@ -1839,6 +1862,8 @@ public class FacCommController extends HttpServlet {
 		}
 		projectCode = projectCode.trim();
 		if (projectCode.isEmpty()) {
+			logImportPhotosLine(remote, "fail http=400 reason=no_project_code userId="
+					+ asciiSafe(userInfo.userId, 32));
 			resp.setStatus(400);
 			writeJson(resp, "{\"success\":false,\"message\":\"projectCode(사업번호)가 필요합니다.\"}");
 			return;
@@ -1849,6 +1874,8 @@ public class FacCommController extends HttpServlet {
 			parts.add(p);
 		}
 		if (parts.isEmpty()) {
+			logImportPhotosLine(remote, "fail http=400 reason=no_multipart_parts project="
+					+ asciiSafe(projectCode, 40));
 			resp.setStatus(400);
 			writeJson(resp, "{\"success\":false,\"message\":\"업로드된 파일이 없습니다.\"}");
 			return;
@@ -1861,17 +1888,31 @@ public class FacCommController extends HttpServlet {
 		String dbViewUser = getServletContext().getInitParameter("DB_VIEW_USER");
 		String dbViewPassword = getServletContext().getInitParameter("DB_VIEW_PASSWORD");
 		if (dbUrl == null || dbUser == null) {
+			logImportPhotosLine(remote, "fail http=500 reason=no_db_config");
 			resp.setStatus(500);
 			writeJson(resp, "{\"success\":false,\"message\":\"DB 설정이 없습니다.\"}");
 			return;
 		}
 		if (!canAccessFacilityProject(req, projectCode, dbUrl, dbUser, dbPassword, dbViewUrl, dbViewUser, dbViewPassword)) {
+			logImportPhotosLine(remote, "fail http=403 reason=forbidden_project project=" + asciiSafe(projectCode, 40));
 			resp.setStatus(403);
 			writeJson(resp, "{\"success\":false,\"message\":\"해당 사업번호에 대한 권한이 없습니다.\"}");
 			return;
 		}
 
 		File uploadDir = (uploadBaseDir != null) ? uploadBaseDir : resolveUploadDir();
+		logImportPhotosLine(remote, "start parts=" + parts.size() + " project=" + asciiSafe(projectCode, 40));
+		int maxPartLog = Math.min(parts.size(), 24);
+		for (int i = 0; i < maxPartLog; i++) {
+			Part p = parts.get(i);
+			logImportPhotosLine(remote, "part[" + i + "] name=" + asciiSafe(p.getName(), 48)
+					+ " file=" + asciiSafe(p.getSubmittedFileName(), 72)
+					+ " ct=" + asciiSafe(p.getContentType(), 48)
+					+ " size=" + p.getSize());
+		}
+		if (parts.size() > maxPartLog) {
+			logImportPhotosLine(remote, "part[...] " + (parts.size() - maxPartLog) + " more omitted");
+		}
 		Connection conn = null;
 		try {
 			Class.forName("org.postgresql.Driver");
@@ -1885,6 +1926,19 @@ public class FacCommController extends HttpServlet {
 					updateGisALayerSaveViaWfs(c.asText(), true);
 				}
 			}
+			boolean okBody = result.path("success").asBoolean(false);
+			logImportPhotosLine(remote, "done http=200 body.success=" + okBody
+					+ " pointsCreated=" + result.path("pointsCreated").asInt(0)
+					+ " photosSaved=" + result.path("photosSaved").asInt(0)
+					+ " dcimPlainSaved=" + result.path("dcimPlainSaved").asInt(0)
+					+ " skipped=" + result.path("skipped").asInt(0)
+					+ " count=" + result.path("count").asInt(0)
+					+ " withGps=" + result.path("withGps").asInt(0)
+					+ " withoutGps=" + result.path("withoutGps").asInt(0)
+					+ " multipartPartCount=" + result.path("multipartPartCount").asInt(0));
+			if (result.hasNonNull("resultHint")) {
+				logImportPhotosLine(remote, "resultHint=" + asciiSafe(result.path("resultHint").asText(), 96));
+			}
 			writeJson(resp, JSON_MAPPER.writeValueAsString(result));
 		} catch (IOException ex) {
 			if (conn != null) {
@@ -1893,6 +1947,7 @@ public class FacCommController extends HttpServlet {
 				} catch (Exception ignore) {
 				}
 			}
+			logImportPhotosLine(remote, "fail http=400 reason=io msg=" + asciiSafe(ex.getMessage(), 220));
 			resp.setStatus(400);
 			writeJson(resp, "{\"success\":false,\"message\":\"" + escape(ex.getMessage()) + "\"}");
 		} catch (Exception ex) {
