@@ -557,6 +557,189 @@ fetch('/api/fac/detail?code=' + encodeURIComponent(code), { credentials: 'includ
 
 ---
 
+### 2.1.2 사진 일괄 업로드 (EXIF GPS → 포인트·사진)
+
+사진만 서버로내면 **EXIF 추출 → 동일 좌표 그룹핑 → `gis_a_layer` 포인트 INSERT → `field`·`DCIM` 저장**까지 서버에서 처리한다. (모바일·PC 공통, GeoServer 레이어는 기존과 동일)
+
+**좌표 묶음 규칙:** EXIF에서 읽은 경도·위도가 **완전히 동일한 값**(Java `double` 문자열 표현 기준)인 사진만 **한 포인트**에 여러 장(`group_index=1`, `photo1`, `photo2`…)으로 저장한다. 좌표가 조금이라도 다르면 **사진마다 별도 포인트**를 생성한다.
+
+#### 표준 (한 번에 처리)
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/fac/import-photos` |
+| Method | `POST` |
+| Content-Type | `multipart/form-data` |
+| 인증 | 세션·토큰 (`AuthFilter`) |
+
+**Request — `multipart/form-data` 파트**
+
+| 이름 | 타입 | 필수 | 형식·제약 | 설명 |
+| --- | --- | --- | --- | --- |
+| `photos` | file | **O** | 동일 파트명으로 **1~80장** 반복. 확장자: `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`, `.heic`, `.heif` (또는 `Content-Type`이 `image/*`). 빈 파일(0 byte)은 무시. | 각 파일의 **EXIF GPS**를 읽어 포인트·`field`·`DCIM`에 반영. 파트 `name`은 반드시 **`photos`** (복수는 같은 이름으로 여러 번 append). |
+| `projectCode` | string | **O** | 비어 있지 않은 **사업번호** 문자열. 예: `N20260327163111330`. `req.getParameter("projectCode")`로 읽음(일반 폼 필드). | 저장 대상 프로젝트. 로그인 사용자에게 **해당 사업 권한**이 있어야 함. 없으면 **403**. |
+
+**`photos` 동작 요약**
+
+| 항목 | 내용 |
+| --- | --- |
+| GPS 있음 | EXIF 경·위도로 포인트 생성. **좌표 값이 완전히 같은** 사진만 한 포인트·한 `group_index`에 여러 장 |
+| GPS 없음 | **등록하지 않고 건너뜀** (`skipped` 증가). 좌표 지정이 필요하면 아래 2단계 `parse` → `commit` 사용 |
+| 관리번호 | 서버 자동: `{userId}_{yyyyMMddHHmmss}` (같은 요청에서 포인트가 여러 개면 초 단위로 구분) |
+| 지오메트리 | `gis_a_layer` INSERT, EPSG:4326 (경도 `lon`, 위도 `lat`) |
+
+**요청 예시 (cURL)**
+
+```bash
+curl -X POST "https://{host}/New_Db-Field/api/fac/import-photos" \
+  -H "X-Auth-Token: {userId}:{base64Token}" \
+  -F "projectCode=N20260327163111330" \
+  -F "photos=@/path/IMG_001.jpg" \
+  -F "photos=@/path/IMG_002.jpg"
+```
+
+**요청 예시 (JavaScript `FormData`)**
+
+```javascript
+const fd = new FormData();
+fd.append('projectCode', 'N20260327163111330');
+for (const file of imageFiles) {
+  fd.append('photos', file); // 동일 키 'photos' 반복
+}
+fetch('/api/fac/import-photos', {
+  method: 'POST',
+  credentials: 'include',
+  headers: { 'X-Auth-Token': token },
+  body: fd
+}).then(r => r.json());
+```
+
+**Response (Success)** — `Content-Type: application/json; charset=UTF-8`
+
+```json
+{
+  "success": true,
+  "pointsCreated": 3,
+  "photosSaved": 5,
+  "skipped": 1,
+  "withGps": 4,
+  "withoutGps": 1,
+  "count": 5,
+  "codes": ["user_20260519143000_1", "…"],
+  "errors": [],
+  "warnings": []
+}
+```
+
+- GPS 있는 사진·그룹: 자동 포인트 생성.
+- GPS 없는 사진: **기본 건너뜀** (`skipped` 증가). 좌표를 넣어 등록하려면 아래 2단계 API 사용.
+
+#### 웹 미리보기용 (2단계, 선택)
+
+브라우저에서 업로드 전 분석·GPS 없음 사진에 좌표를 지정할 때만 `parse` → 사용자 확인 → `commit`. **필수가 아님.**
+
+| 항목 | 내용 |
+| --- | --- |
+| URL (분석만) | `/api/fac/import-photos/parse` |
+| URL (확정) | `/api/fac/import-photos/commit` (`application/json`) |
+
+**parse — FormData**
+
+| 이름 | 필수 | 설명 |
+| --- | --- | --- |
+| photos | O | 이미지 파일 복수 (`photos` 파트명, JPEG·PNG·WebP·HEIC 등) |
+
+**parse — Response (Success)**
+
+```json
+{
+  "success": true,
+  "sessionId": "abc123…",
+  "count": 5,
+  "withGps": 4,
+  "withoutGps": 1,
+  "items": [
+    {
+      "index": 0,
+      "originalName": "IMG_001.jpg",
+      "storedName": "0000.jpg",
+      "hasGps": true,
+      "lon": 127.027926,
+      "lat": 37.497952,
+      "coordKey": "127.027926\u000137.497952",
+      "groupId": "g0",
+      "groupSize": 2,
+      "takenAt": "2026-05-15T14:30:00",
+      "cameraMake": "Apple",
+      "cameraModel": "iPhone",
+      "width": 4032,
+      "height": 3024,
+      "fileSize": 2456789
+    }
+  ],
+  "groups": [
+    {
+      "groupId": "g0",
+      "lon": 127.027926,
+      "lat": 37.497952,
+      "indices": [0, 1],
+      "photoCount": 2,
+      "pointCount": 1
+    }
+  ],
+  "warnings": []
+}
+```
+
+- 서버는 `DCIM/_photo_import/{sessionId}/`에 임시 저장 후 **2시간** 내 `commit` 필요.
+- GPS 없음 항목은 `hasGps: false`, `groupId` 없음.
+
+**commit — Request body**
+
+```json
+{
+  "sessionId": "abc123…",
+  "projectCode": "N2026001",
+  "items": [
+    { "index": 4, "action": "create", "lon": 127.05, "lat": 37.51 },
+    { "index": 5, "action": "skip" }
+  ]
+}
+```
+
+| 필드 | 필수 | 설명 |
+| --- | --- | --- |
+| sessionId | O | parse 응답의 세션 ID |
+| projectCode | O | 사업번호 (권한 있는 프로젝트만) |
+| items | N | **GPS 없는 사진**만 지정. `action`: `create` \| `skip`. `create` 시 `lon`, `lat` 필수 |
+
+- GPS 있는 사진·그룹은 `items` 없이 **자동**으로 포인트 생성(그룹당 1포인트).
+- `gis_a_layer` INSERT(geometry EPSG:4326) + `field` INSERT + `DCIM/{code}_g1_photo{n}.ext` 저장.
+- 관리번호 형식: `{userId}_{yyyyMMddHHmmss}_{batchMs}_{seq}`
+
+**commit — Response (Success)**
+
+```json
+{
+  "success": true,
+  "pointsCreated": 3,
+  "photosSaved": 5,
+  "skipped": 1,
+  "codes": ["user_20260519143000_…_1", "…"],
+  "errors": []
+}
+```
+
+**Response (Failure)**
+
+- **401**: 미인증  
+- **403**: 프로젝트 권한 없음  
+- **400**: 세션 만료·파라미터 오류·GPS 없음 사진에 좌표 누락 등  
+
+웹: 시설물 추가 패널 → 「사진 선택 (여러 장)」→ 미리보기 모달 → 「포인트 생성」.
+
+---
+
 ### 2.2 시설물 조사 저장
 
 | 항목 | 내용 |
@@ -634,8 +817,9 @@ window.location.href = '/api/fac/downloadAll?code=' + encodeURIComponent(code);
 
 | 이름 | 타입 | 필수 | 설명 |
 | --- | --- | --- | --- |
-| minx, miny, maxx, maxy | number | O | 뷰포트 경계 (투영 좌표계는 서버와 맞출 것) |
-| limit | number | N | 기본 1000 |
+| minx, miny, maxx, maxy | number | O | 뷰포트 경계 (WGS84 경위도: minx=서쪽 경도, miny=남쪽 위도, maxx=동쪽 경도, maxy=북쪽 위도) |
+| projectCode | string | O | 사업번호 (`use_yn='Y'` 시설만, 미지정 시 빈 FeatureCollection) |
+| limit | number | N | 기본 1000, 최대 권장 5000 |
 
 **Response (Success)** — GeoJSON 또는 JSON 배열 (구현 기준)
 
@@ -927,7 +1111,7 @@ fetch(`/api/fac/point/geometry?code=${encodeURIComponent(code)}&lon=127.0&lat=37
 **설명**
 
 - `review_status`가 `pending_review`이면 `draft_field_schema.fields`, `approved`이면 `field_schema.fields`를 기준으로 OpenAI 호환 Chat Completions API를 호출하고, 응답 JSON을 `answers`에 병합 저장한다.
-- 서버 `web.xml` 컨텍스트 파라미터: `SURVEY_LLM_API_URL`(필수, 전체 URL 예: `https://api.openai.com/v1/chat/completions`), `SURVEY_LLM_API_KEY`(선택), `SURVEY_LLM_MODEL`(선택, 기본 `gpt-4o-mini`).
+- LLM 엔진: 요청 `llmProvider`(`openai` | `ollama`) 또는 web.xml `SURVEY_LLM_PROVIDER`(기본 `openai`). OpenAI: `SURVEY_LLM_API_URL`, `SURVEY_LLM_API_KEY`, `SURVEY_LLM_MODEL`(출력 `max_tokens` 상한 적용). Ollama: `SURVEY_LLM_OLLAMA_*` — 요청에 토큰 상한 필드를 넣지 않음(모델·서버 기본값).
 - 컨텍스트로 `gis_a_layer`의 좌표·사업번호, `field` 조사 그룹별 코멘트·사진 파일명·촬영방향 등을 전달한다 (이미지 바이너리 미전송).
 
 **Request Body**
@@ -935,6 +1119,7 @@ fetch(`/api/fac/point/geometry?code=${encodeURIComponent(code)}&lon=127.0&lat=37
 | 이름 | 타입 | 필수 | 설명 |
 | --- | --- | --- | --- |
 | code | string | O | 시설 관리번호 |
+| llmProvider | string | N | `openai` 또는 `ollama`. 생략 시 `SURVEY_LLM_PROVIDER` |
 
 **Response**
 
@@ -2299,7 +2484,7 @@ Firebase Cloud Messaging(FCM) 등으로 **알림을 내려면** 모바일 앱이
 | 환경 변수 `FCM_SERVICE_ACCOUNT_PATH` | JSON 파일 절대 경로 (우선) |
 | web.xml `FCM_SERVICE_ACCOUNT_PATH` | 동일 (환경 변수 없을 때) |
 
-미설정이면 `PushNotificationService.notifyUser` / `FcmMessagingClient.sendToToken` 은 전송을 시도하지 않습니다.
+미설정이면 `PushNotificationService.notifyUser` / `notifyTopic` / `FcmMessagingClient` 전송은 실패하거나 시도하지 않습니다. 관리자는 **7.3** `POST /api/devices/send` 로도 동일 파이프라인을 호출할 수 있습니다.
 
 ### 7.1 푸시 토큰 등록
 
@@ -2314,23 +2499,29 @@ Firebase Cloud Messaging(FCM) 등으로 **알림을 내려면** 모바일 앱이
 
 | 이름 | 타입 | 필수 | 설명 |
 | --- | --- | --- | --- |
-| pushToken | string | O* | FCM 등 기기 토큰 (* `token` 필드와 동일 의미, 둘 중 하나 필수) |
-| token | string | O* | `pushToken` 별칭 |
-| platform | string | N | 예: `android`, `ios`, `web` (32자 이내) |
-| deviceId | string | N | 앱에서 구분하는 기기 ID (256자 이내) |
+| fcmToken | string | O* | FCM 기기 토큰 (**권장** 필드명) |
+| pushToken | string | O* | `fcmToken` 과 동일 의미 |
+| token | string | O* | 위와 동일 별칭 |
+| platform | string | N | `android` / `ios` / `web` 등 (32자 이내) |
+| deviceId | string | N | 기기 식별자 (256자 이내) |
+| registeredAt | string | N | 단말 등록 시각, ISO-8601 (예: `2026-05-14T12:00:00Z`). 파싱 실패 시 무시 |
 
-동일 `pushToken`이 다시 오면 **행을 갱신**(다른 사용자에게 재할당된 토큰 등)합니다.
+동일 토큰 문자열이 다시 오면 **행을 갱신**(다른 사용자에게 재할당된 토큰 등). 서버 컬럼은 `push_token`에 저장됩니다.
 
 **Response (Success)**
 
 ```json
-{ "success": true, "message": "등록되었습니다." }
+{ "ok": true, "success": true, "message": "등록되었습니다." }
 ```
 
 **Response (Failure)**
 
+```json
+{ "ok": false, "success": false, "message": "…" }
+```
+
 - **401**: 미로그인  
-- **400**: 토큰 누락·과도한 길이  
+- **400**: 토큰 누락·과도한 길이 등  
 - **500**: DB 오류 등
 
 **사용 예시**
@@ -2342,7 +2533,12 @@ fetch('/api/devices/push-token', {
     'Content-Type': 'application/json',
     'X-Auth-Token': localStorage.getItem('token')
   },
-  body: JSON.stringify({ pushToken: fcmToken, platform: 'android', deviceId: 'optional-id' })
+  body: JSON.stringify({
+    fcmToken: fcmToken,
+    platform: 'android',
+    deviceId: 'optional-id',
+    registeredAt: new Date().toISOString()
+  })
 }).then(r => r.json());
 ```
 
@@ -2359,21 +2555,109 @@ fetch('/api/devices/push-token', {
 
 | 이름 | 타입 | 필수 | 설명 |
 | --- | --- | --- | --- |
-| pushToken 또는 token | string | O | 등록 해제할 토큰 |
+| pushToken / token / fcmToken | string | O | 등록 해제할 토큰 |
 
 **Response**
 
 ```json
-{ "success": true, "deleted": 1 }
+{ "ok": true, "success": true, "deleted": 1 }
 ```
 
-### 7.3 서버에서 특정 사용자에게 알림 보내기 (구현 참고)
+### 7.3 관리자 전용: HTTP로 푸시 발송 (`POST /api/devices/send`)
+
+전체 관리자(`userAuthority == 1`, 세션 기준)만 호출할 수 있습니다. 일반 사용자·부서 관리자는 **403**.
+
+| 항목 | 내용 |
+| --- | --- |
+| URL | `/api/devices/send` |
+| Method | `POST` |
+| Content-Type | `application/json` |
+| 인증 | **필요** — 토큰 또는 세션 (`AuthFilter`) |
+| 담당 | `DeviceApiController.handleSendPost` → `PushNotificationService` |
+
+**Request Body (JSON)**
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| mode | string | O* | `topic` 또는 `user` (`type` 필드와 동일 의미) |
+| type | string | O* | `mode` 별칭 |
+| topic | string | topic 시 | FCM 토픽 이름 (앱에서 구독한 문자열과 동일) |
+| targetUserId | string | user 시 | 수신 사용자 ID (`userId` 별칭 가능) |
+| userId | string | user 시 | `targetUserId` 별칭 |
+| title | string | N* | 알림 제목 (또는 `body`와 둘 중 하나 이상) |
+| body | string | N* | 알림 본문 |
+| data | object | N | FCM `data` 페이로드. **값은 모두 문자열**로 직렬화됨 |
+
+**mode = `topic` — 성공 예**
+
+```json
+{
+  "ok": true,
+  "success": true,
+  "mode": "topic",
+  "topic": "dbfield_notice",
+  "delivered": true,
+  "message": "FCM topic 전송이 수락되었습니다."
+}
+```
+
+**mode = `user` — 성공 예**
+
+```json
+{
+  "ok": true,
+  "success": true,
+  "mode": "user",
+  "targetUserId": "hong",
+  "tokensAttempted": 2,
+  "delivered": true,
+  "message": "2개 기기로 전송을 시도했습니다. (실패는 서버 로그 참고)"
+}
+```
+
+- **401**: 미로그인  
+- **403**: 관리자 아님  
+- **400**: `mode`/`topic`/`targetUserId` 누락 등  
+- **404**: `/api/devices/send` 가 아닌 경로로 POST 한 경우  
+- **500**: 예외 시 `message`에 원인 문자열
+
+`FCM_SERVICE_ACCOUNT_PATH` 가 없으면 `delivered` 가 false 이거나 `tokensAttempted` 가 0일 수 있습니다.
+
+### 7.4 서버에서 특정 사용자에게 알림 보내기 (구현 참고)
 
 Java 코드에서 업데이트 등의 이벤트 시 호출:
 
 - `com.newdbfield.web.PushNotificationService.notifyUser(javax.servlet.ServletContext ctx, String userId, String title, String body, java.util.Map<String,String> data)`
 
-`data` 맵의 값은 FCM 규칙에 맞게 **문자열**이어야 합니다. 담당 컨트롤러·유틸: `DeviceApiController`, `DevicePushTokenDAO`, `FcmMessagingClient`.
+`data` 맵의 값은 FCM 규칙에 맞게 **문자열**이어야 합니다. APK 배포 알림 예: `data.url` 에 다운로드 URL 문자열. 담당 클래스: `DeviceApiController`, `DevicePushTokenService`, `PushTokenRegisterRequest`, `DevicePushTokenDAO`, `FcmMessagingClient`.
+
+### 7.5 FCM Topic — 대규모 동일 공지
+
+동일 문구·동일 `data`를 **구독자 전체**에 한 번에 보낼 때 사용. 서버는 DB에 토큰을 쌓지 않아도 되고, `FcmMessagingClient.sendToTopic` / `PushNotificationService.notifyTopic` 이 FCM HTTP v1 로 `message.topic` 을 보냅니다.
+
+**모바일(예: Android)** — 앱 기동 또는 로그인 후 한 번:
+
+```java
+FirebaseMessaging.getInstance().subscribeToTopic("dbfield_notice");
+```
+
+(React Native Firebase면 동등 API `messaging().subscribeToTopic('dbfield_notice')` 등.)
+
+**서버(Java)** — 공지 배포 시:
+
+```java
+Map<String, String> data = new HashMap<>();
+data.put("url", "https://example.com/releases/app-1.2.3.apk");
+PushNotificationService.notifyTopic(
+    servletContext,
+    "dbfield_notice",
+    "업데이트",
+    "새 APK가 있습니다. 탭하여 다운로드하세요.",
+    data
+);
+```
+
+토픽 이름은 팀에서 고정 문자열로 정하면 됩니다. `FCM_SERVICE_ACCOUNT_PATH` 는 토큰 전송과 동일.
 
 ---
 

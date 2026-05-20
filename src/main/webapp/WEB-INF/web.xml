@@ -56,7 +56,12 @@
 		<param-value>D:/PROJECT/Db-Field/New_Db-Field/kordoc</param-value>
 	</context-param>
 	-->
-	<!-- 조사 보고서 AI 초안: OpenAI 호환 Chat Completions **전체 URL** 필수. Ollama: 키 비움 + ollama serve + ollama pull <모델> -->
+	<!-- 조사 보고서 AI 초안: UI/API에서 openai | ollama 선택. OpenAI·Ollama 설정을 각각 유지. -->
+	<context-param>
+		<param-name>SURVEY_LLM_PROVIDER</param-name>
+		<param-value>openai</param-value>
+	</context-param>
+	<!-- OpenAI -->
 	<context-param>
 		<param-name>SURVEY_LLM_API_URL</param-name>
 		<param-value>https://api.openai.com/v1/chat/completions</param-value>
@@ -67,9 +72,21 @@
 	</context-param>
 	<context-param>
 		<param-name>SURVEY_LLM_MODEL</param-name>
-		<!-- OpenAI: gpt-5.5(현재 사용), gpt-5.5-pro(고난도), gpt-4o(이전 세대 vision)
-		     / Ollama 로컬일 때만 llama3.2 등 -->
+		<!-- OpenAI: gpt-5.5, gpt-4o(vision) 등 -->
 		<param-value>gpt-5.5</param-value>
+	</context-param>
+	<!-- Ollama (Chat Completions 호환). 키는 보통 비움. -->
+	<context-param>
+		<param-name>SURVEY_LLM_OLLAMA_API_URL</param-name>
+		<param-value>http://172.21.15.135:11434/v1/chat/completions</param-value>
+	</context-param>
+	<context-param>
+		<param-name>SURVEY_LLM_OLLAMA_MODEL</param-name>
+		<param-value>qwen3:14b</param-value>
+	</context-param>
+	<context-param>
+		<param-name>SURVEY_LLM_OLLAMA_API_KEY</param-name>
+		<param-value></param-value>
 	</context-param>
 	<context-param>
 		<param-name>KAKAO_REST_KEY</param-name>
@@ -141,12 +158,12 @@
 	-->
 
 	<!-- FCM HTTP v1: Firebase 서비스 계정 JSON 파일 경로(서버 파일 시스템). 환경변수 FCM_SERVICE_ACCOUNT_PATH 가 있으면 우선. -->
-	<!--
+	
 	<context-param>
 		<param-name>FCM_SERVICE_ACCOUNT_PATH</param-name>
-		<param-value>D:/secrets/firebase-adminsdk.json</param-value>
+		<param-value>D:/PROJECT/Db-Field/New_Db-Field/secrets/myapp-9f49f-firebase-adminsdk-fbsvc-da4344afd1.json</param-value>
 	</context-param>
-	-->
+	
 
 	<display-name>New_Db-Field</display-name>
 

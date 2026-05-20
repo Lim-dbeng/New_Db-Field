@@ -515,12 +515,11 @@
 	 * 사이드바는 건드리지 않음.
 	 */
 	function closeAllFeatures() {
-		var searchSection = document.getElementById("facSearchSection");
-		if (searchSection) { searchSection.style.display = "none"; }
+		if (window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.hideAll) {
+			NewDbField.SidebarPanels.hideAll();
+		}
 		var menuFacilityInfo = document.getElementById("menuFacilityInfo");
 		if (menuFacilityInfo) { menuFacilityInfo.classList.remove("active"); }
-		var routeSection = document.getElementById("routeSection");
-		if (routeSection) { routeSection.style.display = "none"; }
 		var menuRoute = document.getElementById("menuRoute");
 		if (menuRoute) { menuRoute.classList.remove("active"); }
 		if (window.NewDbField && NewDbField.facility && NewDbField.facility.cancelRouteFlow) {
@@ -546,12 +545,8 @@
 		if (menuDrawShp) { menuDrawShp.classList.remove("active"); }
 		var shpDrawModePopupEl = document.getElementById("shpDrawModePopup");
 		if (shpDrawModePopupEl) { shpDrawModePopupEl.style.display = "none"; }
-		var uploadSection = document.getElementById("shpUploadSection");
-		if (uploadSection) { uploadSection.style.display = "none"; }
 		var menuUploadShp = document.getElementById("menuUploadShp");
 		if (menuUploadShp) { menuUploadShp.classList.remove("active"); }
-		var projectListSection = document.getElementById("projectListSection");
-		if (projectListSection) { projectListSection.style.display = "none"; }
 		var menuProjectList = document.getElementById("menuProjectList");
 		if (menuProjectList) { menuProjectList.classList.remove("active"); }
 		// 사업관리 모달 닫기
@@ -619,8 +614,9 @@
 				var searchSection = document.getElementById("facSearchSection");
 				
 				// 이미 활성화되어 있고 검색 섹션이 표시 중이면 토글 (숨김)
-				if (menuFacilityInfo.classList.contains("active") && 
-				    searchSection && searchSection.style.display === "block") {
+				if (menuFacilityInfo.classList.contains("active") && searchSection &&
+					((window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.isVisible("facSearchSection")) ||
+					 searchSection.style.display === "block")) {
 					closeAllFeatures();
 					if (page && !page.classList.contains("sidebar-hidden")) {
 						if (window.NewDbField && NewDbField.facility && NewDbField.facility.toggleSidebar) {
@@ -867,14 +863,8 @@
 				}
 			}
 			if (routeSection) {
-				// 사이드바 패널은 길찾기만 보이도록 강제 정리
-				var sidebar = routeSection.closest(".sidebar");
-				if (sidebar) {
-					var panels = sidebar.querySelectorAll(".panel");
-					for (var i = 0; i < panels.length; i++) {
-						panels[i].style.display = (panels[i] === routeSection) ? "block" : "none";
-					}
-					sidebar.scrollTop = 0;
+				if (window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.show) {
+					NewDbField.SidebarPanels.show(routeSection);
 				} else {
 					routeSection.style.display = "block";
 				}
@@ -892,7 +882,9 @@
 				if (blockGuestWithoutProject()) return;
 				var page = document.querySelector(".page");
 				var routeSection = document.getElementById("routeSection");
-				if (menuRoute.classList.contains("active") && routeSection && routeSection.style.display === "block") {
+				if (menuRoute.classList.contains("active") && routeSection &&
+					((window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.isVisible("routeSection")) ||
+					 routeSection.style.display === "block")) {
 					closeAllFeatures();
 					if (page && !page.classList.contains("sidebar-hidden")) {
 						if (window.NewDbField && NewDbField.facility && NewDbField.facility.toggleSidebar) {
@@ -1158,7 +1150,6 @@
 			var section = document.getElementById("facModeSection");
 			var titleEl = document.getElementById("facModeTitle");
 			var hintEl = document.getElementById("facModeHint");
-			if (section) { section.style.display = "block"; }
 			if (titleEl) { titleEl.textContent = title; }
 			if (hintEl) { hintEl.textContent = hint; }
 			if (window.NewDbField && NewDbField.facility && NewDbField.facility.showFacModePanel) {
@@ -1172,8 +1163,12 @@
 					if (NewDbField.facility.exitEditMode) { NewDbField.facility.exitEditMode(); }
 					if (NewDbField.facility.exitDeleteMode) { NewDbField.facility.exitDeleteMode(); }
 				}
-				var facModeSection = document.getElementById("facModeSection");
-				if (facModeSection) { facModeSection.style.display = "none"; }
+				if (window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.hideAll) {
+					NewDbField.SidebarPanels.hideAll();
+				} else {
+					var facModeSection = document.getElementById("facModeSection");
+					if (facModeSection) { facModeSection.style.display = "none"; }
+				}
 				var menuFacility = document.getElementById("menuFacility");
 				if (menuFacility) { menuFacility.classList.remove("active"); }
 			});
@@ -1331,8 +1326,9 @@
 				var page = document.querySelector(".page");
 				var uploadSection = document.getElementById("shpUploadSection");
 				
-				if (menuUploadShp.classList.contains("active") && 
-				    uploadSection && uploadSection.style.display === "flex") {
+				if (menuUploadShp.classList.contains("active") && uploadSection &&
+					((window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.isVisible("shpUploadSection")) ||
+					 uploadSection.style.display === "flex")) {
 					closeAllFeatures();
 					if (page && !page.classList.contains("sidebar-hidden")) {
 						if (window.NewDbField && NewDbField.facility && NewDbField.facility.toggleSidebar) {
@@ -1367,8 +1363,9 @@
 				var projectListSection = document.getElementById("projectListSection");
 				
 				// 이미 활성화되어 있고 섹션이 표시 중이면 토글 (숨김)
-				if (menuProjectList.classList.contains("active") && 
-				    projectListSection && projectListSection.style.display === "block") {
+				if (menuProjectList.classList.contains("active") && projectListSection &&
+					((window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.isVisible("projectListSection")) ||
+					 projectListSection.style.display === "block")) {
 					closeAllFeatures();
 					if (page && !page.classList.contains("sidebar-hidden")) {
 						if (window.NewDbField && NewDbField.facility && NewDbField.facility.toggleSidebar) {
@@ -1392,29 +1389,15 @@
 						}
 					}
 					
-					// 프로젝트 섹션 표시
 					if (projectListSection) {
-						projectListSection.style.display = "block";
-						
-						// 사업 목록 로드
+						if (window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.show) {
+							NewDbField.SidebarPanels.show(projectListSection);
+						} else {
+							projectListSection.style.display = "block";
+						}
 						if (window.ProjectList && window.ProjectList.load) {
 							window.ProjectList.load();
 						}
-					}
-					
-					// 사이드바가 숨겨져 있던 상태에서 열었을 때 시설물 섹션이 자동으로 표시되지 않도록
-					// initSidebarToggle의 자동 표시 로직을 방지하기 위해 플래그 설정
-					if (wasSidebarHidden) {
-						setTimeout(function() {
-							var facSearchSection = document.getElementById("facSearchSection");
-							var facAddSection = document.getElementById("facAddSection");
-							if (facSearchSection) {
-								facSearchSection.style.display = "none";
-							}
-							if (facAddSection) {
-								facAddSection.style.display = "none";
-							}
-						}, 150);
 					}
 				}
 			});
@@ -1424,9 +1407,11 @@
 		var projectListCloseBtn = document.getElementById("projectListCloseBtn");
 		if (projectListCloseBtn) {
 			projectListCloseBtn.addEventListener("click", function () {
-				var projectListSection = document.getElementById("projectListSection");
-				if (projectListSection) {
-					projectListSection.style.display = "none";
+				if (window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.hideAll) {
+					NewDbField.SidebarPanels.hideAll();
+				} else {
+					var projectListSection = document.getElementById("projectListSection");
+					if (projectListSection) projectListSection.style.display = "none";
 				}
 				if (menuProjectList) {
 					menuProjectList.classList.remove("active");
@@ -1459,16 +1444,9 @@
 				// 사업관리만 active로 설정
 				menuProject.classList.add("active");
 				
-				// 다른 사이드바 섹션들 숨기기
-				var projectListSection = document.getElementById("projectListSection");
-				var facSearchSection = document.getElementById("facSearchSection");
-				var facAddSection = document.getElementById("facAddSection");
-				var shpUploadSection = document.getElementById("shpUploadSection");
-				
-				if (projectListSection) projectListSection.style.display = "none";
-				if (facSearchSection) facSearchSection.style.display = "none";
-				if (facAddSection) facAddSection.style.display = "none";
-				if (shpUploadSection) shpUploadSection.style.display = "none";
+				if (window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.hideAll) {
+					NewDbField.SidebarPanels.hideAll();
+				}
 				
 				// 사업관리는 모달로 표시되므로 사이드바 닫기
 				if (page && !page.classList.contains("sidebar-hidden")) {
@@ -1696,8 +1674,12 @@
 					// 약간의 지연 후 체크 (토글 애니메이션 완료 대기)
 					setTimeout(function() {
 						var hasActiveMenu = document.querySelector(".menu-item.active");
-						var projectListSection = document.getElementById("projectListSection");
-						var isProjectListActive = projectListSection && projectListSection.style.display === "block";
+						var isProjectListActive = window.NewDbField && NewDbField.SidebarPanels &&
+							NewDbField.SidebarPanels.isVisible("projectListSection");
+						if (!isProjectListActive) {
+							var projectListSection = document.getElementById("projectListSection");
+							isProjectListActive = projectListSection && projectListSection.style.display === "block";
+						}
 						
 						if (!hasActiveMenu && !isProjectListActive) {
 							var menuFacilityInfo = document.getElementById("menuFacilityInfo");

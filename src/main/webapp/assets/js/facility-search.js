@@ -11,6 +11,62 @@
 	var projectOptions = [];
 	var projectOptionsRetryId = null;
 
+	function formatProjectDisplay(code) {
+		if (window.ProjectFilter && typeof window.ProjectFilter.formatProjectNameCode === "function") {
+			return window.ProjectFilter.formatProjectNameCode(code);
+		}
+		var c = code != null ? String(code).trim() : "";
+		return c || "-";
+	}
+
+	function resolveProjectCodeFromFacSearchInput(input) {
+		if (!input) return "";
+		var stored = input.getAttribute("data-project-code");
+		if (stored && String(stored).trim()) return String(stored).trim();
+		var val = (input.value || "").trim();
+		if (!val) return "";
+		var m = val.match(/\(([^)]+)\)\s*$/);
+		if (m) return m[1].trim();
+		return val;
+	}
+
+	function setFacSearchProjectInput(code) {
+		var input = document.getElementById("facSearchProjectCode");
+		if (!input) return;
+		var c = code != null ? String(code).trim() : "";
+		if (!c) {
+			input.value = "";
+			input.removeAttribute("data-project-code");
+			return;
+		}
+		var label = formatProjectDisplay(c);
+		if (window.ProjectFilter && window.ProjectFilter.getAllProjects) {
+			var projects = window.ProjectFilter.getAllProjects() || [];
+			for (var i = 0; i < projects.length; i++) {
+				if (projects[i].code === c) {
+					label = window.ProjectFilter.projectOptionLabel
+						? window.ProjectFilter.projectOptionLabel(projects[i])
+						: formatProjectDisplay(c);
+					break;
+				}
+			}
+		}
+		input.value = label;
+		input.setAttribute("data-project-code", c);
+	}
+
+	function buildFacSearchResultItemHtml(facility) {
+		var photoUrl = facility.photo1 ? "/DCIM/" + facility.photo1 : "";
+		var projectText = formatProjectDisplay(facility.projectCode);
+		var html = "<div class=\"fac-search-result-item\" data-code=\"" + escapeHtml(facility.code) + "\" data-lng=\"" + facility.lng + "\" data-lat=\"" + facility.lat + "\" data-project-code=\"" + escapeHtml(facility.projectCode || "") + "\">";
+		if (photoUrl) {
+			html += "<div class=\"result-photo-wrap\"><img src=\"" + escapeHtml(photoUrl) + "\" alt=\"시설물 사진\" class=\"result-photo\" onerror=\"this.parentElement.style.display='none'\"></div>";
+		}
+		html += "<div class=\"result-body\"><div class=\"result-code\">" + escapeHtml(facility.code) + "</div>";
+		html += "<div class=\"result-project\">" + escapeHtml(projectText) + "</div></div></div>";
+		return html;
+	}
+
 	/**
 	 * 부서명 자동완성
 	 */
@@ -123,10 +179,10 @@
 		var html = "";
 		if (projects && projects.length > 0) {
 			projects.forEach(function (project) {
-				var displayText = project.name && project.name.trim() !== "" 
-					? project.code + " - " + project.name 
-					: project.code;
-				html += "<div class=\"fac-search-suggest-item\" data-code=\"" + escapeHtml(project.code) + "\">" 
+				var displayText = (window.ProjectFilter && window.ProjectFilter.projectOptionLabel)
+					? window.ProjectFilter.projectOptionLabel(project)
+					: formatProjectDisplay(project.code);
+				html += "<div class=\"fac-search-suggest-item\" data-code=\"" + escapeHtml(project.code) + "\">"
 					+ escapeHtml(displayText) + "</div>";
 			});
 		} else if ((searchTerm || "").trim() !== "") {
@@ -144,10 +200,7 @@
 					return;
 				}
 				var code = this.getAttribute("data-code") || "";
-				var input = document.getElementById("facSearchProjectCode");
-				if (input) {
-					input.value = code;
-				}
+				setFacSearchProjectInput(code);
 				hideProjectSuggest();
 			});
 		});
@@ -196,9 +249,8 @@
 		var searchProjectCode = "";
 		// select 또는 input 모두 처리
 		if (projectCodeFilter) {
-			var value = projectCodeFilter.value || projectCodeFilter.textContent || "";
-			if (value.trim()) {
-				searchProjectCode = value.trim();
+			searchProjectCode = resolveProjectCodeFromFacSearchInput(projectCodeFilter);
+			if (searchProjectCode) {
 				params.append("projectCode", searchProjectCode);
 			}
 		}
@@ -356,19 +408,7 @@
 		} else {
 			var html = "";
 			facilities.forEach(function (facility) {
-				var photoUrl = "";
-				if (facility.photo1) {
-					photoUrl = "/DCIM/" + facility.photo1;
-				}
-				html += "<div class=\"fac-search-result-item\" data-code=\"" + escapeHtml(facility.code) + "\" data-lng=\"" + facility.lng + "\" data-lat=\"" + facility.lat + "\" data-project-code=\"" + escapeHtml(facility.projectCode || "") + "\">";
-				html += "<div class=\"result-info\">";
-				html += "<div class=\"result-code\">" + escapeHtml(facility.code) + "</div>";
-				html += "<div class=\"result-project\">사업번호: " + escapeHtml(facility.projectCode || "-") + "</div>";
-				html += "</div>";
-				if (photoUrl) {
-					html += "<img src=\"" + escapeHtml(photoUrl) + "\" alt=\"시설물 사진\" class=\"result-photo\" onerror=\"this.style.display='none'\">";
-				}
-				html += "</div>";
+				html += buildFacSearchResultItemHtml(facility);
 			});
 			listEl.innerHTML = html;
 
@@ -377,82 +417,30 @@
 				zoomToSearchResults(facilities);
 			}
 
-			// 클릭 이벤트: 지도로 이동 및 상세 표시
 			var items = listEl.querySelectorAll(".fac-search-result-item");
 			items.forEach(function (item) {
 				item.addEventListener("click", function () {
 					var code = this.getAttribute("data-code");
-					var lng = parseFloat(this.getAttribute("data-lng"));
-					var lat = parseFloat(this.getAttribute("data-lat"));
 					var projectCode = this.getAttribute("data-project-code") || "";
-
-					// 프로젝트 필터 변경 (시설물이 속한 프로젝트로 전환)
-					if (projectCode && projectCode.trim() !== "") {
-						var currentFilter = "";
-						if (window.ProjectFilter && window.ProjectFilter.getCurrentFilter) {
-							currentFilter = window.ProjectFilter.getCurrentFilter() || "";
-						}
-						
-						// 현재 필터와 다르면 프로젝트 필터 변경
-						if (currentFilter !== projectCode) {
-							console.log("[facility-search] Changing project filter to:", projectCode, "for facility:", code);
-							
-							// ProjectFilter.setFilter 사용 (레이어 새로고침 포함)
-							if (window.ProjectFilter && window.ProjectFilter.setFilter) {
-								window.ProjectFilter.setFilter(projectCode);
-							}
-							
-							// 프로젝트 필터 변경 후 레이어가 로드될 때까지 대기 후 시설물 선택
-							setTimeout(function () {
-								if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.selectFacilityByCode) {
-									window.NewDbField.facility.selectFacilityByCode(code, true);
-								} else if (window.App && window.App.facility && window.App.facility.selectFacilityByCode) {
-									window.App.facility.selectFacilityByCode(code, true);
-								}
-							}, 1500); // 프로젝트 필터 변경 후 레이어 로드 대기
-						} else {
-							// 이미 같은 프로젝트 필터면 즉시 선택
-							setTimeout(function () {
-								if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.selectFacilityByCode) {
-									window.NewDbField.facility.selectFacilityByCode(code, true);
-								} else if (window.App && window.App.facility && window.App.facility.selectFacilityByCode) {
-									window.App.facility.selectFacilityByCode(code, true);
-								}
-							}, 100);
-						}
-					} else {
-						// 프로젝트 코드가 없으면 전체 프로젝트로 필터 변경
-						var currentFilter = "";
-						if (window.ProjectFilter && window.ProjectFilter.getCurrentFilter) {
-							currentFilter = window.ProjectFilter.getCurrentFilter() || "";
-						}
-						
-						if (currentFilter !== "") {
-							console.log("[facility-search] Changing project filter to ALL for facility:", code);
-							
-							if (window.ProjectFilter && window.ProjectFilter.setFilter) {
-								window.ProjectFilter.setFilter("");
-							}
-							
-							setTimeout(function () {
-								if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.selectFacilityByCode) {
-									window.NewDbField.facility.selectFacilityByCode(code, true);
-								} else if (window.App && window.App.facility && window.App.facility.selectFacilityByCode) {
-									window.App.facility.selectFacilityByCode(code, true);
-								}
-							}, 1500);
-						} else {
-							// 이미 전체 프로젝트면 즉시 선택
-							setTimeout(function () {
-								if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.selectFacilityByCode) {
-									window.NewDbField.facility.selectFacilityByCode(code, true);
-								} else if (window.App && window.App.facility && window.App.facility.selectFacilityByCode) {
-									window.App.facility.selectFacilityByCode(code, true);
-								}
-							}, 100);
-						}
+					if (window.NewDbField && NewDbField.facility && NewDbField.facility.openFacilityFromSearchList) {
+						NewDbField.facility.openFacilityFromSearchList(code, projectCode);
+					} else if (window.NewDbField && NewDbField.facility && NewDbField.facility.selectFacilityByCode) {
+						NewDbField.facility.selectFacilityByCode(code, true);
 					}
 				});
+				var photoEl = item.querySelector(".result-photo");
+				if (photoEl) {
+					photoEl.addEventListener("click", function (e) {
+						e.stopPropagation();
+						var row = this.closest(".fac-search-result-item");
+						if (!row) return;
+						var code = row.getAttribute("data-code");
+						var projectCode = row.getAttribute("data-project-code") || "";
+						if (window.NewDbField && NewDbField.facility && NewDbField.facility.openFacilityFromSearchList) {
+							NewDbField.facility.openFacilityFromSearchList(code, projectCode);
+						}
+					});
+				}
 			});
 		}
 
@@ -536,10 +524,18 @@
 				return;
 			}
 
+			var mapFilter = window.ProjectFilter.getCurrentFilter
+				? window.ProjectFilter.getCurrentFilter()
+				: "";
+			if (mapFilter) {
+				setFacSearchProjectInput(mapFilter);
+			}
+
 			if (!projectCodeInput.dataset.dropdownBound) {
 				projectCodeInput.dataset.dropdownBound = "true";
 
 				projectCodeInput.addEventListener("input", function () {
+					this.removeAttribute("data-project-code");
 					filterProjectSuggestions(this.value);
 				});
 
@@ -702,13 +698,27 @@
 	 */
 	function showFacilitySearch() {
 		hasActiveSearch = false;
+		var sp = window.NewDbField && NewDbField.SidebarPanels;
+		if (sp && sp.closeDetailSidebar) {
+			sp.closeDetailSidebar();
+		}
+		var page = document.querySelector(".page");
+		if (page) {
+			page.classList.remove("fac-detail-only", "fac-detail-stack-open");
+			page.classList.remove("sidebar-hidden");
+		}
 		var section = document.getElementById("facSearchSection");
 		if (section) {
-			section.style.display = "flex";
-		}
-		var routeSection = document.getElementById("routeSection");
-		if (routeSection) {
-			routeSection.style.display = "none";
+			section.classList.remove("fac-search-section--detail-only");
+			if (sp && sp.repairPrimarySidebar) {
+				sp.repairPrimarySidebar("facSearchSection");
+			} else if (sp && sp.show) {
+				sp.show("facSearchSection");
+			} else {
+				section.classList.add("is-active");
+				section.style.display = "flex";
+				section.style.flexDirection = "column";
+			}
 		}
 		var menuRoute = document.getElementById("menuRoute");
 		if (menuRoute) {
@@ -731,14 +741,6 @@
 			setTimeout(function () { uvc(); }, 600);
 			setTimeout(function () { uvc(); }, 1200);
 		}
-		// 다른 섹션 숨기기
-		var uploadSection = document.getElementById("shpUploadSection");
-		var addSection = document.getElementById("facAddSection");
-		var detailSection = document.getElementById("facDetailSection");
-		if (uploadSection) uploadSection.style.display = "none";
-		if (addSection) addSection.style.display = "none";
-		if (detailSection) detailSection.style.display = "none";
-
 		// 지도 프로젝트 필터와 사업번호 동기화
 		var projectCodeInput = document.getElementById("facSearchProjectCode");
 		var currentProject = "";
@@ -746,7 +748,7 @@
 			currentProject = window.ProjectFilter.getCurrentFilter() || "";
 		}
 		if (projectCodeInput) {
-			projectCodeInput.value = currentProject.trim();
+			setFacSearchProjectInput(currentProject);
 		}
 	}
 
@@ -776,8 +778,13 @@
 	 */
 	function hideFacilitySearch() {
 		hasActiveSearch = false; // 탭 닫을 때 검색 상태 초기화
+		if (window.NewDbField && NewDbField.facility && NewDbField.facility.hideFacDetailSection) {
+			NewDbField.facility.hideFacDetailSection();
+		}
 		var section = document.getElementById("facSearchSection");
 		if (section) {
+			section.classList.remove("fac-search-section--detail-only");
+			section.classList.remove("is-active");
 			section.style.display = "none";
 		}
 		// 조사일자 필터 제거 후 지도 레이어 갱신 (사업번호만 적용)
@@ -814,19 +821,21 @@
 	 * 시설물 상세에서 검색 결과로 돌아가기
 	 */
 	function backToSearchResults() {
-		// 시설물 상세 섹션 숨기기
-		var detailSection = document.getElementById("facDetailSection");
-		if (detailSection) {
-			detailSection.style.display = "none";
+		if (window.NewDbField && NewDbField.facility && NewDbField.facility.closeDetailStackOnly) {
+			NewDbField.facility.closeDetailStackOnly();
+		} else {
+			var detailSection = document.getElementById("facDetailSection");
+			if (detailSection) {
+				detailSection.style.display = "none";
+			}
+			if (window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.closeDetailSidebar) {
+				NewDbField.SidebarPanels.closeDetailSidebar();
+			}
+			if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.closePointPopup) {
+				window.NewDbField.facility.closePointPopup();
+			}
 		}
-		
-		// 검색 섹션 다시 표시
 		showFacilitySearch();
-		
-		// 팝업 닫기
-		if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.closePointPopup) {
-			window.NewDbField.facility.closePointPopup();
-		}
 	}
 
 	// 전역 노출
@@ -836,6 +845,7 @@
 		search: searchFacilities,
 		reset: resetFacilitySearch,
 		backToResults: backToSearchResults,
+		setProjectInput: setFacSearchProjectInput,
 		hasActiveSearch: function () { return hasActiveSearch; }
 	};
 })();

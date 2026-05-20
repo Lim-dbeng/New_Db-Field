@@ -32,12 +32,15 @@ public class DevicePushTokenListener implements ServletContextListener {
 								+ " push_token TEXT NOT NULL,"
 								+ " platform VARCHAR(32),"
 								+ " device_id VARCHAR(256),"
+								+ " client_registered_at TIMESTAMPTZ,"
 								+ " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
 								+ " updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
 								+ " CONSTRAINT uq_device_push_token UNIQUE (push_token)"
 								+ ")");
 				st.execute(
 						"CREATE INDEX IF NOT EXISTS idx_device_push_token_user ON public.device_push_token (user_id)");
+				st.execute(
+						"ALTER TABLE public.device_push_token ADD COLUMN IF NOT EXISTS client_registered_at TIMESTAMPTZ");
 				System.out.println("[DevicePushTokenListener] public.device_push_token ready.");
 			}
 		} catch (Exception e) {

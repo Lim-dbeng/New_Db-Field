@@ -7,6 +7,178 @@
 	var currentProjects = [];
 	var currentSearchKeyword = "";
 	var currentStatusFilter = "all"; // all | inProgress | completed | other
+
+	/** 세션·토큰 포함 fetch (app.js 로드 후에는 App.fetchWithAuth 사용) */
+	function fetchDevicesApi(url, options) {
+		options = options || {};
+		if (window.App && typeof window.App.fetchWithAuth === "function") {
+			return window.App.fetchWithAuth(url, options);
+		}
+		options.headers = options.headers || {};
+		var token = localStorage.getItem("autoLoginToken");
+		if (token) {
+			options.headers["X-Auth-Token"] = token;
+		}
+		if (options.credentials === undefined) {
+			options.credentials = "include";
+		}
+		return fetch(url, options);
+	}
+
+	function setupAdminPushSendModal() {
+		var pushModal = document.getElementById("adminPushSendModal");
+		var pushBtn = document.getElementById("projectManagementPushSendBtn");
+		var modeSel = document.getElementById("adminPushSendMode");
+		var topicRow = document.getElementById("adminPushTopicRow");
+		var userRow = document.getElementById("adminPushUserRow");
+
+		function syncModeRows() {
+			if (!modeSel || !topicRow || !userRow) {
+				return;
+			}
+			if (modeSel.value === "user") {
+				topicRow.style.display = "none";
+				userRow.style.display = "block";
+			} else {
+				topicRow.style.display = "block";
+				userRow.style.display = "none";
+			}
+		}
+
+		function openPushModal() {
+			if (!pushModal) {
+				return;
+			}
+			syncModeRows();
+			pushModal.style.display = "flex";
+		}
+
+		function closePushModal() {
+			if (pushModal) {
+				pushModal.style.display = "none";
+			}
+		}
+
+		if (modeSel) {
+			modeSel.addEventListener("change", syncModeRows);
+		}
+		if (pushBtn) {
+			pushBtn.addEventListener("click", openPushModal);
+		}
+		var closeBtn = document.getElementById("adminPushSendModalClose");
+		var cancelBtn = document.getElementById("adminPushSendCancelBtn");
+		if (closeBtn) {
+			closeBtn.addEventListener("click", closePushModal);
+		}
+		if (cancelBtn) {
+			cancelBtn.addEventListener("click", closePushModal);
+		}
+		if (pushModal) {
+			pushModal.addEventListener("click", function(e) {
+				if (e.target === pushModal) {
+					closePushModal();
+				}
+			});
+		}
+
+		var submitBtn = document.getElementById("adminPushSendSubmitBtn");
+		if (submitBtn) {
+			submitBtn.addEventListener("click", function() {
+				var mode = modeSel ? modeSel.value : "topic";
+				var titleEl = document.getElementById("adminPushTitle");
+				var bodyEl = document.getElementById("adminPushBody");
+				var title = titleEl ? titleEl.value : "";
+				var bodyText = bodyEl ? bodyEl.value : "";
+				if (!String(title).trim() && !String(bodyText).trim()) {
+					alert("제목 또는 본문 중 하나를 입력하세요.");
+					return;
+				}
+				var dataJsonEl = document.getElementById("adminPushDataJson");
+				var dataJsonRaw = dataJsonEl ? dataJsonEl.value : "";
+				var flatData = null;
+				if (dataJsonRaw && String(dataJsonRaw).trim()) {
+					var dataObj;
+					try {
+						dataObj = JSON.parse(String(dataJsonRaw).trim());
+					} catch (ex) {
+						alert("추가 data JSON 형식이 올바르지 않습니다.");
+						return;
+					}
+					if (!dataObj || typeof dataObj !== "object" || Array.isArray(dataObj)) {
+						alert("추가 data는 JSON 객체 형태여야 합니다.");
+						return;
+					}
+					flatData = {};
+					Object.keys(dataObj).forEach(function(k) {
+						var v = dataObj[k];
+						flatData[k] = v === null || v === undefined ? "" : String(v);
+					});
+				}
+				var payload = {
+					mode: mode,
+					title: String(title).trim() || null,
+					body: String(bodyText).trim() || null
+				};
+				if (flatData) {
+					payload.data = flatData;
+				}
+				if (mode === "topic") {
+					var topicEl = document.getElementById("adminPushTopic");
+					var topic = topicEl ? topicEl.value : "";
+					if (!String(topic).trim()) {
+						alert("토픽 이름을 입력하세요.");
+						return;
+					}
+					payload.topic = String(topic).trim();
+				} else if (mode === "user") {
+					var uidEl = document.getElementById("adminPushTargetUserId");
+					var uid = uidEl ? uidEl.value : "";
+					if (!String(uid).trim()) {
+						alert("사용자 ID를 입력하세요.");
+						return;
+					}
+					payload.targetUserId = String(uid).trim();
+				}
+				submitBtn.disabled = true;
+				fetchDevicesApi("/api/devices/send", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(payload)
+				})
+					.then(function(res) {
+						return res.json().then(function(data) {
+							return { res: res, data: data };
+						}).catch(function() {
+							return { res: res, data: {} };
+						});
+					})
+					.then(function(pair) {
+						var data = pair.data || {};
+						console.log("[push send] response", data);
+						var msg = data.message || (pair.res.ok ? "처리되었습니다." : "요청 실패");
+						if (data.fcmConfigured === false) {
+							msg = (data.message || "FCM이 설정되지 않았습니다.");
+						}
+						if (data.mode === "user" && data.tokensFound === 0) {
+							msg = data.message || msg;
+						}
+						if (data.ok && data.success) {
+							alert(msg);
+							closePushModal();
+						} else {
+							alert(msg + (pair.res.status ? " (HTTP " + pair.res.status + ")" : ""));
+						}
+					})
+					.catch(function(err) {
+						console.error(err);
+						alert("전송 중 오류가 발생했습니다.");
+					})
+					.then(function() {
+						submitBtn.disabled = false;
+					});
+			});
+		}
+	}
 	
 	/**
 	 * 사업관리 모달 열기
@@ -17,16 +189,9 @@
 			modal.style.display = "block";
 			loadAllProjects(); // 전체 프로젝트 검색
 			
-			// 다른 사이드바 섹션들 숨기기
-			var projectListSection = document.getElementById("projectListSection");
-			var facSearchSection = document.getElementById("facSearchSection");
-			var facAddSection = document.getElementById("facAddSection");
-			var shpUploadSection = document.getElementById("shpUploadSection");
-			
-			if (projectListSection) projectListSection.style.display = "none";
-			if (facSearchSection) facSearchSection.style.display = "none";
-			if (facAddSection) facAddSection.style.display = "none";
-			if (shpUploadSection) shpUploadSection.style.display = "none";
+			if (window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.hideAll) {
+				NewDbField.SidebarPanels.hideAll();
+			}
 			
 			// 사업관리는 모달로 표시되므로 사이드바 닫기
 			var page = document.querySelector(".page");
@@ -857,6 +1022,8 @@
 			if (closeBtn) closeBtn.style.display = "none";
 			var logoutBtn = document.getElementById("projectManagementLogoutBtn");
 			if (logoutBtn) logoutBtn.style.display = "";
+			var pushSendBtn = document.getElementById("projectManagementPushSendBtn");
+			if (pushSendBtn) pushSendBtn.style.display = "";
 			openProjectManagement();
 		}
 
@@ -887,6 +1054,8 @@
 				}
 			});
 		}
+		setupAdminPushSendModal();
+
 		// 관리자 임명 모달 이벤트 설정
 		setupAdminModalEvents();
 		

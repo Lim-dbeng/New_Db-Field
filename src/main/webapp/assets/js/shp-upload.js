@@ -709,15 +709,12 @@
 	function showShpUpload() {
 		var section = document.getElementById("shpUploadSection");
 		if (section) {
-			section.style.display = "flex";
+			if (window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.show) {
+				NewDbField.SidebarPanels.show(section);
+			} else {
+				section.style.display = "flex";
+			}
 		}
-		// 다른 섹션 숨기기 (한 번에 하나의 기능만 표시)
-		var searchSection = document.getElementById("facSearchSection");
-		var addSection = document.getElementById("facAddSection");
-		var detailSection = document.getElementById("facDetailSection");
-		if (searchSection) searchSection.style.display = "none";
-		if (addSection) addSection.style.display = "none";
-		if (detailSection) detailSection.style.display = "none";
 
 		// 패널 오픈 시 현재 프로젝트 필터값을 업로드 사업번호에 우선 동기화
 		syncShpUploadProjectCode();
@@ -733,6 +730,7 @@
 	function hideShpUpload() {
 		var section = document.getElementById("shpUploadSection");
 		if (section) {
+			section.classList.remove("is-active");
 			section.style.display = "none";
 		}
 		

@@ -11,52 +11,77 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 다른 컨트롤러/서비스에서 특정 사용자에게 데이터 푸시를 보낼 때 사용.
- * FCM 서비스 계정이 설정되어 있고, 해당 사용자가 {@link DeviceApiController} 로 토큰을 등록한 경우에만 전달됩니다.
+ * 다른 컨트롤러/서비스에서 푸시를 보낼 때 사용.
+ * 사용자별: {@link DeviceApiController} 로 등록된 토큰. 전체 공지: FCM Topic.
  */
 public final class PushNotificationService {
 
 	private PushNotificationService() {
 	}
 
+	/** 사용자별 푸시 전송 결과 */
+	public static final class UserNotifyResult {
+		public final int tokensFound;
+		public final int tokensDelivered;
+		public final boolean fcmConfigured;
+
+		public UserNotifyResult(int tokensFound, int tokensDelivered, boolean fcmConfigured) {
+			this.tokensFound = tokensFound;
+			this.tokensDelivered = tokensDelivered;
+			this.fcmConfigured = fcmConfigured;
+		}
+	}
+
 	/**
-	 * 등록된 모든 기기 토큰으로 알림 전송 시도.
+	 * FCM Topic 구독 단말에 동일 알림 1회 전송 (DB 토큰 목록 불필요).
 	 *
-	 * @return 전송 시도한 토큰 수 (FCM 미설정 시 0)
+	 * @return FCM HTTP 2xx 여부 (미설정 시 false)
 	 */
-	public static int notifyUser(HttpServletRequest req, String userId, String title, String body,
+	public static boolean notifyTopic(ServletContext ctx, String topic, String title, String body,
+			Map<String, String> data) {
+		if (topic == null || topic.trim().isEmpty()) {
+			return false;
+		}
+		return FcmMessagingClient.sendToTopic(ctx, topic.trim(), title, body, data);
+	}
+
+	public static UserNotifyResult notifyUser(HttpServletRequest req, String userId, String title, String body,
 			Map<String, String> data) throws Exception {
 		return notifyUser(req.getServletContext(), userId, title, body, data);
 	}
 
-	public static int notifyUser(ServletContext ctx, String userId, String title, String body,
+	public static UserNotifyResult notifyUser(ServletContext ctx, String userId, String title, String body,
 			Map<String, String> data) throws Exception {
+		boolean fcmConfigured = FcmMessagingClient.isConfigured(ctx);
 		if (userId == null || userId.trim().isEmpty()) {
-			return 0;
+			return new UserNotifyResult(0, 0, fcmConfigured);
 		}
 		String dbUrl = ctx.getInitParameter("DB_URL");
 		String dbUser = ctx.getInitParameter("DB_USER");
 		String dbPassword = ctx.getInitParameter("DB_PASSWORD");
 		if (dbUrl == null || dbUser == null) {
-			return 0;
+			return new UserNotifyResult(0, 0, fcmConfigured);
 		}
 		Class.forName("org.postgresql.Driver");
 		try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
 			DevicePushTokenDAO dao = new DevicePushTokenDAO();
 			List<String> tokens = dao.listTokensByUserId(conn, userId.trim());
 			if (tokens.isEmpty()) {
-				return 0;
+				return new UserNotifyResult(0, 0, fcmConfigured);
 			}
 			Map<String, String> payload = data != null ? new HashMap<>(data) : new HashMap<>();
-			int attempted = 0;
+			int found = 0;
+			int delivered = 0;
 			for (String t : tokens) {
 				if (t == null || t.isEmpty()) {
 					continue;
 				}
-				attempted++;
-				FcmMessagingClient.sendToToken(ctx, t, title, body, payload);
+				found++;
+				if (FcmMessagingClient.sendToToken(ctx, t, title, body, payload)) {
+					delivered++;
+				}
 			}
-			return attempted;
+			return new UserNotifyResult(found, delivered, fcmConfigured);
 		}
 	}
 }

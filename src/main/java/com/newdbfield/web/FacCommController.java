@@ -8,6 +8,7 @@ import com.newdbfield.fac.FacFieldVO;
 import com.newdbfield.fac.FacService;
 import com.newdbfield.fac.FacServiceImpl;
 import com.newdbfield.util.ClientIpUtils;
+import com.newdbfield.util.FacImportPhotosUtil;
 import com.newdbfield.util.FacImportPointsParser;
 import com.newdbfield.util.ProjectDeptAccessUtil;
 import com.newdbfield.util.SurveyReportDraftLlmUtil;
@@ -204,6 +205,15 @@ public class FacCommController extends HttpServlet {
 					return;
 				case "/import-points/parse":
 					handleImportPointsParse(req, resp);
+					return;
+				case "/import-photos":
+					handleImportPhotos(req, resp);
+					return;
+				case "/import-photos/parse":
+					handleImportPhotosParse(req, resp);
+					return;
+				case "/import-photos/commit":
+					handleImportPhotosCommit(req, resp);
 					return;
 				default:
 					System.out.println("[FacCommController] doPost: 알 수 없는 경로 = " + path);
@@ -564,20 +574,36 @@ public class FacCommController extends HttpServlet {
 		double maxx = parseD(req.getParameter("maxx"));
 		double maxy = parseD(req.getParameter("maxy"));
 		Integer limit = req.getParameter("limit") != null ? Integer.parseInt(req.getParameter("limit")) : 1000;
-		List<FacFieldVO> rows = service.listByBbox(minx, miny, maxx, maxy, limit);
+		String projectCode = req.getParameter("projectCode");
+		if (projectCode == null || projectCode.trim().isEmpty()) {
+			projectCode = req.getParameter("project_code");
+		}
+		if (projectCode != null) {
+			projectCode = projectCode.trim();
+		}
+		if (projectCode == null || projectCode.isEmpty()) {
+			resp.setContentType("application/json;charset=UTF-8");
+			try (PrintWriter w = resp.getWriter()) {
+				w.write("{\"type\":\"FeatureCollection\",\"features\":[]}");
+			}
+			return;
+		}
+		List<FacFieldVO> rows = service.listByBbox(minx, miny, maxx, maxy, limit, projectCode);
 		resp.setContentType("application/json;charset=UTF-8");
 		StringBuilder sb = new StringBuilder();
 		sb.append("{\"type\":\"FeatureCollection\",\"features\":[");
 		for (int i = 0; i < rows.size(); i++) {
 			FacFieldVO v = rows.get(i);
 			if (i > 0) sb.append(',');
-			sb.append("{\"type\":\"Feature\",\"id\":").append(v.getId() == null ? "null" : v.getId())
+			String code = v.getCode() != null ? v.getCode() : v.getName();
+			sb.append("{\"type\":\"Feature\",\"id\":\"").append(escape(code)).append("\"")
 					.append(",\"geometry\":").append(v.getGeojson() == null ? "null" : v.getGeojson())
 					.append(",\"properties\":{")
-					.append("\"name\":\"").append(escape(v.getName())).append("\",")
+					.append("\"code\":\"").append(escape(code)).append("\",")
+					.append("\"name\":\"").append(escape(code)).append("\",")
 					.append("\"project_code\":\"").append(escape(v.getProjectCode())).append("\",")
 					.append("\"save\":").append(v.getSave() == null ? "null" : (v.getSave() ? "true" : "false")).append(",")
-					.append("\"photo1\":\"").append(escape(v.getPhoto1())).append("\"")
+					.append("\"photo1\":\"").append(escape(v.getPhoto1() != null ? v.getPhoto1() : "")).append("\"")
 					.append("}}");
 		}
 		sb.append("]}");
@@ -1796,6 +1822,216 @@ public class FacCommController extends HttpServlet {
 	/**
 	 * POST multipart: file — SHP(zip)·GeoJSON·DXF·엑셀에서 경위도 포인트 목록 추출 (DB 저장 없음).
 	 */
+	/**
+	 * POST multipart — photos(복수) + projectCode.
+	 * EXIF·그룹핑·gis_a_layer·field·DCIM까지 서버에서 한 번에 처리.
+	 */
+	private void handleImportPhotos(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			resp.setStatus(401);
+			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			return;
+		}
+		String projectCode = req.getParameter("projectCode");
+		if (projectCode == null) {
+			projectCode = "";
+		}
+		projectCode = projectCode.trim();
+		if (projectCode.isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"projectCode(사업번호)가 필요합니다.\"}");
+			return;
+		}
+
+		List<Part> parts = new ArrayList<>();
+		for (Part p : req.getParts()) {
+			parts.add(p);
+		}
+		if (parts.isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"업로드된 파일이 없습니다.\"}");
+			return;
+		}
+
+		String dbUrl = getServletContext().getInitParameter("DB_URL");
+		String dbUser = getServletContext().getInitParameter("DB_USER");
+		String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
+		String dbViewUrl = getServletContext().getInitParameter("DB_VIEW_URL");
+		String dbViewUser = getServletContext().getInitParameter("DB_VIEW_USER");
+		String dbViewPassword = getServletContext().getInitParameter("DB_VIEW_PASSWORD");
+		if (dbUrl == null || dbUser == null) {
+			resp.setStatus(500);
+			writeJson(resp, "{\"success\":false,\"message\":\"DB 설정이 없습니다.\"}");
+			return;
+		}
+		if (!canAccessFacilityProject(req, projectCode, dbUrl, dbUser, dbPassword, dbViewUrl, dbViewUser, dbViewPassword)) {
+			resp.setStatus(403);
+			writeJson(resp, "{\"success\":false,\"message\":\"해당 사업번호에 대한 권한이 없습니다.\"}");
+			return;
+		}
+
+		File uploadDir = (uploadBaseDir != null) ? uploadBaseDir : resolveUploadDir();
+		Connection conn = null;
+		try {
+			Class.forName("org.postgresql.Driver");
+			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
+			conn.setAutoCommit(false);
+			ObjectNode result = FacImportPhotosUtil.importPhotos(
+					parts, projectCode, null, uploadDir, userInfo.userId, userInfo.deptCode, conn);
+			conn.commit();
+			if (result.has("codes") && result.get("codes").isArray()) {
+				for (JsonNode c : result.get("codes")) {
+					updateGisALayerSaveViaWfs(c.asText(), true);
+				}
+			}
+			writeJson(resp, JSON_MAPPER.writeValueAsString(result));
+		} catch (IOException ex) {
+			if (conn != null) {
+				try {
+					conn.rollback();
+				} catch (Exception ignore) {
+				}
+			}
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"" + escape(ex.getMessage()) + "\"}");
+		} catch (Exception ex) {
+			if (conn != null) {
+				try {
+					conn.rollback();
+				} catch (Exception ignore) {
+				}
+			}
+			throw ex;
+		} finally {
+			if (conn != null) {
+				try {
+					conn.close();
+				} catch (Exception ignore) {
+				}
+			}
+		}
+	}
+
+	/**
+	 * POST multipart: photos (복수) — EXIF GPS 추출, 동일 좌표(완전 일치) 그룹핑. DB 저장 없음.
+	 * (웹 미리보기·GPS 없음 사진 좌표 지정용. 일반 클라이언트는 POST /import-photos 사용)
+	 */
+	private void handleImportPhotosParse(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			resp.setStatus(401);
+			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			return;
+		}
+		List<Part> parts = new ArrayList<>();
+		for (Part p : req.getParts()) {
+			parts.add(p);
+		}
+		if (parts.isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"업로드된 파일이 없습니다.\"}");
+			return;
+		}
+		File uploadDir = (uploadBaseDir != null) ? uploadBaseDir : resolveUploadDir();
+		try {
+			FacImportPhotosUtil.ParseResult result = FacImportPhotosUtil.parseUpload(parts, uploadDir);
+			writeJson(resp, JSON_MAPPER.writeValueAsString(result.json));
+		} catch (IOException ex) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"" + escape(ex.getMessage()) + "\"}");
+		}
+	}
+
+	/**
+	 * POST application/json — parse 세션 확정 후 gis_a_layer 포인트 + field 사진 저장.
+	 * Body: { sessionId, projectCode, items?: [{ index, action, lon?, lat? }] } — items는 GPS 없는 사진만.
+	 */
+	private void handleImportPhotosCommit(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			resp.setStatus(401);
+			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			return;
+		}
+		String body = readRequestBody(req);
+		if (body == null || body.trim().isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"JSON body가 필요합니다.\"}");
+			return;
+		}
+		JsonNode root = JSON_MAPPER.readTree(body);
+		String sessionId = root.path("sessionId").asText("").trim();
+		String projectCode = root.path("projectCode").asText("").trim();
+		if (sessionId.isEmpty() || projectCode.isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"sessionId, projectCode가 필요합니다.\"}");
+			return;
+		}
+
+		String dbUrl = getServletContext().getInitParameter("DB_URL");
+		String dbUser = getServletContext().getInitParameter("DB_USER");
+		String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
+		String dbViewUrl = getServletContext().getInitParameter("DB_VIEW_URL");
+		String dbViewUser = getServletContext().getInitParameter("DB_VIEW_USER");
+		String dbViewPassword = getServletContext().getInitParameter("DB_VIEW_PASSWORD");
+		if (dbUrl == null || dbUser == null) {
+			resp.setStatus(500);
+			writeJson(resp, "{\"success\":false,\"message\":\"DB 설정이 없습니다.\"}");
+			return;
+		}
+		if (!canAccessFacilityProject(req, projectCode, dbUrl, dbUser, dbPassword, dbViewUrl, dbViewUser, dbViewPassword)) {
+			resp.setStatus(403);
+			writeJson(resp, "{\"success\":false,\"message\":\"해당 사업번호에 대한 권한이 없습니다.\"}");
+			return;
+		}
+
+		File uploadDir = (uploadBaseDir != null) ? uploadBaseDir : resolveUploadDir();
+		Connection conn = null;
+		try {
+			Class.forName("org.postgresql.Driver");
+			conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
+			conn.setAutoCommit(false);
+			FacImportPhotosUtil.CommitResult result = FacImportPhotosUtil.commit(
+					sessionId,
+					projectCode,
+					root.get("items"),
+					uploadDir,
+					userInfo.userId,
+					userInfo.deptCode,
+					conn);
+			conn.commit();
+			for (String code : result.codes) {
+				updateGisALayerSaveViaWfs(code, true);
+			}
+			writeJson(resp, FacImportPhotosUtil.commitResultToJson(result));
+		} catch (IOException ex) {
+			if (conn != null) {
+				try {
+					conn.rollback();
+				} catch (Exception ignore) {
+				}
+			}
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"" + escape(ex.getMessage()) + "\"}");
+		} catch (Exception ex) {
+			if (conn != null) {
+				try {
+					conn.rollback();
+				} catch (Exception ignore) {
+				}
+			}
+			throw ex;
+		} finally {
+			if (conn != null) {
+				try {
+					conn.close();
+				} catch (Exception ignore) {
+				}
+			}
+		}
+	}
+
 	private void handleImportPointsParse(HttpServletRequest req, HttpServletResponse resp) throws Exception {
 		UserInfo userInfo = getUserInfo(req);
 		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
@@ -2600,8 +2836,8 @@ public class FacCommController extends HttpServlet {
 			System.out.println("[FacCommController] userPrompt len=" + userPrompt.length());
 
 			String upsert = "INSERT INTO public.facility_survey_report (code, project_code, source_filename, stored_path, "
-					+ "review_status, draft_field_schema, field_schema, answers, reference_paths, user_prompt, schema_version, created_by, updated_at) "
-					+ "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW()) "
+					+ "review_status, draft_field_schema, field_schema, answers, reference_paths, user_prompt, schema_version, created_by, created_at, updated_at) "
+					+ "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW()) "
 					+ "ON CONFLICT (code) DO UPDATE SET project_code = EXCLUDED.project_code, "
 					+ "source_filename = EXCLUDED.source_filename, stored_path = EXCLUDED.stored_path, "
 					+ "review_status = EXCLUDED.review_status, draft_field_schema = EXCLUDED.draft_field_schema, "
@@ -2837,7 +3073,7 @@ public class FacCommController extends HttpServlet {
 	/**
 	 * POST /api/fac/survey-report/generate-draft
 	 * Body: { "code": "시설코드" } — draft 또는 확정 field_schema의 필드에 맞춰 LLM이 answers(JSON)를 채움.
-	 * web.xml: SURVEY_LLM_API_URL (필수), SURVEY_LLM_API_KEY, SURVEY_LLM_MODEL
+	 * web.xml: SURVEY_LLM_PROVIDER, OpenAI(SURVEY_LLM_API_*), Ollama(SURVEY_LLM_OLLAMA_*)
 	 */
 	private void handleSurveyReportGenerateDraft(HttpServletRequest req, HttpServletResponse resp) throws Exception {
 		UserInfo userInfo = getUserInfo(req);
@@ -2855,6 +3091,16 @@ public class FacCommController extends HttpServlet {
 			return;
 		}
 		code = code.trim();
+		String llmProvider = null;
+		if (root.has("llmProvider") && !root.get("llmProvider").isNull()) {
+			try {
+				llmProvider = com.newdbfield.util.SurveyReportDraftLlmUtil.normalizeProvider(root.get("llmProvider").asText());
+			} catch (IllegalArgumentException ex) {
+				resp.setStatus(400);
+				writeJson(resp, "{\"success\":false,\"message\":\"" + escape(ex.getMessage()) + "\"}");
+				return;
+			}
+		}
 
 		String dbUrl = getServletContext().getInitParameter("DB_URL");
 		String dbUser = getServletContext().getInitParameter("DB_USER");
@@ -2934,7 +3180,10 @@ public class FacCommController extends HttpServlet {
 					System.out.println("[FacCommController] user_prompt len=" + userPromptDb.length());
 				}
 				String mergedJson = SurveyReportDraftLlmUtil.generateAndMergeAnswers(
-						getServletContext(), req, fieldsArray, rows, code, answers, conn, aiPhotos, refCtx, userPromptDb);
+						getServletContext(), req, fieldsArray, rows, code, answers, conn, aiPhotos, refCtx, userPromptDb,
+						llmProvider);
+				System.out.println("[FacCommController] generate-draft llmProvider="
+						+ (llmProvider != null ? llmProvider : "(default)"));
 				String sql = "UPDATE public.facility_survey_report SET answers = ?::jsonb, updated_at = NOW() WHERE code = ?";
 				try (PreparedStatement ps = conn.prepareStatement(sql)) {
 					setPgJsonb(ps, 1, mergedJson);

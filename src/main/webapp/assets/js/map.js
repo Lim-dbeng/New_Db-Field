@@ -49,13 +49,11 @@
 		zoomIn: function () { zoomBy(1); },
 		zoomOut: function () { zoomBy(-1); },
 		setMapType: function (mapType) {
-			// mapType: 'roadmap' | 'satellite' | 'terrain' | 'hybrid'
-			if (App.state.provider === "google" && App.state.google && App.state.google.map) {
-				var typeId = "roadmap";
-				if (mapType === "satellite") { typeId = "satellite"; }
-				else if (mapType === "terrain") { typeId = "terrain"; }
-				else if (mapType === "hybrid") { typeId = "hybrid"; }
-				App.state.google.map.setMapTypeId(typeId);
+			// mapType: roadmap | google | vworld | hybrid | terrain — 베이스는 OpenLayers 타일
+			if (!mapType) { return; }
+			if (App.state.provider === "google") {
+				App._pendingMapTypeAfterSwitch = mapType;
+				this.switchBase("vworld");
 				return;
 			}
 			if (isOlProvider()) {
@@ -145,8 +143,10 @@
 				
 				// Google Maps
 				if (App.state.provider === "google" && App.state.google && App.state.google.map) {
-					App.state.google.map.setCenter({ lat: lat, lng: lng });
-					App.state.google.map.setZoom(zoom);
+					var gMap = App.state.google.map;
+					var gZoom = clampGoogleZoomForMapType(gMap, zoom);
+					gMap.setCenter({ lat: lat, lng: lng });
+					gMap.setZoom(gZoom);
 					console.log("[map.js] Successfully restored facility center (Google Maps)");
 					return true;
 				}
@@ -215,13 +215,66 @@
 	function isOlProvider() {
 		return App.state.provider === "vworld" || App.state.provider === "googleTiles" || App.state.provider === "osm";
 	}
+
+	function applyPendingMapTypeAfterSwitch() {
+		var pending = App._pendingMapTypeAfterSwitch;
+		if (!pending) { return; }
+		App._pendingMapTypeAfterSwitch = null;
+		if (App.state.provider === "google" && App.state.google && App.state.google.map) {
+			var typeId = "roadmap";
+			if (pending === "google" || pending === "satellite") { typeId = getGoogleImageryMapTypeId(); }
+			else if (pending === "terrain") { typeId = "terrain"; }
+			else if (pending === "hybrid") { typeId = "hybrid"; }
+			App.state.google.map.setMapTypeId(typeId);
+			applyGoogleZoomAndTypeLimits(App.state.google.map);
+			return;
+		}
+		if (isOlProvider()) {
+			setOlBaseMapType(pending);
+		}
+	}
+
 	function getOlState() {
 		if (App.state.provider === "vworld") { return App.state.vworld; }
 		if (App.state.provider === "googleTiles") { return App.state.googleTiles; }
 		return App.state.osm;
 	}
 
-	// ---------------- Google ---------------- 
+	// ---------------- Google ----------------
+	// 한국 위성/하이브리드는 고줌에서 타일 미제공 → 회색 "이미지 없음" 방지
+	var GOOGLE_IMAGERY_MAX_ZOOM = 19;
+
+	function getGoogleImageryMapTypeId() {
+		return "hybrid";
+	}
+
+	function isGoogleImageryType(mapTypeId) {
+		var t = mapTypeId || "";
+		return t === "satellite" || t === "hybrid" || t === "terrain";
+	}
+
+	function clampGoogleZoomForMapType(map, zoom) {
+		var z = typeof zoom === "number" ? zoom : (map ? map.getZoom() : App.config.defaultZoom);
+		var typeId = map ? map.getMapTypeId() : getGoogleImageryMapTypeId();
+		if (isGoogleImageryType(typeId) && z > GOOGLE_IMAGERY_MAX_ZOOM) {
+			return GOOGLE_IMAGERY_MAX_ZOOM;
+		}
+		return z;
+	}
+
+	function applyGoogleZoomAndTypeLimits(map) {
+		if (!map) return;
+		var imagery = isGoogleImageryType(map.getMapTypeId());
+		map.setOptions({
+			maxZoom: imagery ? GOOGLE_IMAGERY_MAX_ZOOM : 21,
+			minZoom: 6
+		});
+		var z = clampGoogleZoomForMapType(map, map.getZoom());
+		if (map.getZoom() !== z) {
+			map.setZoom(z);
+		}
+	}
+
 	function createGoogle() {
 		// 마지막 조회한 시설물 좌표 확인
 		var savedCenter = null;
@@ -240,23 +293,15 @@
 		}
 		
 		var center = savedCenter || App.config.defaultCenter;
-		var zoom = savedCenter ? savedCenter.zoom : App.config.defaultZoom;
-		
-		// 한반도 전체가 보이도록 매우 넓은 경계 제한 (EPSG:4326 좌표)
-		var southWest = new google.maps.LatLng(30.0, 120.0); // 남서쪽 (한반도 전체 포함)
-		var northEast = new google.maps.LatLng(40.0, 135.0); // 북동쪽 (한반도 전체 포함)
-		var koreaBounds = new google.maps.LatLngBounds(southWest, northEast);
+		var zoom = clampGoogleZoomForMapType(null, savedCenter ? savedCenter.zoom : App.config.defaultZoom);
 		
 		var map = new google.maps.Map(document.getElementById("map"), {
 			center: { lat: center.lat, lng: center.lng },
 			zoom: zoom,
 			mapTypeId: "roadmap",
 			gestureHandling: "greedy",
-			minZoom: 1, // 한반도 전체가 보이도록 최소 줌 레벨 설정
-			restriction: {
-				latLngBounds: koreaBounds,
-				strictBounds: false // 약간의 여유를 둠
-			}
+			minZoom: 6,
+			maxZoom: 21
 		});
 		var overlays = {};
 		var markers = [];
@@ -264,8 +309,24 @@
 		map.addListener("mousemove", function (e) {
 			updateCoord(e.latLng.lng(), e.latLng.lat());
 		});
+		map.addListener("maptypeid_changed", function () {
+			applyGoogleZoomAndTypeLimits(map);
+		});
+		map.addListener("zoom_changed", function () {
+			var maxZ = isGoogleImageryType(map.getMapTypeId()) ? GOOGLE_IMAGERY_MAX_ZOOM : 21;
+			if (map.getZoom() > maxZ) {
+				map.setZoom(maxZ);
+			}
+		});
 
 		App.state.google = { map: map, overlays: overlays, markers: markers };
+		applyPendingMapTypeAfterSwitch();
+		applyGoogleZoomAndTypeLimits(map);
+
+		// WFS bbox 변환 등에 OpenLayers proj 사용 (백그라운드 로드)
+		if (App.loader && App.loader.loadOpenLayers) {
+			App.loader.loadOpenLayers(function () {});
+		}
 		
 		// 지도 생성 완료 후 마지막 조회한 시설물 좌표 복원
 		setTimeout(function() {
@@ -508,6 +569,7 @@
 			updateCoord(lonLat[0], lonLat[1]);
 		});
 		App.state.vworld = { map: map, overlays: overlays, baseLayers: baseLayers };
+		applyPendingMapTypeAfterSwitch();
 		
 		// 지도 생성 완료 후 마지막 조회한 시설물 좌표 복원
 		setTimeout(function() {
@@ -945,17 +1007,21 @@
 			console.log("[map] WMS layer hidden:", layerName);
 		}
 		
-		// fac:gis_a_layer WMS 레이어 표출 여부에 따라 벡터 레이어도 표출/숨김
-		// 단, visible이 true일 때만 벡터 레이어를 표시 (WMS 레이어가 켜져있을 때만 원본 레이어 표시)
-		if (layerName === "fac:gis_a_layer") {
-			if (window.NewDbField && window.NewDbField.facility) {
-				if (visible && window.NewDbField.facility.setVectorLayerVisible) {
-					// WMS 레이어가 켜져있을 때만 벡터 레이어도 표시
-					window.NewDbField.facility.setVectorLayerVisible(true);
-				} else if (!visible && window.NewDbField.facility.setVectorLayerVisible) {
-					// WMS 레이어가 꺼져있을 때는 벡터 레이어도 숨김
-					window.NewDbField.facility.setVectorLayerVisible(false);
+		// fac:gis_a_layer: WMS 타일 + 클릭용 벡터(REST) 함께 갱신
+		if (layerName === "fac:gis_a_layer" && window.NewDbField && window.NewDbField.facility) {
+			var fac = window.NewDbField.facility;
+			if (visible) {
+				if (fac.ensureFacilityLayerInitialized) {
+					fac.ensureFacilityLayerInitialized(function () {
+						if (fac.setVectorLayerVisible) { fac.setVectorLayerVisible(true); }
+						if (fac.refreshFacilityLayer) { fac.refreshFacilityLayer(); }
+					});
+				} else {
+					if (fac.setVectorLayerVisible) { fac.setVectorLayerVisible(true); }
+					if (fac.refreshFacilityLayer) { fac.refreshFacilityLayer(); }
 				}
+			} else if (fac.setVectorLayerVisible) {
+				fac.setVectorLayerVisible(false);
 			}
 		}
 	}

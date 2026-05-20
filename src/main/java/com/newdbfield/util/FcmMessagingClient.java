@@ -32,6 +32,16 @@ public final class FcmMessagingClient {
 	private FcmMessagingClient() {
 	}
 
+	/** Firebase 서비스 계정 JSON 경로가 설정되어 있고 읽을 수 있는지 */
+	public static boolean isConfigured(ServletContext ctx) {
+		try {
+			return resolveCreds(ctx) != null;
+		} catch (Exception e) {
+			System.err.println("[FcmMessagingClient] credentials check failed: " + e.getMessage());
+			return false;
+		}
+	}
+
 	private static final class CachedCreds {
 		final String projectId;
 		final GoogleCredentials credentials;
@@ -75,6 +85,8 @@ public final class FcmMessagingClient {
 	}
 
 	/**
+	 * 단일 기기 토큰으로 전송.
+	 *
 	 * @return true if credentials path configured and send attempted (개별 토큰 실패는 false일 수 있음)
 	 */
 	public static boolean sendToToken(ServletContext ctx, String deviceToken, String title, String body,
@@ -82,6 +94,68 @@ public final class FcmMessagingClient {
 		if (deviceToken == null || deviceToken.isEmpty()) {
 			return false;
 		}
+		ObjectNode doc = MAPPER.createObjectNode();
+		ObjectNode message = doc.putObject("message");
+		message.put("token", deviceToken);
+		putNotificationAndData(message, title, body, data);
+		return postFcmV1(ctx, doc);
+	}
+
+	/**
+	 * FCM Topic 구독자 전체에 동일 메시지 1회 전송 (대규모 공지용).
+	 * 토픽 이름 규칙: 비어 있지 않고, 공백 없이 FCM이 허용하는 문자열(영숫자, {@code -._~%+} 등). 과도한 길이는 거부.
+	 *
+	 * @return true if credentials configured and HTTP 2xx
+	 */
+	public static boolean sendToTopic(ServletContext ctx, String topic, String title, String body,
+			Map<String, String> data) {
+		String t = normalizeTopic(topic);
+		if (t == null) {
+			return false;
+		}
+		ObjectNode doc = MAPPER.createObjectNode();
+		ObjectNode message = doc.putObject("message");
+		message.put("topic", t);
+		putNotificationAndData(message, title, body, data);
+		return postFcmV1(ctx, doc);
+	}
+
+	private static String normalizeTopic(String topic) {
+		if (topic == null) {
+			return null;
+		}
+		String s = topic.trim();
+		if (s.isEmpty() || s.length() > 200) {
+			return null;
+		}
+		if (s.indexOf(' ') >= 0 || s.indexOf('\t') >= 0 || s.indexOf('\n') >= 0) {
+			return null;
+		}
+		return s;
+	}
+
+	private static void putNotificationAndData(ObjectNode message, String title, String body, Map<String, String> data) {
+		if (title != null && !title.isEmpty() || body != null && !body.isEmpty()) {
+			ObjectNode n = message.putObject("notification");
+			if (title != null) {
+				n.put("title", title);
+			}
+			if (body != null) {
+				n.put("body", body);
+			}
+		}
+		if (data != null && !data.isEmpty()) {
+			ObjectNode d = message.putObject("data");
+			for (Map.Entry<String, String> e : data.entrySet()) {
+				if (e.getKey() == null) {
+					continue;
+				}
+				d.put(e.getKey(), e.getValue() != null ? e.getValue() : "");
+			}
+		}
+	}
+
+	private static boolean postFcmV1(ServletContext ctx, ObjectNode root) {
 		try {
 			CachedCreds cc = resolveCreds(ctx);
 			if (cc == null) {
@@ -89,28 +163,6 @@ public final class FcmMessagingClient {
 			}
 			cc.credentials.refreshIfExpired();
 			String access = cc.credentials.getAccessToken().getTokenValue();
-
-			ObjectNode root = MAPPER.createObjectNode();
-			ObjectNode message = root.putObject("message");
-			message.put("token", deviceToken);
-			if (title != null && !title.isEmpty() || body != null && !body.isEmpty()) {
-				ObjectNode n = message.putObject("notification");
-				if (title != null) {
-					n.put("title", title);
-				}
-				if (body != null) {
-					n.put("body", body);
-				}
-			}
-			if (data != null && !data.isEmpty()) {
-				ObjectNode d = message.putObject("data");
-				for (Map.Entry<String, String> e : data.entrySet()) {
-					if (e.getKey() == null) {
-						continue;
-					}
-					d.put(e.getKey(), e.getValue() != null ? e.getValue() : "");
-				}
-			}
 
 			String url = "https://fcm.googleapis.com/v1/projects/" + cc.projectId + "/messages:send";
 			byte[] payload = MAPPER.writeValueAsBytes(root);
@@ -128,7 +180,13 @@ public final class FcmMessagingClient {
 				return true;
 			}
 			String err = readStream(code >= 400 ? http.getErrorStream() : http.getInputStream());
-			System.err.println("[FcmMessagingClient] FCM error HTTP " + code + " " + err);
+			String tokenHint = "";
+			JsonNode tokenNode = root.path("message").path("token");
+			if (!tokenNode.isMissingNode() && tokenNode.isTextual()) {
+				String tok = tokenNode.asText();
+				tokenHint = " token=" + (tok.length() > 12 ? tok.substring(0, 12) + "…" : tok);
+			}
+			System.err.println("[FcmMessagingClient] FCM error HTTP " + code + tokenHint + " " + err);
 			return false;
 		} catch (Exception e) {
 			System.err.println("[FcmMessagingClient] send failed: " + e.getMessage());

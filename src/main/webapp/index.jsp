@@ -46,7 +46,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>New_Db-Field</title>
 	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/styles.css?v=1">
-	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/custom.css?v=43">
+	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/custom.css?v=69">
 	<!-- OpenLayers CSS will be injected dynamically when needed -->
 </head>
 <body class="<%= isAdminMode ? "admin-mode" : "" %>" data-context-path="<%=request.getContextPath()%>">
@@ -283,6 +283,7 @@
 				<div class="project-management-modal-header">
 					<h4>사업관리</h4>
 					<div class="project-management-header-actions d-flex align-items-center gap-2">
+						<button type="button" class="btn btn-success btn-sm admin-push-send-btn<%= !isAdminMode ? " project-modal-btn-hidden" : "" %>" id="projectManagementPushSendBtn" title="FCM 푸시 발송 (전체 관리자)">푸시 보내기</button>
 						<button type="button" class="btn btn-outline-secondary btn-sm admin-logout-btn<%= !isAdminMode ? " project-modal-btn-hidden" : "" %>" id="projectManagementLogoutBtn">로그아웃</button>
 						<button type="button" class="project-management-modal-close<%= isAdminMode ? " project-modal-btn-hidden" : "" %>" id="projectManagementModalClose">
 							<iconify-icon icon="tabler:x"></iconify-icon>
@@ -316,6 +317,52 @@
 						<div id="projectListContainer" class="project-list-container">
 							<!-- 프로젝트 목록이 여기에 동적으로 추가됨 -->
 						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		
+		<!-- 전체 관리자: FCM 푸시 발송 (POST /api/devices/send) -->
+		<div id="adminPushSendModal" class="project-admin-modal admin-push-send-modal" style="display: none;">
+			<div class="project-admin-modal-content" style="max-width: 520px; min-height: auto;">
+				<div class="project-admin-modal-header">
+					<h4>푸시 보내기 (FCM)</h4>
+					<button type="button" class="project-admin-modal-close" id="adminPushSendModalClose" aria-label="닫기">
+						<iconify-icon icon="tabler:x"></iconify-icon>
+					</button>
+				</div>
+				<div class="project-admin-modal-body">
+					<div class="mb-3">
+						<label class="form-label" for="adminPushSendMode">발송 방식</label>
+						<select class="form-select" id="adminPushSendMode">
+							<option value="topic">Topic (구독자 전체)</option>
+							<option value="user">특정 사용자 (등록된 기기 토큰)</option>
+						</select>
+					</div>
+					<div class="mb-3" id="adminPushTopicRow">
+						<label class="form-label" for="adminPushTopic">토픽 이름</label>
+						<input type="text" class="form-control" id="adminPushTopic" placeholder="예: dbfield_notice" autocomplete="off">
+					</div>
+					<div class="mb-3" id="adminPushUserRow" style="display: none;">
+						<label class="form-label" for="adminPushTargetUserId">사용자 ID</label>
+						<input type="text" class="form-control" id="adminPushTargetUserId" placeholder="로그인 사용자 ID" autocomplete="off">
+					</div>
+					<div class="mb-3">
+						<label class="form-label" for="adminPushTitle">제목</label>
+						<input type="text" class="form-control" id="adminPushTitle" autocomplete="off">
+					</div>
+					<div class="mb-3">
+						<label class="form-label" for="adminPushBody">본문</label>
+						<textarea class="form-control" id="adminPushBody" rows="3"></textarea>
+					</div>
+					<div class="mb-3">
+						<label class="form-label" for="adminPushDataJson">추가 data (JSON 객체, 선택)</label>
+						<textarea class="form-control font-monospace" id="adminPushDataJson" rows="2" placeholder='예: {"url":"https://example.com/app.apk"}'></textarea>
+						<small class="form-text text-muted">값은 문자열 권장. 비우면 생략됩니다.</small>
+					</div>
+					<div class="d-flex gap-2 justify-content-end flex-wrap">
+						<button type="button" class="btn btn-secondary" id="adminPushSendCancelBtn">취소</button>
+						<button type="button" class="btn btn-primary" id="adminPushSendSubmitBtn">전송</button>
 					</div>
 				</div>
 			</div>
@@ -412,7 +459,7 @@
 			};
 		</script>
 		
-		<aside class="sidebar">
+		<aside class="sidebar sidebar-primary">
 			<!-- 프로젝트 섹션 -->
 			<section id="projectListSection" class="panel project-list-section" style="display:none;">
 				<div class="project-list-header">
@@ -575,17 +622,17 @@
 				</div>
 			</div>
 			
-			<!-- 시설물 정보 검색 섹션 -->
+			<!-- 시설물 정보 섹션 -->
 			<section id="facSearchSection" class="panel fac-search-section" style="display:none;">
 				<div class="fac-search-header">
-					<h3>시설물 정보 검색</h3>
+					<h3>시설물 정보</h3>
 					<button type="button" class="btn btn-sm btn-outline-secondary" id="facSearchCloseBtn">닫기</button>
 				</div>
 				<!-- 주소/장소 검색 (상단바에서 이동) -->
 				<div class="form-group mt-3 position-relative address-search-wrap">
-					<label class="form-label">장소·주소 검색</label>
+					<label class="form-label">주소 검색</label>
 					<div class="input-group">
-						<input id="searchInput" type="text" class="form-control form-control-sm" placeholder="장소·주소를 입력하세요 (위도,경도 검색 가능)" autocomplete="off">
+						<input id="searchInput" type="text" class="form-control form-control-sm" placeholder="주소 입력" autocomplete="off">
 						<button id="searchClear" type="button" class="search-clear-icon" title="검색어 및 지도 마커 지우기"><iconify-icon icon="tabler:x"></iconify-icon></button>
 						<button id="searchGo" type="button" class="btn btn-primary btn-sm">검색</button>
 					</div>
@@ -606,11 +653,11 @@
 						<input type="month" id="facSearchSurveyDate" class="form-control form-control-sm" placeholder="YYYY-MM">
 					</div>
 					
-					<!-- 조건 2: 사업번호 필터 -->
+					<!-- 조건 2: 사업명 필터 -->
 					<div class="form-group mt-2">
-						<label class="form-label">사업번호</label>
+						<label class="form-label">사업명</label>
 						<div class="position-relative">
-							<input type="text" id="facSearchProjectCode" class="form-control form-control-sm" placeholder="사업번호를 입력하세요" autocomplete="off">
+							<input type="text" id="facSearchProjectCode" class="form-control form-control-sm" placeholder="사업명 또는 사업번호" autocomplete="off">
 							<div id="facSearchProjectCodeSuggest" class="fac-search-suggest"></div>
 						</div>
 					</div>
@@ -711,6 +758,15 @@
 					</label>
 					<p class="text-muted small mt-1 mb-0">SHP(zip), GeoJSON, DXF(POINT), 엑셀(1행 헤더: 경도·위도 또는 lon·lat 등)</p>
 				</div>
+				<div class="mt-3 fac-import-photos-wrap">
+					<div class="form-label small mb-1">사진 일괄 추가 (EXIF GPS)</div>
+					<input type="file" id="facImportPhotosFile" class="fac-import-points-file-hidden" tabindex="-1" aria-label="사진 일괄 선택" accept="image/jpeg,image/png,image/webp,image/heic,image/*" multiple>
+					<label for="facImportPhotosFile" class="btn btn-sm w-100 fac-import-file-btn mb-2">
+						<iconify-icon icon="tabler:camera"></iconify-icon>
+						사진 선택 (여러 장)
+					</label>
+					<p class="text-muted small mt-1 mb-0">GPS가 완전히 같은 사진만 한 포인트에 묶습니다. GPS 없음은 미리보기에서 좌표를 지정합니다.</p>
+				</div>
 				<div class="mt-3" id="facAddPointHint">
 					<p class="text-muted small">지도에서 포인트를 클릭하여 시설물을 추가하세요.</p>
 				</div>
@@ -733,31 +789,26 @@
 				<p id="facModeHint" class="text-muted small mt-2">지도에서 수정할 시설물을 클릭하세요.</p>
 			</section>
 
-			<!-- 시설물 상세 섹션: 상단·조사그룹은 스크롤, 저장/취소는 하단 고정 -->
+		</aside>
+
+		<aside class="sidebar sidebar-detail" id="facDetailSidebar" aria-label="시설물 상세" style="display:none;">
 			<section id="facDetailSection" class="panel fac-detail-section" style="display:none;">
+				<div class="fac-detail-header">
+					<button type="button" class="btn btn-sm btn-outline-secondary fac-detail-stack-back ms-auto" id="facDetailBackToSearchBtn" style="display:none;" title="목록으로">
+						<iconify-icon icon="tabler:arrow-left"></iconify-icon>
+					</button>
+				</div>
 				<div class="fac-detail-scroll">
-					<div class="fac-detail-header">
-						<div>
-							<h3>시설물 정보</h3>
-							<p id="facDetailSubtitle" class="detail-subtitle">선택된 시설의 정보가 여기에 표시됩니다.</p>
-						</div>
-						<div class="fac-detail-header-buttons">
-							<button type="button" class="btn btn-sm btn-outline-primary" id="facDetailBackToSearchBtn" style="display:none;">
-								<iconify-icon icon="tabler:arrow-left"></iconify-icon> 검색결과
-							</button>
-							<button type="button" class="btn btn-sm btn-outline-secondary" id="facDetailCloseBtn">닫기</button>
-						</div>
-					</div>
 					<div class="fac-detail-meta">
 						<div class="form-group">
 							<label class="form-label">시설 코드</label>
 							<div id="facDetailCode" class="detail-code">-</div>
 						</div>
 						<div class="form-group mt-2">
-							<label class="form-label">사업번호</label>
+							<label class="form-label">사업명</label>
 							<div class="d-flex gap-2 align-items-center">
 								<select id="facDetailProjectCode" class="form-select form-select-sm flex-grow-1">
-									<option value="">사업번호를 선택하세요</option>
+									<option value="">사업명을 선택하세요</option>
 								</select>
 								<button type="button" id="facDetailProjectCodeEditBtn" class="btn btn-sm btn-outline-primary fac-detail-project-edit-btn" style="display: none;">수정</button>
 							</div>
@@ -786,16 +837,10 @@
 						</button>
 					</div>
 					<div id="facSurveyReportPanel" class="fac-survey-report-panel mt-3" style="display:none;">
-						<div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
-							<div class="fac-survey-report-intro flex-grow-1 min-w-0">
-								<h4 class="fac-survey-report-title mb-1">조사 보고서 양식 (HWP)</h4>
-								<p class="fac-survey-report-hint small text-muted mb-0">HWP 업로드 → kordoc 초안 → AI 초안 생성 → HWPX 다운로드</p>
-							</div>
-							<button type="button" id="facSurveyReportOpenBtn" class="btn btn-sm btn-primary fac-survey-report-open-btn flex-shrink-0 text-nowrap">
-								<iconify-icon icon="tabler:file-text"></iconify-icon> 보고서 양식 관리
-							</button>
-						</div>
-						<p id="facSurveyReportSummary" class="fac-survey-report-summary small text-muted mb-0 mt-2"></p>
+						<button type="button" id="facSurveyReportOpenBtn" class="btn btn-sm btn-primary fac-survey-report-open-btn w-100">
+							<iconify-icon icon="tabler:file-text"></iconify-icon> 보고서 양식 관리
+						</button>
+						<p id="facSurveyReportSummary" class="fac-survey-report-summary" style="display:none;" aria-hidden="true"></p>
 						<div id="facSurveyReportBody" style="display:none;"></div>
 					</div>
 					<div id="facDetailGroups" class="fac-groups-list mt-2"></div>
@@ -1227,22 +1272,24 @@
 	<script src="<%=request.getContextPath()%>/assets/js/theme/app.min.js?v=1"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/theme/sidebarmenu.js?v=1"></script>
 	<!-- 사업관리 -->
-	<script src="<%=request.getContextPath()%>/assets/js/project-management.js?v=5"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/project-management.js?v=7"></script>
 
 	<script src="<%=request.getContextPath()%>/assets/js/app.js?v=2"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/map.js?v=4"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/map.js?v=10"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/wms-presets.js?v=2"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/ui.js?v=6"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/sidebar-panels.js?v=10"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/ui.js?v=8"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/list.js?v=2"></script>
 	<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js" crossorigin="anonymous"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/facility.js?v=61"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/project-filter.js?v=4"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/facility-search.js?v=3"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility.js?v=96"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility-photo-import.js?v=1"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/project-filter.js?v=10"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility-search.js?v=11"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/project-list.js?v=7"></script>
 	<!-- JSZip, shpjs: SHP/ZIP → GeoJSON 변환 (브라우저) -->
 	<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/shpjs@3.5.0/dist/shp.min.js"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/shp-upload.js?v=11"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/shp-upload.js?v=12"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/shp-layer.js?v=2"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/shp-draw.js?v=1"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/shp-center.js?v=1"></script>

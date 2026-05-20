@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Timestamp;
 
 public class AuthDAO {
@@ -224,9 +225,22 @@ public class AuthDAO {
 	}
 	
 	/**
-	 * 로그인 이력 저장
+	 * 로그인 이력 저장. PK 시퀀스가 테이블과 어긋난 경우(데이터 이관 등) 한 번 시퀀스를 맞춘 뒤 재시도합니다.
 	 */
 	public void insertLoginHistory(Connection conn, String userId, String ipAddress, String userAgent, 
+			boolean success, String failureReason, String deviceInfo) throws SQLException {
+		try {
+			insertLoginHistoryOnce(conn, userId, ipAddress, userAgent, success, failureReason, deviceInfo);
+		} catch (SQLException e) {
+			if (!"23505".equals(e.getSQLState())) {
+				throw e;
+			}
+			syncUserLoginHistoryIdSequence(conn);
+			insertLoginHistoryOnce(conn, userId, ipAddress, userAgent, success, failureReason, deviceInfo);
+		}
+	}
+
+	private void insertLoginHistoryOnce(Connection conn, String userId, String ipAddress, String userAgent,
 			boolean success, String failureReason, String deviceInfo) throws SQLException {
 		String sql = "INSERT INTO public.user_login_history (user_id, ip_address, user_agent, login_time, success, failure_reason, device_info) "
 				+ "VALUES (?, ?, ?, NOW(), ?, ?, ?)";
@@ -238,6 +252,20 @@ public class AuthDAO {
 			pstmt.setString(5, failureReason);
 			pstmt.setString(6, deviceInfo);
 			pstmt.executeUpdate();
+		}
+	}
+
+	/**
+	 * {@code user_login_history.id} 시퀀스를 현재 MAX(id)에 맞춥니다. 빈 테이블이면 다음 값은 1입니다.
+	 */
+	private void syncUserLoginHistoryIdSequence(Connection conn) throws SQLException {
+		String sql = "SELECT setval("
+				+ "pg_get_serial_sequence('public.user_login_history', 'id'), "
+				+ "CASE WHEN EXISTS (SELECT 1 FROM public.user_login_history) "
+				+ "THEN (SELECT MAX(id) FROM public.user_login_history) ELSE 1 END, "
+				+ "EXISTS (SELECT 1 FROM public.user_login_history))";
+		try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+			rs.next();
 		}
 	}
 	

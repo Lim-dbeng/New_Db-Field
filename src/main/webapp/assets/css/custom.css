@@ -6,6 +6,60 @@
 	--brand-orange-dark: #e1581f;
 	--brand-teal-soft: #d6fffa;
 	--brand-orange-soft: #ffe4d6;
+	--scrollbar-size: 5px;
+	--scrollbar-thumb: rgba(15, 23, 42, 0.18);
+	--scrollbar-thumb-hover: rgba(15, 23, 42, 0.32);
+}
+
+/* 네이버 지도형 얇은 스크롤바 (사이드바·상세 패널) */
+.sidebar-primary,
+.sidebar-detail .fac-detail-scroll,
+.sidebar .fac-search-results-list,
+.sidebar .fac-detail-scroll,
+.sidebar .project-list-content,
+.sidebar .project-tab-content {
+	scrollbar-width: thin;
+	scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.sidebar-primary::-webkit-scrollbar,
+.sidebar-detail .fac-detail-scroll::-webkit-scrollbar,
+.sidebar .fac-search-results-list::-webkit-scrollbar,
+.sidebar .fac-detail-scroll::-webkit-scrollbar,
+.sidebar .project-list-content::-webkit-scrollbar,
+.sidebar .project-tab-content::-webkit-scrollbar {
+	width: var(--scrollbar-size);
+	height: var(--scrollbar-size);
+}
+
+.sidebar-primary::-webkit-scrollbar-track,
+.sidebar-detail .fac-detail-scroll::-webkit-scrollbar-track,
+.sidebar .fac-search-results-list::-webkit-scrollbar-track,
+.sidebar .fac-detail-scroll::-webkit-scrollbar-track,
+.sidebar .project-list-content::-webkit-scrollbar-track,
+.sidebar .project-tab-content::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.sidebar-primary::-webkit-scrollbar-thumb,
+.sidebar-detail .fac-detail-scroll::-webkit-scrollbar-thumb,
+.sidebar .fac-search-results-list::-webkit-scrollbar-thumb,
+.sidebar .fac-detail-scroll::-webkit-scrollbar-thumb,
+.sidebar .project-list-content::-webkit-scrollbar-thumb,
+.sidebar .project-tab-content::-webkit-scrollbar-thumb {
+	background: var(--scrollbar-thumb);
+	border-radius: 999px;
+	border: 1px solid transparent;
+	background-clip: padding-box;
+}
+
+.sidebar-primary::-webkit-scrollbar-thumb:hover,
+.sidebar-detail .fac-detail-scroll::-webkit-scrollbar-thumb:hover,
+.sidebar .fac-search-results-list::-webkit-scrollbar-thumb:hover,
+.sidebar .fac-detail-scroll::-webkit-scrollbar-thumb:hover,
+.sidebar .project-list-content::-webkit-scrollbar-thumb:hover,
+.sidebar .project-tab-content::-webkit-scrollbar-thumb:hover {
+	background: var(--scrollbar-thumb-hover);
 }
 
 :root,
@@ -296,8 +350,8 @@ html, body { height: 100%; margin: 0; }
 	color: #475569;
 	transition: transform 0.3s ease;
 }
-.page:not(.sidebar-hidden) .menu-arrow-toggle {
-	left: 664px;
+.page:not(.sidebar-hidden):not(.fac-detail-stack-open):not(.fac-detail-only) .menu-arrow-toggle {
+	left: 509px;
 }
 .page:not(.sidebar-hidden) .menu-arrow-toggle iconify-icon {
 	transform: rotate(180deg);
@@ -393,21 +447,601 @@ html, body { height: 100%; margin: 0; }
 	position: fixed; 
 	left: 64px; 
 	top: 0; 
-	width: 600px; 
+	width: 445px; 
 	height: 100%; 
 	overflow: hidden; 
 	display: flex;
 	flex-direction: column;
 	padding: 16px; 
-	background: rgba(250, 250, 250, 0.98); 
-	backdrop-filter: blur(8px);
+	background: #ffffff !important;
+	backdrop-filter: none;
 	border-right: 1px solid rgba(229, 231, 235, 0.8);
 	box-shadow: 2px 0 12px rgba(0, 0, 0, 0.1);
 	z-index: 10050;
 	transform: translateX(-100%);
 	transition: transform 0.3s ease;
 }
-.sidebar > .panel { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+/* 사이드바 패널: 기본 숨김, .is-active 하나만 표시 (sidebar-panels.js) */
+.sidebar > .panel {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: hidden;
+	display: none;
+	flex-direction: column;
+}
+.sidebar > .panel.is-active {
+	display: flex !important;
+	flex-direction: column;
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+/* primary 사이드바 패널: 내부 카드(테두리·그림자) 제거 */
+.sidebar > .panel.fac-search-section,
+.sidebar > .panel.route-section,
+.sidebar > .panel.fac-add-section,
+.sidebar > .panel.fac-mode-section,
+.sidebar > .panel.project-list-section {
+	background: #ffffff !important;
+	border: none !important;
+	border-radius: 0 !important;
+	box-shadow: none !important;
+	padding: 0 !important;
+	margin: 0 !important;
+	max-height: none;
+	flex: 1 1 0;
+	min-height: 0;
+	width: 100%;
+}
+
+.sidebar .fac-detail-scroll {
+	flex: 1 1 0;
+	min-height: 0;
+	max-height: none;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+.sidebar .fac-search-header,
+.sidebar .fac-add-header,
+.sidebar .fac-detail-header,
+.sidebar .route-section > .fac-search-header,
+.sidebar .project-list-header {
+	margin-bottom: 12px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid #e5e7eb;
+	flex-shrink: 0;
+}
+
+.sidebar .project-list-header {
+	padding-left: 0;
+	padding-right: 0;
+	padding-top: 0;
+}
+
+.sidebar .project-tabs {
+	padding-left: 0;
+	padding-right: 0;
+}
+
+.sidebar .project-tab-content,
+.sidebar .project-list-search,
+.sidebar .project-list-content {
+	padding-left: 0;
+	padding-right: 0;
+}
+
+/* 시설물 추가 패널: 그룹은 전역 .fac-group 카드 스타일 사용 */
+.sidebar .fac-add-section .fac-group {
+	margin-bottom: 12px;
+}
+
+.sidebar .fac-add-actions {
+	flex-shrink: 0;
+	border-top: 1px solid #e5e7eb;
+	padding-top: 12px;
+	margin-top: 8px;
+	background: transparent;
+	min-height: auto;
+}
+
+.sidebar .fac-search-results {
+	border-top: 1px solid #e5e7eb;
+	margin-top: 12px;
+	padding-top: 12px;
+	background: #ffffff;
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+.sidebar .fac-search-section {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.sidebar .fac-search-filters,
+.sidebar .address-search-wrap,
+.sidebar .fac-search-results-header {
+	background: #ffffff;
+	flex-shrink: 0;
+}
+
+.sidebar #facSearchResults.fac-search-results {
+	display: flex;
+	flex-direction: column;
+}
+
+.sidebar #facSearchPagination.fac-search-pagination {
+	flex-shrink: 0;
+}
+
+.sidebar .fac-survey-report-panel {
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	padding: 12px 0;
+	margin-top: 12px;
+	border-top: 1px solid #e5e7eb;
+}
+
+.sidebar .detail-point-actions {
+	border-radius: 8px;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.sidebar .detail-point-action-btn {
+	background: #fff;
+}
+
+.sidebar .fac-detail-section .detail-subtitle {
+	display: none;
+}
+
+.sidebar .fac-detail-section .fac-groups-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-top: 8px;
+}
+
+.sidebar .fac-detail-section .fac-group {
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	background: #f8fafc;
+	padding: 0;
+	margin-bottom: 0;
+	overflow: hidden;
+	box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.sidebar .fac-search-results-list {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+	padding: 4px 0;
+}
+
+.sidebar .fac-search-result-item {
+	flex-direction: column;
+	align-items: stretch;
+	border: none;
+	border-radius: 12px;
+	padding: 0;
+	overflow: hidden;
+	margin-bottom: 12px;
+	box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+	background: #fff;
+}
+
+.sidebar .fac-search-result-item:hover {
+	box-shadow: 0 4px 14px rgba(0, 183, 165, 0.18);
+}
+
+.sidebar .fac-search-result-item .result-photo-wrap {
+	position: relative;
+	display: block;
+	width: 100%;
+	aspect-ratio: 16 / 9;
+	overflow: hidden;
+	background: #e2e8f0;
+}
+
+.sidebar .fac-search-result-item .result-photo {
+	position: absolute;
+	inset: 0;
+	display: block;
+	width: 100%;
+	height: 100%;
+	min-width: 0;
+	min-height: 0;
+	max-width: none;
+	max-height: none;
+	object-fit: cover;
+	border: none;
+	border-radius: 0;
+	flex: none;
+}
+
+.sidebar .fac-search-result-item .result-body {
+	padding: 12px 14px;
+}
+
+.sidebar .fac-search-result-item .result-code {
+	font-size: 14px;
+	font-weight: 700;
+	margin-bottom: 6px;
+}
+
+.sidebar .fac-search-result-item .result-project {
+	font-size: 13px;
+	color: #64748b;
+	margin-bottom: 0;
+}
+
+/* 포인트 상세: 네이버 지도형 사진 갤러리 */
+.sidebar .naver-photo-gallery {
+	width: 100%;
+	margin: 4px 0 0;
+}
+
+.sidebar .naver-photo-stage {
+	position: relative;
+	border-radius: 12px;
+	overflow: hidden;
+	background: #e2e8f0;
+	box-shadow: 0 2px 12px rgba(15, 23, 42, 0.1);
+}
+
+.sidebar .naver-photo-counter {
+	position: absolute;
+	top: 10px;
+	left: 10px;
+	right: auto;
+	z-index: 6;
+	padding: 4px 10px;
+	border-radius: 999px;
+	background: rgba(0, 0, 0, 0.55);
+	color: #fff;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1.3;
+	pointer-events: none;
+}
+
+.sidebar .naver-photo-stage .slider-nav {
+	position: absolute;
+	top: 50%;
+	transform: translateY(-50%);
+	z-index: 6;
+	width: 36px;
+	height: 36px;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.95);
+	box-shadow: 0 2px 10px rgba(15, 23, 42, 0.18);
+	color: #334155;
+	font-size: 0;
+	display: grid;
+	place-items: center;
+}
+
+.sidebar .naver-photo-stage .slider-nav iconify-icon {
+	font-size: 22px;
+	color: #334155;
+}
+
+.sidebar .naver-photo-stage .slider-nav:not(:has(iconify-icon)) {
+	font-size: 22px;
+	line-height: 1;
+}
+
+.sidebar .naver-photo-stage .slider-nav--prev {
+	left: 8px;
+}
+
+.sidebar .naver-photo-stage .slider-nav--next {
+	right: 8px;
+}
+
+.sidebar .naver-photo-gallery.single-photo .slider-nav {
+	display: none;
+}
+
+.sidebar .naver-photo-stage .photo-track {
+	display: flex;
+	width: 100%;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scroll-snap-type: x mandatory;
+	scroll-behavior: smooth;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: none;
+}
+
+.sidebar .naver-photo-stage .photo-track::-webkit-scrollbar {
+	display: none;
+}
+
+.sidebar .photo-slider {
+	width: 100%;
+}
+
+.sidebar .naver-photo-gallery .photo-card {
+	flex: 0 0 100%;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+	background: transparent;
+	scroll-snap-align: start;
+}
+
+.sidebar .naver-photo-gallery .photo-card-media {
+	position: relative;
+	width: 100%;
+	aspect-ratio: 16 / 10;
+	min-height: 220px;
+	overflow: hidden;
+	background: #e2e8f0;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.sidebar .naver-photo-gallery .photo-card-media img,
+.sidebar .naver-photo-gallery .photo-card-media img.photo-card-thumb {
+	position: absolute;
+	inset: 0;
+	width: 100% !important;
+	height: 100% !important;
+	min-height: 0 !important;
+	max-height: none !important;
+	object-fit: cover;
+	display: block;
+	border-radius: 0;
+}
+
+.sidebar .naver-photo-gallery .photo-card-top-bar {
+	top: auto;
+	bottom: 0;
+	min-height: 48px;
+	padding: 28px 10px 8px 12px;
+	border-radius: 0;
+	background: linear-gradient(to top, rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0.35) 55%, transparent 100%);
+}
+
+.sidebar .naver-photo-gallery .photo-card-media .photo-representative-check {
+	top: 8px;
+	right: 8px;
+	bottom: auto;
+	z-index: 7;
+}
+
+.sidebar .naver-photo-gallery .photo-zoom-icon {
+	opacity: 0;
+}
+
+.sidebar .naver-photo-gallery .photo-card:hover .photo-zoom-icon {
+	opacity: 1;
+}
+
+.sidebar .naver-photo-gallery .photo-card img.photo-img-missing {
+	object-fit: contain;
+	background: #eceff4;
+}
+
+.sidebar .fac-detail-section .fac-group-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 12px 14px 10px;
+	background: #fff;
+	border-bottom: 1px solid #e5e7eb;
+}
+
+.sidebar .fac-detail-section .fac-group-header h5 {
+	font-size: 14px;
+	font-weight: 700;
+	color: #0f172a;
+	margin: 0;
+	letter-spacing: -0.01em;
+}
+
+.sidebar .fac-detail-section .fac-group-comment,
+.sidebar-detail .fac-group-comment {
+	padding: 12px 14px 14px;
+	margin: 0;
+	background: #fff;
+	border-top: 1px solid #f1f5f9;
+}
+
+.sidebar .fac-detail-section .fac-group-comment textarea {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	min-height: 56px;
+}
+
+.sidebar .fac-detail-section .photo-slider {
+	padding: 10px 14px 14px;
+	background: #fff;
+}
+
+.sidebar-detail .fac-group .naver-photo-gallery,
+.sidebar .fac-detail-section .fac-group .naver-photo-gallery {
+	width: 100%;
+	margin: 0;
+	padding: 0;
+	background: #fff;
+}
+
+.sidebar-detail .fac-group .naver-photo-stage,
+.sidebar .fac-detail-section .fac-group .naver-photo-stage {
+	position: relative;
+	border-radius: 0;
+	overflow: hidden;
+	background: #e2e8f0;
+}
+
+/* 상세 패널(400px) 사진: 16:9 고정, 세로로 과도하게 늘어나지 않음 */
+.sidebar .fac-detail-section .photo-slider.single-photo .photo-card {
+	width: 100%;
+	max-width: 100%;
+	padding: 0;
+	border: none;
+	box-shadow: none;
+}
+
+.sidebar .fac-detail-section .photo-slider.single-photo .photo-card-media {
+	position: relative;
+	width: 100%;
+	aspect-ratio: 16 / 10;
+	max-height: 280px;
+	min-height: 180px;
+	overflow: hidden;
+	background: #e2e8f0;
+	border-radius: 0;
+}
+
+.sidebar .fac-detail-section .photo-slider.single-photo .photo-card-media img,
+.sidebar .fac-detail-section .photo-slider.single-photo .photo-card-media img.photo-card-thumb {
+	position: absolute;
+	inset: 0;
+	width: 100% !important;
+	height: 100% !important;
+	min-height: 0 !important;
+	max-height: none !important;
+	object-fit: cover;
+	border-radius: 0;
+}
+
+.sidebar .fac-detail-section .photo-card {
+	position: relative;
+}
+
+.sidebar .fac-detail-section .photo-card-top-bar {
+	top: auto;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	border-radius: 0;
+	min-height: 44px;
+	padding: 24px 10px 8px 12px;
+	background: linear-gradient(to top, rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0.35) 55%, transparent 100%);
+}
+
+.sidebar .fac-detail-section .photo-card-media .photo-representative-check {
+	top: 8px;
+	right: 8px;
+	bottom: auto;
+}
+
+.sidebar .fac-detail-section .fac-group .photo-slider.single-photo .photo-track {
+	flex: 1;
+	min-width: 0;
+}
+
+.sidebar .fac-detail-section .photo-slider.multiple-photos .photo-card {
+	min-width: 200px;
+	max-width: 240px;
+}
+
+.sidebar .fac-detail-section .photo-slider.multiple-photos .photo-card-media {
+	aspect-ratio: 16 / 9;
+	max-height: 160px;
+	min-height: 0;
+}
+
+.sidebar .fac-detail-section .photo-slider.multiple-photos .photo-card-media img {
+	height: 100% !important;
+	min-height: 0 !important;
+	max-height: none !important;
+}
+
+.sidebar .fac-detail-section > .fac-detail-header {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	flex-shrink: 0;
+	margin-bottom: 6px;
+	padding-bottom: 0;
+	border-bottom: none;
+	min-height: 28px;
+}
+
+.sidebar .fac-detail-section .fac-detail-scroll {
+	padding: 0;
+}
+
+.sidebar-detail .fac-detail-meta .form-group:first-child {
+	margin-top: 0;
+}
+
+.sidebar .fac-detail-section .fac-detail-meta {
+	margin-bottom: 4px;
+}
+
+.sidebar .fac-detail-section .detail-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 12px !important;
+	margin-bottom: 4px;
+}
+
+.sidebar .fac-detail-section .fac-group-header .d-flex {
+	gap: 10px !important;
+}
+
+.sidebar .fac-detail-section > .fac-add-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 12px 0 0;
+	margin-top: 10px !important;
+	border-top: 1px solid #e5e7eb;
+	background: transparent;
+}
+
+.sidebar .fac-detail-section > .fac-add-actions .btn {
+	margin-top: 0 !important;
+}
+
+.sidebar .fac-photo-item img {
+	width: 100%;
+	max-height: none;
+	aspect-ratio: 4 / 3;
+	object-fit: cover;
+}
+
+.sidebar .route-input-box {
+	border-color: #e5e7eb;
+	box-shadow: none;
+}
+
+.sidebar .fac-detail-meta .detail-code {
+	border-radius: 6px;
+}
+
+.sidebar .fac-detail-section .empty-state {
+	border-radius: 8px;
+}
+
 /* 시설물 추가: 좌표 파일 영역이 잘리지 않도록 세로 스크롤 */
 .sidebar > #facAddSection.fac-add-section {
 	overflow-x: hidden;
@@ -441,11 +1075,252 @@ html, body { height: 100%; margin: 0; }
 .fac-import-file-btn:hover {
 	background: rgba(0, 183, 165, 0.15) !important;
 }
-.page:not(.sidebar-hidden) .sidebar {
+.fac-photo-import-modal-content {
+	max-width: 720px;
+	width: 92vw;
+	max-height: 85vh;
+	display: flex;
+	flex-direction: column;
+}
+.fac-photo-import-modal-content .shp-draw-modal-body {
+	overflow-y: auto;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+.fac-photo-import-section-title {
+	font-size: 13px;
+	font-weight: 700;
+	color: #0f766e;
+	margin-bottom: 6px;
+}
+.fac-photo-import-table-wrap {
+	max-height: 220px;
+	overflow: auto;
+	margin-bottom: 8px;
+}
+.fac-photo-import-table {
+	font-size: 12px;
+	margin-bottom: 0;
+}
+.fac-photo-import-table .form-control-sm {
+	min-width: 88px;
+}
+.page:not(.sidebar-hidden) .sidebar-primary {
 	transform: translateX(0);
 }
-.page.sidebar-hidden .sidebar { 
+.page.sidebar-hidden .sidebar-primary {
 	transform: translateX(-100%);
+}
+
+/* 시설물 목록(445px) + 떠 있는 상세 패널(430px, 32px 간격) — 한 컨테이너에 붙이지 않음 */
+.page.fac-detail-stack-open:not(.sidebar-hidden) .sidebar-primary,
+.page.fac-detail-only:not(.sidebar-hidden) .sidebar-primary {
+	width: 445px;
+	flex-direction: column;
+}
+
+/* 상세: 목록 옆 떠 있는 카드 — .sidebar 공통 흰 배경/패딩과 분리 */
+.sidebar.sidebar-detail {
+	--fac-detail-float-gap: 24px;
+	--fac-detail-card-w: 400px;
+	position: fixed;
+	left: calc(64px + 445px + var(--fac-detail-float-gap));
+	top: 12px;
+	bottom: 12px;
+	width: var(--fac-detail-card-w);
+	height: auto;
+	padding: 0 !important;
+	margin: 0;
+	background: transparent !important;
+	border: none !important;
+	box-shadow: none !important;
+	backdrop-filter: none !important;
+	z-index: 10055;
+	display: none;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: flex-start;
+	overflow: visible !important;
+	pointer-events: none;
+	opacity: 0;
+	transform: translateY(10px);
+	transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.page.fac-detail-stack-open:not(.sidebar-hidden) .sidebar.sidebar-detail,
+.page.fac-detail-only:not(.sidebar-hidden) .sidebar.sidebar-detail {
+	display: flex;
+	opacity: 1;
+	transform: none !important;
+	pointer-events: none;
+}
+
+.page.sidebar-hidden .sidebar-detail {
+	display: none !important;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.sidebar-detail > .panel.fac-detail-section {
+	flex: 1 1 auto;
+	min-height: 0;
+	max-height: 100%;
+	height: 100%;
+	width: 100%;
+	margin: 0 !important;
+	padding: 10px 12px 12px !important;
+	border: 1px solid #e2e8f0 !important;
+	border-radius: 16px !important;
+	background: #fff !important;
+	box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06), 0 16px 48px rgba(15, 23, 42, 0.14) !important;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	pointer-events: auto;
+	gap: 0;
+}
+
+.sidebar-detail > .panel.fac-detail-section > .fac-detail-header {
+	flex-shrink: 0;
+	min-height: 0;
+	margin: 0 0 6px;
+	padding: 0;
+	border-bottom: none;
+}
+
+.sidebar-detail .fac-detail-scroll {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+	padding: 0 !important;
+}
+
+.sidebar-detail .fac-groups-list {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	margin-top: 8px;
+}
+
+.sidebar-detail .fac-group {
+	margin-bottom: 0;
+}
+
+.sidebar-detail .fac-group-comment {
+	padding: 12px 14px 14px;
+	margin: 0;
+	background: #fff;
+	border-top: 1px solid #f1f5f9;
+}
+
+.sidebar-detail .fac-group-comment textarea {
+	min-height: 64px;
+}
+
+.sidebar-detail .photo-slider {
+	padding: 0;
+	margin: 0;
+	position: relative;
+}
+
+.sidebar-detail .photo-slider.single-photo .photo-card-media {
+	aspect-ratio: 16 / 10;
+	max-height: 280px;
+	min-height: 180px;
+}
+
+.sidebar-detail .photo-slider.multiple-photos .photo-card {
+	min-width: 260px;
+	max-width: 300px;
+}
+
+.sidebar-detail .photo-slider.multiple-photos .photo-card-media {
+	aspect-ratio: 16 / 10;
+	max-height: 220px;
+	min-height: 160px;
+}
+
+.sidebar-detail .photo-slider.single-photo .slider-nav {
+	position: absolute;
+	top: 50%;
+	transform: translateY(-50%);
+	z-index: 5;
+	width: 30px;
+	height: 30px;
+	min-width: 30px;
+	padding: 0;
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.94);
+	border: 1px solid rgba(0, 0, 0, 0.1);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.sidebar-detail .photo-slider.single-photo .slider-nav[data-action="slide-prev"] {
+	left: 8px;
+}
+
+.sidebar-detail .photo-slider.single-photo .slider-nav[data-action="slide-next"] {
+	right: 8px;
+}
+
+.sidebar-detail > .panel.fac-detail-section > .fac-add-actions {
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 10px 0 0 !important;
+	padding: 12px 0 0 !important;
+	border-top: 1px solid #e5e7eb;
+	background: transparent !important;
+	border-radius: 0 !important;
+}
+
+.sidebar-detail > .panel.fac-detail-section > .fac-add-actions .btn {
+	margin-top: 0 !important;
+	border-radius: 10px;
+}
+
+.sidebar-detail > .panel.fac-detail-section > .fac-add-actions .btn-primary {
+	border-radius: 10px;
+}
+
+.sidebar-detail > .panel.fac-detail-section > .fac-add-actions .btn-outline-secondary {
+	border-radius: 10px;
+}
+
+/* 조사 그룹: 개수와 관계없이 동일 카드·동일 사진 크기 (축소 없음) */
+.sidebar-detail .fac-group .photo-slider.single-photo .photo-card-media {
+	flex-shrink: 0;
+	aspect-ratio: 16 / 10;
+	max-height: 280px;
+	min-height: 180px;
+}
+
+.sidebar-detail .fac-group .photo-slider.multiple-photos .photo-card-media {
+	flex-shrink: 0;
+	max-height: 220px;
+	min-height: 160px;
+}
+
+.page.fac-detail-stack-open:not(.sidebar-hidden) .menu-arrow-toggle,
+.page.fac-detail-only:not(.sidebar-hidden) .menu-arrow-toggle {
+	left: calc(64px + 445px + 24px + 400px);
+}
+
+.page.fac-detail-stack-open:not(.sidebar-hidden) .project-selector,
+.page.fac-detail-only:not(.sidebar-hidden) .project-selector {
+	left: calc(76px + 445px + 24px + 400px);
+}
+.fac-search-result-item.is-selected {
+	border-color: var(--brand-teal) !important;
+	background: rgba(0, 183, 165, 0.06);
+	box-shadow: inset 3px 0 0 var(--brand-teal);
+}
+.fac-detail-stack-back {
+	min-width: 36px;
+	padding-left: 8px;
+	padding-right: 8px;
 }
 
 /* Floating map controls (상단바 제거로 top 상단 정렬) */
@@ -500,7 +1375,7 @@ html, body { height: 100%; margin: 0; }
 	gap: 8px;
 }
 .page:not(.sidebar-hidden) .project-selector {
-	left: 676px;
+	left: 521px;
 }
 .project-selector select {
 	width: 100%;
@@ -744,7 +1619,7 @@ html, body { height: 100%; margin: 0; }
 .shp-panel-toggle-wrap {
 	position: fixed;
 	right: calc(12px + 42px + 8px);
-	top: 36px;
+	top: 12px;
 	z-index: 30;
 }
 
@@ -752,7 +1627,7 @@ html, body { height: 100%; margin: 0; }
 .nv-toolbar {
 	position: fixed;
 	right: 12px;
-	top: 36px;
+	top: 12px;
 	z-index: 30;
 	display: flex;
 	flex-direction: row;
@@ -1014,6 +1889,27 @@ html, body { height: 100%; margin: 0; }
 .fac-search-section .fac-search-header,
 .fac-search-section .address-search-wrap,
 .fac-search-section .fac-search-filters { flex-shrink: 0; }
+
+/* 지도에서 포인트만 연 경우: primary "시설물 정보" 안에 상세만 표시 (검색·필터·목록 숨김) */
+.fac-search-section.fac-search-section--detail-only .address-search-wrap,
+.fac-search-section.fac-search-section--detail-only .fac-search-filters,
+.fac-search-section.fac-search-section--detail-only #facSearchResults {
+	display: none !important;
+}
+.fac-search-section.fac-search-section--detail-only > .fac-detail-section {
+	flex: 1 1 0;
+	min-height: 0;
+	margin-bottom: 0;
+	border: none;
+	box-shadow: none;
+	border-radius: 0;
+	padding: 0 0 8px;
+	max-height: none;
+}
+.fac-search-section.fac-search-section--detail-only > .fac-detail-section > .fac-detail-scroll {
+	flex: 1 1 0;
+	min-height: 0;
+}
 .fac-search-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .fac-search-header h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--brand-teal-dark); }
 .fac-search-filters .form-label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
@@ -1031,7 +1927,8 @@ html, body { height: 100%; margin: 0; }
 .fac-search-result-item .result-info { flex: 1; min-width: 0; }
 .fac-search-result-item .result-code { font-size: 12px; color: var(--brand-teal-dark); font-weight: 600; margin-bottom: 4px; }
 .fac-search-result-item .result-project { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
-.fac-search-result-item .result-photo { width: 80px; height: 80px; object-fit: contain; border-radius: 6px; background: #f1f5f9; border: 1px solid #e5e7eb; flex-shrink: 0; }
+/* 구 레이아웃(썸네일 우측) — 신규 .result-photo-wrap 구조에는 미적용 */
+.fac-search-result-item > .result-photo { width: 80px; height: 80px; object-fit: contain; border-radius: 6px; background: #f1f5f9; border: 1px solid #e5e7eb; flex-shrink: 0; }
 .fac-search-pagination { display: flex; justify-content: center; gap: 4px; }
 .fac-search-pagination .page-btn { min-width: 32px; height: 32px; border: 1px solid #e5e7eb; background: #fff; border-radius: 6px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
 .fac-search-pagination .page-btn:hover { border-color: var(--brand-teal); color: var(--brand-teal); }
@@ -1235,9 +2132,14 @@ html, body { height: 100%; margin: 0; }
 }
 
 /* 상세 보기 패널 */
-/* 시설물 상세: 스크롤 영역에 명시적 max-height → 무조건 스크롤바 생김. 저장/취소는 하단 고정 */
 .fac-detail-section { flex: 1 1 0; display: flex; flex-direction: column; min-height: 0; max-height: calc(100vh - 32px); overflow: hidden; background: #fff; border: 1px solid rgba(0,183,165,0.25); border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
+.sidebar-detail > .panel.fac-detail-section {
+	margin-bottom: 0 !important;
+	max-height: none;
+	box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06), 0 16px 48px rgba(15, 23, 42, 0.14) !important;
+}
 .fac-detail-scroll { flex: 1 1 0; min-height: 0; max-height: calc(100vh - 200px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.sidebar-detail .fac-detail-scroll { max-height: none; }
 .fac-detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .fac-detail-header h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--brand-teal-dark); }
 .fac-detail-header-buttons { display: flex; gap: 8px; }
@@ -1265,7 +2167,9 @@ html, body { height: 100%; margin: 0; }
 /* 시설물 상세: 조사 포인트 수정/삭제/공유 (네이버 지도처럼 가로 3등분, 아이콘 위·텍스트 아래, 단정한 모노톤) */
 .detail-point-actions {
 	display: flex; width: 100%; align-items: stretch;
-	background: #f8f9fa; border-radius: 6px; overflow: hidden;
+	background: #fff; border-radius: 8px; overflow: hidden;
+	border: 1px solid #e5e7eb;
+	box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 .detail-point-action-btn {
 	flex: 1; min-width: 0;
@@ -1281,8 +2185,6 @@ html, body { height: 100%; margin: 0; }
 .detail-point-action-btn-danger .detail-point-action-icon,
 .detail-point-action-btn-danger span { color: #374151; }
 
-.fac-detail-section .fac-group { border-color: rgba(0,183,165,0.4); }
-.fac-detail-section .fac-group-header h5 { color: var(--brand-teal-dark); }
 .fac-detail-section .fac-group textarea { border-radius: 8px; border-color: rgba(0,0,0,0.08); }
 
 .photo-slider { position: relative; display: flex; align-items: center; gap: 10px; margin: 8px 0; }
@@ -2040,11 +2942,50 @@ body.modal-open > .modal-backdrop {
 	margin-top: 0.25rem;
 }
 .fac-survey-report-modal .fac-survey-report-modal-body {
+	position: relative;
 	padding: 1.25rem 1.35rem 1.5rem;
 	background: #f8fafc;
 }
 .fac-survey-report-modal .fac-survey-report-modal-root {
 	min-height: 2rem;
+}
+/* AI 초안 생성 중 — modal-dialog-scrollable 본문 스크롤 잠금 */
+#modalSurveyReport.fac-survey-draft-loading-active .modal-body {
+	overflow: hidden !important;
+	overscroll-behavior: contain;
+	touch-action: none;
+}
+#modalSurveyReport.fac-survey-draft-loading-active .fac-survey-report-modal-root {
+	pointer-events: none;
+}
+.fac-survey-draft-loading-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 20;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.65rem;
+	padding: 1.5rem;
+	background: rgba(248, 250, 252, 0.92);
+	backdrop-filter: blur(2px);
+	text-align: center;
+	pointer-events: auto;
+	touch-action: none;
+}
+.fac-survey-draft-loading-overlay .fac-survey-draft-loading-title {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 600;
+	color: #0f172a;
+}
+.fac-survey-draft-loading-overlay .fac-survey-draft-loading-hint {
+	margin: 0;
+	font-size: 0.8125rem;
+	color: #64748b;
+	max-width: 22rem;
+	line-height: 1.5;
 }
 .fac-survey-report-modal .fac-survey-report-modal-footer {
 	border-top: 1px solid #e5e7eb;
@@ -2324,8 +3265,8 @@ body.admin-mode .project-management-modal.project-modal-init-hidden { display: f
 
 /* 사이드바가 열려있을 때 사업관리 모달 위치 조정 */
 .page:not(.sidebar-hidden) .project-management-modal {
-	left: 664px; /* 사이드바 시작 위치(64px) + 사이드바 너비(600px) */
-	width: calc(100% - 664px); /* 사이드바가 차지하는 공간만큼 줄임 */
+	left: 509px; /* 사이드바 시작 위치(64px) + 사이드바 너비(600px) */
+	width: calc(100% - 509px); /* 사이드바가 차지하는 공간만큼 줄임 */
 	padding-left: 20px; /* 사이드바와의 간격 */
 	justify-content: flex-start; /* 왼쪽 정렬로 변경하여 사이드바 피하기 */
 	align-items: flex-start; /* 상단 정렬 */
@@ -2504,6 +3445,11 @@ body.admin-mode .project-management-modal.project-modal-init-hidden { display: f
 .permission-request-list-container {
 	max-height: 200px;
 	overflow-y: auto;
+}
+
+/* FCM 푸시 발송 모달: 사업관리(10060)·관리자 임명(10070) 위에 표시 */
+.admin-push-send-modal.project-admin-modal {
+	z-index: 10100;
 }
 
 /* 프로젝트 관리자 임명 모달 */
@@ -3001,7 +3947,7 @@ body.admin-mode .project-management-modal.project-modal-init-hidden { display: f
 
 @media (max-width: 900px) {
 	.page { grid-template-columns: 1fr; }
-	.sidebar { position: absolute; z-index: 10; width: 80vw; max-width: 400px; height: calc(100% - 49px); background: rgba(250,250,250,0.98); transform: translateX(-100%); transition: transform .25s; }
+	.sidebar { position: absolute; z-index: 10; width: 80vw; max-width: 400px; height: calc(100% - 49px); background: #ffffff; transform: translateX(-100%); transition: transform .25s; }
 	.sidebar.open { transform: translateX(0); }
 	.map-controls { top: 80px; }
 	.shp-draw-finish-btn {
@@ -3271,7 +4217,7 @@ body.admin-mode .project-management-modal.project-modal-init-hidden { display: f
 	min-width: 0;
 }
 .fac-survey-report-summary {
-	display: block;
+	display: none;
 	line-height: 1.55;
 	word-break: keep-all;
 	overflow-wrap: break-word;

@@ -48,6 +48,10 @@ public class SurveyReportSchemaListener implements ServletContextListener {
 				st.execute("ALTER TABLE public.facility_survey_report ADD COLUMN IF NOT EXISTS reference_paths JSONB NOT NULL DEFAULT '[]'");
 				// 사용자 정의 프롬프트 — LLM system prompt에 prepend (양식별 추가 지시)
 				st.execute("ALTER TABLE public.facility_survey_report ADD COLUMN IF NOT EXISTS user_prompt TEXT NOT NULL DEFAULT ''");
+				st.execute(
+						"ALTER TABLE public.facility_survey_report ALTER COLUMN created_at SET DEFAULT NOW()");
+				st.execute(
+						"ALTER TABLE public.facility_survey_report ALTER COLUMN updated_at SET DEFAULT NOW()");
 				System.out.println("[SurveyReportSchemaListener] public.facility_survey_report ready.");
 			}
 		} catch (Exception e) {

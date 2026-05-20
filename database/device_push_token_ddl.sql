@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS public.device_push_token (
 	push_token TEXT NOT NULL,
 	platform VARCHAR(32),
 	device_id VARCHAR(256),
+	client_registered_at TIMESTAMPTZ,
 	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	CONSTRAINT uq_device_push_token UNIQUE (push_token)

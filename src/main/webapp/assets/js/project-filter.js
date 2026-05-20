@@ -18,6 +18,43 @@
 		other: true
 	};
 
+	/** 사업명(사업번호) 표기 — 접두어 라벨 없음 */
+	function getProjectNameByCode(code) {
+		var c = code != null ? String(code).trim() : "";
+		if (!c) return "";
+		for (var i = 0; i < allProjectsList.length; i++) {
+			if (allProjectsList[i].code === c) {
+				return (allProjectsList[i].name || "").trim();
+			}
+		}
+		return "";
+	}
+
+	function formatProjectNameCode(code, name) {
+		var c = code != null ? String(code).trim() : "";
+		var n = name != null ? String(name).trim() : "";
+		if (!n && c) {
+			n = getProjectNameByCode(c);
+		}
+		if (n && c) {
+			return n + "(" + c + ")";
+		}
+		if (n) {
+			return n;
+		}
+		if (c) {
+			return c;
+		}
+		return "-";
+	}
+
+	function projectOptionLabel(project) {
+		if (!project) {
+			return "-";
+		}
+		return formatProjectNameCode(project.code, project.name);
+	}
+
 	/**
 	 * 사업번호 목록 로드
 	 */
@@ -107,12 +144,7 @@
 			// select 옵션 추가
 			var option = document.createElement("option");
 			option.value = project.code;
-			// 사업명이 있으면 "사업번호 - 사업명" 형식, 없으면 사업번호만
-			if (project.name && project.name.trim() !== "") {
-				option.textContent = project.code + " - " + project.name;
-			} else {
-				option.textContent = project.code;
-			}
+			option.textContent = projectOptionLabel(project);
 			select.appendChild(option);
 		});
 		
@@ -419,13 +451,7 @@
 			customOption.className = "project-option";
 			customOption.style.cssText = "padding: 6px 10px; font-size: 13px; color: #374151; cursor: pointer; border-bottom: 1px solid #f3f4f6; min-height: 32px; height: 32px; display: flex; align-items: center; box-sizing: border-box; line-height: 20px;";
 			
-			// 사업명이 있으면 "사업번호 - 사업명" 형식, 없으면 사업번호만
-			var displayText = "";
-			if (project.name && project.name.trim() !== "") {
-				displayText = project.code + " - " + project.name;
-			} else {
-				displayText = project.code;
-			}
+			var displayText = projectOptionLabel(project);
 			
 			// 검색어 강조 표시
 			if (searchTerm) {
@@ -661,13 +687,7 @@
 			customOption.className = "project-option";
 			customOption.style.cssText = "padding: 6px 10px; font-size: 13px; color: #374151; cursor: pointer; border-bottom: 1px solid #f3f4f6; min-height: 32px; height: 32px; display: flex; align-items: center; box-sizing: border-box; line-height: 20px;";
 			
-			// 사업명이 있으면 "사업번호 - 사업명" 형식, 없으면 사업번호만
-			var displayText = "";
-			if (project.name && project.name.trim() !== "") {
-				displayText = project.code + " - " + project.name;
-			} else {
-				displayText = project.code;
-			}
+			var displayText = projectOptionLabel(project);
 			
 			// 검색어가 있으면 강조 표시
 			if (searchTerm && searchTerm.trim() !== "") {
@@ -726,9 +746,18 @@
 			select.value = appliedCode;
 		}
 		if (appliedCode) {
-			refreshFacilityLayer();
-			refreshWmsLayers();
-			refreshShpLayer();
+			var facility = window.NewDbField && window.NewDbField.facility;
+			if (facility && facility.ensureFacilityLayerInitialized) {
+				facility.ensureFacilityLayerInitialized(function () {
+					refreshFacilityLayer();
+					refreshWmsLayers();
+					refreshShpLayer();
+				});
+			} else {
+				refreshFacilityLayer();
+				refreshWmsLayers();
+				refreshShpLayer();
+			}
 		}
 
 		var userId = getCurrentUserId();
@@ -846,8 +875,20 @@
 		var layerA = facility.getLayerA ? facility.getLayerA() : null;
 
 		if (!sourceA) {
-			console.warn("[project-filter] Source not available");
-			return;
+			if (facility.initFacilityLayer) {
+				facility.initFacilityLayer();
+			}
+			if (facility.ensureFacilityLayerInitialized) {
+				facility.ensureFacilityLayerInitialized(function () {
+					refreshFacilityLayer();
+				});
+				return;
+			}
+			sourceA = facility.getSourceA ? facility.getSourceA() : null;
+			if (!sourceA) {
+				console.warn("[project-filter] Source not available (facility layer not ready)");
+				return;
+			}
 		}
 
 		// 레이어 새로고침 시 이전 줌 조정 리스너 제거 (새로운 featuresloadend 이벤트가 발생하므로)
@@ -1101,8 +1142,12 @@
 		// 조사일자 필터 적용 (fac:gis_a_layer만, 시설물 정보 검색 탭이 열려 있을 때만)
 		// 탭을 닫으면 지도는 사업번호만으로 표시(조사일자/주관부서 조건 해제)
 		if (layerName === "fac:gis_a_layer") {
-			var facSearchSection = document.getElementById("facSearchSection");
-			var isFacSearchOpen = facSearchSection && facSearchSection.style.display !== "none";
+			var isFacSearchOpen = window.NewDbField && NewDbField.SidebarPanels &&
+				NewDbField.SidebarPanels.isVisible("facSearchSection");
+			if (!isFacSearchOpen) {
+				var facSearchSection = document.getElementById("facSearchSection");
+				isFacSearchOpen = facSearchSection && facSearchSection.style.display !== "none";
+			}
 			if (isFacSearchOpen) {
 				var surveyDateInput = document.getElementById("facSearchSurveyDate");
 				if (surveyDateInput && surveyDateInput.value) {
@@ -1175,10 +1220,15 @@
 					shouldZoomToProject = true;
 					pendingProjectCode = selectedValue;
 					
-					// 레이어 새로고침을 즉시 병렬 실행 (성능 개선)
-					// UI 반응성을 위해 즉시 실행하되, 네트워크 요청은 병렬로 처리
-					// refreshFacilityLayer() 내부에서 shouldZoomToProject 플래그를 확인하여 줌 조정을 스케줄링함
-					refreshFacilityLayer();
+					// 레이어 새로고침 (지도·벡터 준비 후)
+					var facMod = window.NewDbField && window.NewDbField.facility;
+					if (facMod && facMod.ensureFacilityLayerInitialized) {
+						facMod.ensureFacilityLayerInitialized(function () {
+							refreshFacilityLayer();
+						});
+					} else {
+						refreshFacilityLayer();
+					}
 					
 					// 이미 features가 로드되어 있는 경우를 대비하여 즉시 확인
 					var facility = window.NewDbField && window.NewDbField.facility ? window.NewDbField.facility : null;
@@ -1531,11 +1581,7 @@
 			filteredProjects.forEach(function(project) {
 				var option = document.createElement("option");
 				option.value = project.code;
-				if (project.name && project.name.trim() !== "") {
-					option.textContent = project.code + " - " + project.name;
-				} else {
-					option.textContent = project.code;
-				}
+				option.textContent = projectOptionLabel(project);
 				select.appendChild(option);
 			});
 			
@@ -1560,6 +1606,9 @@
 				select.value = currentProject;
 			}
 		});
+		if (window.FacilitySearch && typeof window.FacilitySearch.setProjectInput === "function") {
+			window.FacilitySearch.setProjectInput(currentProject);
+		}
 	}
 	
 	// 프로젝트 필터 변경 시 다른 드롭다운도 동기화
@@ -1580,6 +1629,9 @@
 		populateOtherDropdowns: populateOtherDropdowns,
 		syncProjectToOtherDropdowns: syncProjectToOtherDropdowns,
 		getAllProjects: function() { return allProjectsList; },
+		formatProjectNameCode: formatProjectNameCode,
+		getProjectNameByCode: getProjectNameByCode,
+		projectOptionLabel: projectOptionLabel,
 		/** 권한 있는 프로젝트 코드 목록 (승인/부서 관리만). 시설물 추가·수정·삭제 권한 판단용 */
 		getAllowedProjectCodes: function() { return (allUserProjects || []).slice(0); },
 		/** 시설물 정보(추가/수정/삭제) 사용 가능 여부 */

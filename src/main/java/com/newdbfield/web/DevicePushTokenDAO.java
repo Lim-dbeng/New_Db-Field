@@ -4,23 +4,26 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 
 public class DevicePushTokenDAO {
 
-	public void upsert(Connection conn, String userId, String pushToken, String platform, String deviceId)
-			throws SQLException {
-		String sql = "INSERT INTO public.device_push_token (user_id, push_token, platform, device_id, updated_at) "
-				+ "VALUES (?,?,?,?, NOW()) "
+	public void upsert(Connection conn, String userId, String pushToken, String platform, String deviceId,
+			Timestamp clientRegisteredAt) throws SQLException {
+		String sql = "INSERT INTO public.device_push_token (user_id, push_token, platform, device_id, client_registered_at, updated_at) "
+				+ "VALUES (?,?,?,?,?, NOW()) "
 				+ "ON CONFLICT (push_token) DO UPDATE SET "
 				+ " user_id = EXCLUDED.user_id, platform = EXCLUDED.platform, device_id = EXCLUDED.device_id, "
+				+ " client_registered_at = COALESCE(EXCLUDED.client_registered_at, public.device_push_token.client_registered_at), "
 				+ " updated_at = NOW()";
 		try (PreparedStatement ps = conn.prepareStatement(sql)) {
 			ps.setString(1, userId);
 			ps.setString(2, pushToken);
 			ps.setString(3, platform);
 			ps.setString(4, deviceId);
+			ps.setTimestamp(5, clientRegisteredAt);
 			ps.executeUpdate();
 		}
 	}

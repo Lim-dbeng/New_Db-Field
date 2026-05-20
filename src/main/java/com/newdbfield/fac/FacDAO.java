@@ -45,7 +45,7 @@ public class FacDAO {
 		}
 	}
 
-	public List<FacFieldVO> selectByBbox(double minx, double miny, double maxx, double maxy, Integer limit) throws Exception {
+	public List<FacFieldVO> selectByBbox(double minx, double miny, double maxx, double maxy, Integer limit, String projectCode) throws Exception {
 		String q = sql.get("fac.selectByBbox");
 		if (limit == null || limit <= 0) limit = 1000;
 		q = q.replace("${limit}", String.valueOf(limit));
@@ -55,12 +55,15 @@ public class FacDAO {
 			ps.setDouble(2, miny);
 			ps.setDouble(3, maxx);
 			ps.setDouble(4, maxy);
+			ps.setString(5, projectCode != null ? projectCode : "");
 			try (ResultSet rs = ps.executeQuery()) {
 				List<FacFieldVO> list = new ArrayList<>();
 				while (rs.next()) {
 					FacFieldVO v = new FacFieldVO();
 					v.setId(rs.getLong("id"));
-					v.setName(rs.getString("name"));
+					String code = rs.getString("code");
+					v.setCode(code);
+					v.setName(code);
 					v.setProjectCode(rs.getString("project_code"));
 					Object saveObj = rs.getObject("save");
 					v.setSave(saveObj == null ? null : rs.getBoolean("save"));

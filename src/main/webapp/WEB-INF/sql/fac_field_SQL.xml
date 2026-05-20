@@ -2,19 +2,17 @@
 <sqls>
 	<sql id="fac.selectByBbox">
 		SELECT
-			gid,
+			gid AS id,
 			code,
+			code AS name,
 			photo1,
 			project_code,
 			save,
-			dept_code,
-			use_yn,
-			ST_AsGeoJSON(ST_Transform(geometry, 4326)) AS geojson
+			ST_AsGeoJSON(geometry) AS geojson
 		FROM public.gis_a_layer
-		WHERE ST_Intersects(
-			geom,
-			ST_Transform(ST_MakeEnvelope(?, ?, ?, ?, 4326), ST_SRID(geometry))
-		)
+		WHERE use_yn = 'Y'
+		AND geometry &amp;&amp; ST_MakeEnvelope(?, ?, ?, ?, 4326)
+		AND project_code = ?
 		LIMIT ${limit}
 	</sql>
 

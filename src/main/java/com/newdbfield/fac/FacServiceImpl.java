@@ -11,8 +11,8 @@ public class FacServiceImpl implements FacService {
 	}
 
 	@Override
-	public List<FacFieldVO> listByBbox(double minx, double miny, double maxx, double maxy, Integer limit) throws Exception {
-		return dao.selectByBbox(minx, miny, maxx, maxy, limit);
+	public List<FacFieldVO> listByBbox(double minx, double miny, double maxx, double maxy, Integer limit, String projectCode) throws Exception {
+		return dao.selectByBbox(minx, miny, maxx, maxy, limit, projectCode);
 	}
 
 	@Override

@@ -3,7 +3,7 @@ package com.newdbfield.fac;
 import java.util.List;
 
 public interface FacService {
-	List<FacFieldVO> listByBbox(double minx, double miny, double maxx, double maxy, Integer limit) throws Exception;
+	List<FacFieldVO> listByBbox(double minx, double miny, double maxx, double maxy, Integer limit, String projectCode) throws Exception;
 	List<String> listCodesWithFieldData() throws Exception;
 	void insertFacAddItem(FacFieldVO vo) throws Exception;
 	List<FacFieldVO> listFieldItemsByCode(String code) throws Exception;

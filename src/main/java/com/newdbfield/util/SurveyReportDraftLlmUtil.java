@@ -25,9 +25,25 @@ import java.util.TreeMap;
 
 /**
  * 조사 보고서 필드별 초안을 LLM(OpenAI 호환 Chat Completions)으로 생성한다.
- * web.xml: SURVEY_LLM_API_URL, SURVEY_LLM_API_KEY(선택), SURVEY_LLM_MODEL(선택)
+ * web.xml: SURVEY_LLM_PROVIDER(기본 openai), OpenAI용 SURVEY_LLM_API_*,
+ * Ollama용 SURVEY_LLM_OLLAMA_API_URL / SURVEY_LLM_OLLAMA_MODEL
  */
 public final class SurveyReportDraftLlmUtil {
+
+	/** OpenAI / Ollama 연결 정보 (Chat Completions 호환). */
+	public static final class LlmConnection {
+		public final String provider;
+		public final String apiUrl;
+		public final String apiKey;
+		public final String model;
+
+		LlmConnection(String provider, String apiUrl, String apiKey, String model) {
+			this.provider = provider;
+			this.apiUrl = apiUrl;
+			this.apiKey = apiKey;
+			this.model = model;
+		}
+	}
 
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -71,7 +87,7 @@ public final class SurveyReportDraftLlmUtil {
 			List<File> photos,
 			String referenceContext) throws Exception {
 		return generateAndMergeAnswers(servletContext, req, fields, fieldRows, facilityCode,
-				existingAnswers, conn, photos, referenceContext, null);
+				existingAnswers, conn, photos, referenceContext, null, null);
 	}
 
 	/** photos + referenceContext + userPrompt(사용자 정의 추가 지시)까지 함께 전달하는 풀버전. */
@@ -86,26 +102,41 @@ public final class SurveyReportDraftLlmUtil {
 			List<File> photos,
 			String referenceContext,
 			String userPrompt) throws Exception {
+		return generateAndMergeAnswers(servletContext, req, fields, fieldRows, facilityCode,
+				existingAnswers, conn, photos, referenceContext, userPrompt, null);
+	}
+
+	/**
+	 * @param llmProvider 요청별 선택 {@code openai} | {@code ollama}. null이면 web.xml {@code SURVEY_LLM_PROVIDER}.
+	 */
+	public static String generateAndMergeAnswers(
+			ServletContext servletContext,
+			HttpServletRequest req,
+			ArrayNode fields,
+			List<FacFieldVO> fieldRows,
+			String facilityCode,
+			JsonNode existingAnswers,
+			Connection conn,
+			List<File> photos,
+			String referenceContext,
+			String userPrompt,
+			String llmProvider) throws Exception {
 
 		if (servletContext == null) {
 			throw new IllegalArgumentException("ServletContext가 없습니다.");
 		}
-		String apiUrl = lookupConfig(servletContext, "SURVEY_LLM_API_URL");
-		// API 키: SURVEY_LLM_API_KEY → OPENAI_API_KEY 순서 fallback (둘 다 web.xml/env/.env 모두 검사)
-		String apiKey = firstNonBlank(
-				lookupConfig(servletContext, "SURVEY_LLM_API_KEY"),
-				lookupConfig(servletContext, "OPENAI_API_KEY"));
-		String model = lookupConfig(servletContext, "SURVEY_LLM_MODEL");
-		if (model == null || model.isEmpty()) {
-			// 시각 분류 정확도 위해 4o 권장 (web.xml에서 gpt-5.5 등으로 override 가능)
-			model = "gpt-4o";
-		}
+		LlmConnection llm = resolveConnection(servletContext, llmProvider);
+		String apiUrl = llm.apiUrl;
+		String apiKey = llm.apiKey;
+		String model = llm.model;
 
 		// 양식 키워드로 도메인 프로파일 자동 감지 — 매치되면 도메인 hint 추가, 아니면 generic
 		SurveyDomainProfiles.Profile profile = SurveyDomainProfiles.detect(fields);
 		if (apiUrl == null || apiUrl.isEmpty()) {
-			throw new IllegalStateException("LLM URL 미설정입니다. web.xml에 SURVEY_LLM_API_URL을 추가하세요. (예: OpenAI https://api.openai.com/v1/chat/completions 또는 Ollama http://localhost:11434/v1/chat/completions)");
+			throw new IllegalStateException("LLM URL 미설정입니다. provider=" + llm.provider
+					+ " — web.xml에 SURVEY_LLM_API_URL 또는 SURVEY_LLM_OLLAMA_API_URL을 확인하세요.");
 		}
+		System.out.println("[SurveyReportDraftLlmUtil] provider=" + llm.provider + " model=" + model + " url=" + apiUrl);
 
 		// ★ Stage 1: 시각 분류 — 사진만 보고 유형 판별 (양식·근거자료에 휘둘리지 않음).
 		//   profile이 detect되고 photos가 있을 때만 실행. 결과는 Stage 2의 system prompt 최상단에 prepend.
@@ -113,7 +144,7 @@ public final class SurveyReportDraftLlmUtil {
 		boolean hasPhotosForCls = photos != null && !photos.isEmpty();
 		if (profile != null && hasPhotosForCls) {
 			try {
-				visionResult = classifyByVision(apiUrl, apiKey, model, profile, photos);
+				visionResult = classifyByVision(apiUrl, apiKey, model, llm.provider, profile, photos);
 				if (visionResult != null) {
 					System.out.println("[Stage1] type=" + visionResult.type
 							+ " confidence=" + visionResult.confidence
@@ -179,7 +210,8 @@ public final class SurveyReportDraftLlmUtil {
 					+ "- 신뢰도가 'low'이거나 type='확인불가'면 유형/형식 답변에 '확인불가'로 답하세요.\n\n";
 		}
 		String systemPrompt =
-				roleIntro + "\n\n"
+				ollamaJsonOutputPrefix(llm.provider)
+						+ roleIntro + "\n\n"
 						+ visionBlock
 						+ (hasUserPrompt
 							? "[사용자 지정 지침 — 최우선 적용]\n"
@@ -237,18 +269,14 @@ public final class SurveyReportDraftLlmUtil {
 
 		ObjectNode rootReq = MAPPER.createObjectNode();
 		rootReq.put("model", model);
+		applyOllamaRequestOptions(rootReq, llm.provider);
 		// gpt-5.x / o1·o3 같은 reasoning 모델은 temperature 커스텀을 거부(default=1만 허용).
 		// 그 외 모델만 분류 일관성 위해 0.1로 내림.
 		if (!isReasoningModel(model)) {
 			rootReq.put("temperature", 0.1);
 		}
-		// 출력 토큰 상한 — 비용·응답 시간 제어. JSON 답변은 6000 토큰이면 충분.
-		// reasoning 모델은 max_completion_tokens, 일반은 max_tokens
-		if (isReasoningModel(model)) {
-			rootReq.put("max_completion_tokens", 6000);
-		} else {
-			rootReq.put("max_tokens", 6000);
-		}
+		// OpenAI 등 클라우드만 출력 토큰 상한. Ollama는 모델/서버 기본값 사용(필드 생략).
+		applyOutputTokenLimit(rootReq, llm.provider, model, 6000);
 		ArrayNode messages = rootReq.putArray("messages");
 		ObjectNode m0 = messages.addObject();
 		m0.put("role", "system");
@@ -295,7 +323,13 @@ public final class SurveyReportDraftLlmUtil {
 		try {
 			generated = MAPPER.readTree(extractJsonObject(content));
 		} catch (Exception ex) {
-			throw new IllegalStateException("LLM 응답 JSON 파싱 실패: " + ex.getMessage(), ex);
+			String hint = "ollama".equals(llm.provider)
+					? " Ollama가 마크다운 등 비JSON을 반환한 경우입니다. 모델이 JSON 출력을 지원하는지, ollama serve 버전을 확인하세요."
+					: "";
+			throw new IllegalStateException(
+					"LLM 응답 JSON 파싱 실패: " + ex.getMessage() + hint
+							+ " (응답 앞부분: " + truncate(content.replace('\n', ' '), 120) + ")",
+					ex);
 		}
 		if (!generated.isObject()) {
 			throw new IllegalStateException("LLM 응답이 JSON 객체가 아닙니다.");
@@ -518,10 +552,11 @@ public final class SurveyReportDraftLlmUtil {
 		}
 		int start = s.indexOf('{');
 		int end = s.lastIndexOf('}');
-		if (start >= 0 && end > start) {
-			s = s.substring(start, end + 1);
+		if (start < 0 || end <= start) {
+			throw new IllegalArgumentException(
+					"응답에 JSON 객체({...})가 없습니다. 마크다운·설명문 대신 JSON만 출력해야 합니다.");
 		}
-		return s;
+		return s.substring(start, end + 1);
 	}
 
 	private static byte[] readAll(InputStream in) throws Exception {
@@ -558,6 +593,56 @@ public final class SurveyReportDraftLlmUtil {
 			return ta;
 		}
 		return trimOrNull(b);
+	}
+
+	private static String firstNonBlank(String a, String b, String c) {
+		String ab = firstNonBlank(a, b);
+		return ab != null ? ab : trimOrNull(c);
+	}
+
+	/** openai | ollama. null/빈 값이면 null. 잘못된 값은 IllegalArgumentException. */
+	public static String normalizeProvider(String raw) {
+		if (raw == null) {
+			return null;
+		}
+		String p = raw.trim().toLowerCase();
+		if (p.isEmpty()) {
+			return null;
+		}
+		if ("openai".equals(p) || "oai".equals(p)) {
+			return "openai";
+		}
+		if ("ollama".equals(p) || "local".equals(p)) {
+			return "ollama";
+		}
+		throw new IllegalArgumentException("llmProvider는 openai 또는 ollama 여야 합니다: " + raw);
+	}
+
+	/**
+	 * OpenAI / Ollama 설정 해석. providerOverride가 있으면 우선, 없으면 SURVEY_LLM_PROVIDER(기본 openai).
+	 */
+	public static LlmConnection resolveConnection(ServletContext ctx, String providerOverride) {
+		String provider = normalizeProvider(providerOverride);
+		if (provider == null) {
+			provider = normalizeProvider(lookupConfig(ctx, "SURVEY_LLM_PROVIDER"));
+		}
+		if (provider == null) {
+			provider = "openai";
+		}
+		if ("ollama".equals(provider)) {
+			String apiUrl = firstNonBlank(
+					lookupConfig(ctx, "SURVEY_LLM_OLLAMA_API_URL"),
+					"http://localhost:11434/v1/chat/completions");
+			String model = firstNonBlank(lookupConfig(ctx, "SURVEY_LLM_OLLAMA_MODEL"), "qwen3:14b");
+			String apiKey = trimOrNull(lookupConfig(ctx, "SURVEY_LLM_OLLAMA_API_KEY"));
+			return new LlmConnection(provider, apiUrl, apiKey != null ? apiKey : "", model);
+		}
+		String apiUrl = lookupConfig(ctx, "SURVEY_LLM_API_URL");
+		String apiKey = firstNonBlank(
+				lookupConfig(ctx, "SURVEY_LLM_API_KEY"),
+				lookupConfig(ctx, "OPENAI_API_KEY"));
+		String model = firstNonBlank(lookupConfig(ctx, "SURVEY_LLM_MODEL"), "gpt-4o");
+		return new LlmConnection("openai", apiUrl, apiKey != null ? apiKey : "", model);
 	}
 
 	/** 사진 파일 → "data:image/jpeg;base64,..." URL. 너무 크거나 IO 실패 시 null. */
@@ -712,10 +797,11 @@ public final class SurveyReportDraftLlmUtil {
 	 * → 시각 판단이 텍스트 컨텍스트에 휘둘리지 않도록 격리.
 	 */
 	private static VisionClassification classifyByVision(
-			String apiUrl, String apiKey, String model,
+			String apiUrl, String apiKey, String model, String provider,
 			SurveyDomainProfiles.Profile profile, List<File> photos) throws Exception {
 		String stage1System =
-				"당신은 사진만 보고 한국 공공시설 유형을 분류하는 시각 전문가입니다.\n\n"
+				ollamaJsonOutputPrefix(provider)
+						+ "당신은 사진만 보고 한국 공공시설 유형을 분류하는 시각 전문가입니다.\n\n"
 						+ profile.promptAddition + "\n\n"
 						+ "[출력 형식 — 반드시 지킬 것]\n"
 						+ "다음 JSON 객체 하나만 출력. 마크다운 금지.\n"
@@ -733,15 +819,11 @@ public final class SurveyReportDraftLlmUtil {
 
 		ObjectNode root = MAPPER.createObjectNode();
 		root.put("model", model);
+		applyOllamaRequestOptions(root, provider);
 		if (!isReasoningModel(model)) {
 			root.put("temperature", 0.0);
 		}
-		// Stage 1 응답은 짧은 JSON({type, confidence, reasoning}) 하나만 — 1500 토큰이면 충분
-		if (isReasoningModel(model)) {
-			root.put("max_completion_tokens", 1500);
-		} else {
-			root.put("max_tokens", 1500);
-		}
+		applyOutputTokenLimit(root, provider, model, 1500);
 		ArrayNode messages = root.putArray("messages");
 		ObjectNode m0 = messages.addObject();
 		m0.put("role", "system");
@@ -892,6 +974,42 @@ public final class SurveyReportDraftLlmUtil {
 		DOT_ENV_CACHE = map;
 		DOT_ENV_LOADED_AT = now;
 		return map;
+	}
+
+	/** Ollama Chat API: JSON 모드 (마크다운 설명문 방지). */
+	private static void applyOllamaRequestOptions(ObjectNode root, String provider) {
+		if (root == null || !"ollama".equals(provider)) {
+			return;
+		}
+		root.put("format", "json");
+	}
+
+	/** Ollama 등 로컬 모델용 — 출력을 JSON 객체로 강제하는 system 프롬프트 접두어. */
+	private static String ollamaJsonOutputPrefix(String provider) {
+		if (!"ollama".equals(provider)) {
+			return "";
+		}
+		return "[출력 형식 — 최우선, 위반 시 실패]\n"
+				+ "- 응답 전체는 반드시 하나의 JSON 객체만. 첫 글자는 {, 마지막 글자는 }.\n"
+				+ "- 마크다운(#, ##, ###, **, ---, 목록)·제목·설명 문단·이미지별 서술 형식 금지.\n"
+				+ "- 코드블록(```) 금지. JSON 이외의 텍스트 한 글자도 앞뒤에 붙이지 마세요.\n\n";
+	}
+
+	/**
+	 * 클라우드(OpenAI)만 max_tokens 상한 적용. Ollama는 요청에 토큰 필드를 넣지 않음.
+	 */
+	private static void applyOutputTokenLimit(ObjectNode root, String provider, String model, int maxTokens) {
+		if (root == null || maxTokens <= 0) {
+			return;
+		}
+		if ("ollama".equals(provider)) {
+			return;
+		}
+		if (isReasoningModel(model)) {
+			root.put("max_completion_tokens", maxTokens);
+		} else {
+			root.put("max_tokens", maxTokens);
+		}
 	}
 
 	/** gpt-5.x / o1·o3 등 reasoning 모델 — temperature·top_p 커스텀 거부, default=1만 허용. */

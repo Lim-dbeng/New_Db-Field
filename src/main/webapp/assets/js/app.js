@@ -208,8 +208,9 @@
 	// Public helpers
 	App.loader = {
 		loadGoogle: function(callback) {
-			var url = "https://maps.googleapis.com/maps/api/js?key=" 
-						+ encodeURIComponent(App.config.googleKey);
+			var url = "https://maps.googleapis.com/maps/api/js?key="
+						+ encodeURIComponent(App.config.googleKey)
+						+ "&language=ko&region=KR";
 			loadScriptOnce("google-maps-js", url, callback);
 		},
 	
