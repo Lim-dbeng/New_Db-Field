@@ -1961,9 +1961,10 @@ html, body { height: 100%; margin: 0; }
 	background: #fff;
 	padding: 8px;
 }
+/* 입력 + 지도선택 버튼 2열 (라벨 열 없음 — minmax로 그리드 축소 시 입력창 0폭 깨짐 방지) */
 .route-input-row {
 	display: grid;
-	grid-template-columns: 46px 1fr 70px;
+	grid-template-columns: minmax(0, 1fr) auto;
 	gap: 6px;
 	align-items: center;
 }
@@ -1975,7 +1976,7 @@ html, body { height: 100%; margin: 0; }
 .route-suggest-list {
 	position: relative;
 	z-index: 20;
-	margin: 4px 0 0 46px;
+	margin: 4px 0 0 0;
 	border: 1px solid #dbe3ee;
 	background: #fff;
 	border-radius: 8px;
@@ -2014,8 +2015,15 @@ html, body { height: 100%; margin: 0; }
 	background: #fff;
 	border-color: #e2e8f0;
 	font-size: 12px;
+	min-width: 0;
+	width: 100%;
 }
-.route-pick-btn { font-size: 11px; padding: 4px 6px; }
+.route-pick-btn {
+	font-size: 11px;
+	padding: 4px 6px;
+	flex-shrink: 0;
+	white-space: nowrap;
+}
 .route-swap-btn {
 	position: absolute;
 	right: 84px;
@@ -2074,9 +2082,24 @@ html, body { height: 100%; margin: 0; }
 	background: #eff6ff;
 	color: #1e3a8a;
 }
-.route-alt-item .k {
+.route-alt-item .route-alt-title {
 	font-weight: 700;
-	margin-right: 6px;
+	font-size: 12px;
+	display: block;
+	margin-bottom: 3px;
+	color: inherit;
+}
+.route-alt-item .route-alt-meta {
+	font-size: 11px;
+	color: #64748b;
+	line-height: 1.35;
+}
+.route-alt-list-label {
+	font-size: 11px;
+	font-weight: 700;
+	color: #475569;
+	margin-bottom: 6px;
+	padding: 0 2px;
 }
 .route-recent-list {
 	border-top: 1px solid #e5e7eb;

@@ -38,6 +38,11 @@ public final class FacImportPhotosUtil {
 	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 	private static final int MAX_FILES_PER_REQUEST = 80;
 	private static final long SESSION_MAX_AGE_MS = 2L * 60L * 60L * 1000L;
+	/**
+	 * parse → commit(웹 미리보기)과 importPhotos(일괄)가 공통으로 쓰는 임시 폴더.
+	 * 여기서 EXIF 분석 후 최종 파일명({@code 관리번호_gN_photoN.ext})으로 DCIM 루트에 복사하고 세션 디렉터리는 삭제한다.
+	 * 모바일은 파일명 없는 multipart가 많아 {@link #filterImageParts}에서 필드명·Content-Type으로 받아들인다.
+	 */
 	private static final String SESSION_DIR_NAME = "_photo_import";
 
 	private FacImportPhotosUtil() {}
@@ -106,7 +111,7 @@ public final class FacImportPhotosUtil {
 			index++;
 		}
 		if (items.isEmpty()) {
-			deleteRecursive(sessionDir);
+			deleteImportSessionTree(sessionDir);
 			throw new IOException("처리 가능한 이미지가 없습니다.");
 		}
 
@@ -341,7 +346,7 @@ public final class FacImportPhotosUtil {
 			}
 		}
 
-		deleteRecursive(sessionDir);
+		deleteImportSessionTree(sessionDir);
 		return out;
 	}
 
@@ -666,6 +671,15 @@ public final class FacImportPhotosUtil {
 		return info;
 	}
 
+	private static boolean isPhotoLikePartField(String fieldName) {
+		if (fieldName == null || fieldName.trim().isEmpty()) {
+			return false;
+		}
+		String f = fieldName.trim().toLowerCase(Locale.ROOT);
+		return "photos".equals(f) || "photo".equals(f) || "files".equals(f) || "file".equals(f)
+				|| "image".equals(f) || "images".equals(f) || f.startsWith("photos");
+	}
+
 	private static List<Part> filterImageParts(List<Part> parts) {
 		List<Part> out = new ArrayList<>();
 		if (parts == null) {
@@ -675,17 +689,24 @@ public final class FacImportPhotosUtil {
 			if (p == null) {
 				continue;
 			}
-			String fn = p.getSubmittedFileName();
-			if (fn == null || fn.trim().isEmpty()) {
-				continue;
-			}
 			String ct = p.getContentType() != null ? p.getContentType().toLowerCase(Locale.ROOT) : "";
 			boolean imageCt = ct.startsWith("image/");
-			boolean imageExt = extensionOf(fn) != null;
-			if (!imageCt && !imageExt) {
+			String fn = p.getSubmittedFileName();
+			boolean hasFn = fn != null && !fn.trim().isEmpty();
+			String field = p.getName();
+			boolean photoField = isPhotoLikePartField(field);
+			if (!hasFn && !imageCt && !photoField) {
 				continue;
 			}
-			if (p.getSize() <= 0) {
+			if (hasFn) {
+				fn = new File(fn.trim()).getName();
+				boolean imageExt = extensionOf(fn) != null;
+				if (!imageCt && !imageExt) {
+					continue;
+				}
+			}
+			long sz = p.getSize();
+			if (sz == 0L) {
 				continue;
 			}
 			out.add(p);
@@ -737,7 +758,7 @@ public final class FacImportPhotosUtil {
 			File manifest = new File(child, "manifest.json");
 			long age = now - child.lastModified();
 			if (age > SESSION_MAX_AGE_MS) {
-				deleteRecursive(child);
+				deleteImportSessionTree(child);
 				continue;
 			}
 			if (manifest.isFile()) {
@@ -745,12 +766,41 @@ public final class FacImportPhotosUtil {
 					JsonNode m = JSON_MAPPER.readTree(manifest);
 					long created = m.path("createdAt").asLong(0L);
 					if (created > 0 && now - created > SESSION_MAX_AGE_MS) {
-						deleteRecursive(child);
+						deleteImportSessionTree(child);
 					}
 				} catch (Exception ignore) {
 					// ignore
 				}
 			}
+		}
+		tryTrimEmptyPhotoImportRoot(root);
+	}
+
+	/** 세션 디렉터리 삭제 후 부모가 비어 있으면 {@link #SESSION_DIR_NAME} 폴더까지 제거한다. */
+	private static void deleteImportSessionTree(File sessionDir) {
+		if (sessionDir == null || !sessionDir.exists()) {
+			return;
+		}
+		File parent = sessionDir.getParentFile();
+		deleteRecursive(sessionDir);
+		tryTrimEmptyPhotoImportRoot(parent);
+	}
+
+	private static void tryTrimEmptyPhotoImportRoot(File maybeImportRoot) {
+		if (maybeImportRoot == null || !maybeImportRoot.isDirectory()) {
+			return;
+		}
+		if (!SESSION_DIR_NAME.equals(maybeImportRoot.getName())) {
+			return;
+		}
+		File[] kids = maybeImportRoot.listFiles();
+		if (kids != null && kids.length > 0) {
+			return;
+		}
+		try {
+			Files.deleteIfExists(maybeImportRoot.toPath());
+		} catch (IOException ignore) {
+			// ignore
 		}
 	}
 

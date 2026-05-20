@@ -3495,7 +3495,11 @@
 		}
 	}
 
-	App.facility = {
+	// 기존 속성 유지 (map.js에서 길찾기 등을 NewDbField.facility에 먼저 붙인 경우)
+	if (!App.facility) {
+		App.facility = {};
+	}
+	Object.assign(App.facility, {
 		startAdd: startAdd,
 		closeAdd: closeAdd,
 		addPhotoGroup: addPhotoGroup,
@@ -3519,7 +3523,7 @@
 		selectFacilityByCode: selectFacilityByCode,
 		closePointPopup: closePointPopup,
 		updateVisibleFacilityCount: updateVisibleFacilityCount
-	};
+	});
 
 	// NewDbField 네임스페이스에도 노출
 	if (!window.NewDbField) { window.NewDbField = {}; }

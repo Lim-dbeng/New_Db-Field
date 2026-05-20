@@ -19,9 +19,11 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Scanner;
+import java.util.Set;
 
 @WebServlet(name = "ApiServlet", urlPatterns = {"/api/*"})
 public class ApiServlet extends HttpServlet {
@@ -97,9 +99,63 @@ public class ApiServlet extends HttpServlet {
 				try {
 					double[] o = normalizeLatLng(Double.parseDouble(oLat.trim()), Double.parseDouble(oLng.trim()));
 					double[] d = normalizeLatLng(Double.parseDouble(dLat.trim()), Double.parseDouble(dLng.trim()));
-					JsonNode tmapRoot = postTmapDirections(key, o[0], o[1], d[0], d[1], mode);
-					String legacyJson = tmapGeoJsonToLegacyDirectionsJson(tmapRoot, mode);
-					writeJson(resp, 200, legacyJson);
+					ArrayNode routesArr = JSON_MAPPER.createArrayNode();
+					Set<String> seenOverviewPolyline = new HashSet<>();
+
+					if ("walking".equals(mode)) {
+						try {
+							JsonNode root = postTmapDirections(key, o[0], o[1], d[0], d[1], mode, null);
+							ObjectNode routeObj = buildTmapRouteObject(root, mode);
+							if (routeObj != null) {
+								routeObj.put("routeLabel", "도보");
+								routesArr.add(routeObj);
+							}
+						} catch (Exception ignoreWalking) {
+							// 네트워크 등 실패 시 빈 배열 → 클라이언트가 Google 폴백 가능
+						}
+					} else {
+						String[][] labeledOpts = new String[][]{
+								{"00", "실시간 추천"},
+								{"01", "무료 도로 우선"},
+								{"10", "최단거리"}
+						};
+						for (String[] pair : labeledOpts) {
+							try {
+								JsonNode root = postTmapDirections(key, o[0], o[1], d[0], d[1], mode, pair[0]);
+								ObjectNode routeObj = buildTmapRouteObject(root, mode);
+								if (routeObj == null) {
+									continue;
+								}
+								String ov = routeObj.path("overview_polyline").path("points").asText("");
+								if (ov.isEmpty() || seenOverviewPolyline.contains(ov)) {
+									continue;
+								}
+								seenOverviewPolyline.add(ov);
+								routeObj.put("routeLabel", pair[1]);
+								routeObj.put("searchOption", pair[0]);
+								routesArr.add(routeObj);
+							} catch (Exception ignoreDriveLeg) {
+								// 한 옵션만 실패해도 나머지 경로 시도
+							}
+						}
+					}
+
+					if (routesArr.size() == 0) {
+						ObjectNode z = JSON_MAPPER.createObjectNode();
+						z.put("status", "ZERO_RESULTS");
+						z.put("error_message", "티맵에서 경로를 찾지 못했습니다.");
+						z.set("routes", JSON_MAPPER.createArrayNode());
+						writeJson(resp, 200, JSON_MAPPER.writeValueAsString(z));
+						return;
+					}
+
+					ObjectNode legacy = JSON_MAPPER.createObjectNode();
+					legacy.put("status", "OK");
+					legacy.put("provider", "tmap");
+					legacy.put("walkFallback", false);
+					legacy.put("effectiveTravelMode", "walking".equals(mode) ? "walking" : "driving");
+					legacy.set("routes", routesArr);
+					writeJson(resp, 200, JSON_MAPPER.writeValueAsString(legacy));
 				} catch (Exception ex) {
 					writeJson(resp, 500, "{\"status\":\"ERROR\",\"error_message\":\"" + safe(ex.getMessage()) + "\"}");
 				}
@@ -527,10 +583,11 @@ public class ApiServlet extends HttpServlet {
 	 * @param modeDrivingOrWalking "driving" | "walking"
 	 */
 	private static JsonNode postTmapDirections(
-			String apiKey, double olat, double olng, double dlat, double dlng, String modeDrivingOrWalking) throws IOException {
+			String apiKey, double olat, double olng, double dlat, double dlng, String modeDrivingOrWalking,
+			String searchOptionDrivingOrNull) throws IOException {
 		boolean walking = "walking".equals(modeDrivingOrWalking);
 		String path = walking
-				? "/tmap/routes/pedestrian?version=1&callback=function"
+				? "/tmap/routes/pedestrian?version=1"
 				: "/tmap/routes?version=1";
 		ObjectNode body = JSON_MAPPER.createObjectNode();
 		body.put("startX", olng);
@@ -541,11 +598,29 @@ public class ApiServlet extends HttpServlet {
 		body.put("endName", "도착");
 		body.put("reqCoordType", "WGS84GEO");
 		body.put("resCoordType", "WGS84GEO");
+		body.put("sort", "index");
 		if (!walking) {
-			body.put("searchOption", "0");
+			String so = searchOptionDrivingOrNull == null ? "" : searchOptionDrivingOrNull.trim();
+			body.put("searchOption", so.isEmpty() ? "00" : so);
 			body.put("trafficInfo", "Y");
+		} else {
+			body.put("searchOption", "0");
 		}
 		return postTmapPost(apiKey, path, body);
+	}
+
+	private static String unwrapTmapJsonBody(String raw) {
+		if (raw == null) {
+			return "";
+		}
+		String s = raw.trim();
+		// JSONP: "...({...})" 또는 "function (...)({...})" — 첫 '{' ~ 마지막 '}' 로 본문 추출
+		int lb = s.indexOf('{');
+		int rb = s.lastIndexOf('}');
+		if (lb >= 0 && rb > lb) {
+			return s.substring(lb, rb + 1);
+		}
+		return s;
 	}
 
 	private static JsonNode postTmapPost(String apiKey, String pathQuery, ObjectNode body) throws IOException {
@@ -571,7 +646,18 @@ public class ApiServlet extends HttpServlet {
 				raw = scanner.hasNext() ? scanner.next() : "";
 			}
 		}
-		JsonNode root = JSON_MAPPER.readTree(raw.isEmpty() ? "{}" : raw);
+		String jsonPayload = unwrapTmapJsonBody(raw);
+		JsonNode root;
+		try {
+			root = JSON_MAPPER.readTree(jsonPayload.isEmpty() ? "{}" : jsonPayload);
+		} catch (Exception parseEx) {
+			ObjectNode err = JSON_MAPPER.createObjectNode();
+			err.put("status", "ERROR");
+			String snippet = raw.length() > 280 ? raw.substring(0, 280) + "…" : raw;
+			err.put("error_message", "티맵 응답 파싱 실패(HTTP " + code + "): " + parseEx.getClass().getSimpleName()
+					+ (snippet.isEmpty() ? "" : (" | 본문발췌: " + snippet)));
+			return err;
+		}
 		if (code < 200 || code >= 300) {
 			ObjectNode err = JSON_MAPPER.createObjectNode();
 			err.put("status", "ERROR");
@@ -587,36 +673,26 @@ public class ApiServlet extends HttpServlet {
 		return root;
 	}
 
-	/** Tmap GeoJSON(FeatureCollection) → 프론트 호환 Directions 레거시 JSON */
-	private static String tmapGeoJsonToLegacyDirectionsJson(JsonNode root, String modeDrivingOrWalking)
-			throws IOException {
+	/**
+	 * Tmap GeoJSON 한 경로 → Google Directions 호환 단일 route 객체 + 교통색용 {@code segments}.
+	 * {@code geometry.traffic}: [시작좌표인덱스, 끝인덱스, 혼잡도, 속도] 가 4개씩 반복(SK 문서 기준).
+	 */
+	private static ObjectNode buildTmapRouteObject(JsonNode root, String modeDrivingOrWalking) {
 		if (root.has("status") && "ERROR".equals(root.get("status").asText())) {
-			return JSON_MAPPER.writeValueAsString(root);
+			return null;
 		}
 		JsonNode features = root.get("features");
 		if (features == null || !features.isArray() || features.size() == 0) {
-			ObjectNode z = JSON_MAPPER.createObjectNode();
-			z.put("status", "ZERO_RESULTS");
-			z.put("error_message", "티맵에서 경로를 찾지 못했습니다.");
-			z.set("routes", JSON_MAPPER.createArrayNode());
-			return JSON_MAPPER.writeValueAsString(z);
+			return null;
 		}
 
+		boolean walking = "walking".equals(modeDrivingOrWalking);
 		List<double[]> lonLatPoints = new ArrayList<>();
+		ArrayNode segmentsArr = JSON_MAPPER.createArrayNode();
 		int totalDist = -1;
 		int totalSec = -1;
+
 		for (JsonNode f : features) {
-			JsonNode geom = f.get("geometry");
-			if (geom != null && "LineString".equals(geom.path("type").asText("")) && geom.has("coordinates")) {
-				JsonNode coords = geom.get("coordinates");
-				if (coords != null && coords.isArray()) {
-					for (JsonNode pt : coords) {
-						if (pt.isArray() && pt.size() >= 2) {
-							lonLatPoints.add(new double[]{pt.get(0).asDouble(), pt.get(1).asDouble()});
-						}
-					}
-				}
-			}
 			JsonNode props = f.get("properties");
 			if (props != null) {
 				if (props.has("totalDistance")) {
@@ -626,45 +702,128 @@ public class ApiServlet extends HttpServlet {
 					totalSec = Math.max(totalSec, props.get("totalTime").asInt(-1));
 				}
 			}
+
+			JsonNode geom = f.get("geometry");
+			if (geom == null || !"LineString".equals(geom.path("type").asText("")) || !geom.has("coordinates")) {
+				continue;
+			}
+			JsonNode coords = geom.get("coordinates");
+			List<double[]> segPts = new ArrayList<>();
+			if (coords != null && coords.isArray()) {
+				for (JsonNode pt : coords) {
+					if (pt.isArray() && pt.size() >= 2) {
+						segPts.add(new double[]{pt.get(0).asDouble(), pt.get(1).asDouble()});
+					}
+				}
+			}
+			if (segPts.size() < 2) {
+				continue;
+			}
+
+			appendLonLatChainDedupe(lonLatPoints, segPts);
+
+			List<int[]> trafficChunks = parseTrafficQuads(geom.get("traffic"));
+			if (walking || trafficChunks.isEmpty()) {
+				ObjectNode seg = JSON_MAPPER.createObjectNode();
+				seg.put("congestion", walking ? 0 : 1);
+				seg.put("encodedPolyline", encodeGooglePolylineFromLonLatList(segPts));
+				segmentsArr.add(seg);
+			} else {
+				for (int[] tk : trafficChunks) {
+					int a = tk[0];
+					int b = tk[1];
+					int congestion = tk[2];
+					if (b < a || a >= segPts.size()) {
+						continue;
+					}
+					if (b >= segPts.size()) {
+						b = segPts.size() - 1;
+					}
+					List<double[]> sub = new ArrayList<>(segPts.subList(a, b + 1));
+					if (sub.size() < 2) {
+						continue;
+					}
+					ObjectNode seg = JSON_MAPPER.createObjectNode();
+					seg.put("congestion", congestion);
+					seg.put("encodedPolyline", encodeGooglePolylineFromLonLatList(sub));
+					segmentsArr.add(seg);
+				}
+			}
 		}
 
 		lonLatPoints = dedupeConsecutiveLonLat(lonLatPoints);
 		if (lonLatPoints.size() < 2) {
-			ObjectNode z = JSON_MAPPER.createObjectNode();
-			z.put("status", "ZERO_RESULTS");
-			z.put("error_message", "티맵 경로 좌표가 비어 있습니다.");
-			z.set("routes", JSON_MAPPER.createArrayNode());
-			return JSON_MAPPER.writeValueAsString(z);
+			return null;
 		}
 
 		if (totalDist <= 0) {
 			totalDist = pathLengthMetersSum(lonLatPoints);
 		}
 		if (totalSec <= 0) {
-			double speed = "walking".equals(modeDrivingOrWalking) ? 1.25 : 11.0;
+			double speed = walking ? 1.25 : 11.0;
 			totalSec = (int) Math.round(totalDist / speed);
 		}
 
-		String encoded = encodeGooglePolylineFromLonLatList(lonLatPoints);
-		String eff = "walking".equals(modeDrivingOrWalking) ? "walking" : "driving";
-
-		ObjectNode legacy = JSON_MAPPER.createObjectNode();
-		legacy.put("status", "OK");
-		legacy.put("provider", "tmap");
-		legacy.put("walkFallback", false);
-		legacy.put("effectiveTravelMode", eff);
+		if (segmentsArr.size() == 0) {
+			ObjectNode seg = JSON_MAPPER.createObjectNode();
+			seg.put("congestion", walking ? 0 : 1);
+			seg.put("encodedPolyline", encodeGooglePolylineFromLonLatList(lonLatPoints));
+			segmentsArr.add(seg);
+		}
 
 		ObjectNode r = JSON_MAPPER.createObjectNode();
 		ObjectNode overview = r.putObject("overview_polyline");
-		overview.put("points", encoded);
+		overview.put("points", encodeGooglePolylineFromLonLatList(lonLatPoints));
 		ObjectNode leg = r.putArray("legs").addObject();
 		ObjectNode dist = leg.putObject("distance");
 		dist.put("text", formatDistanceKo(totalDist));
 		ObjectNode dur = leg.putObject("duration");
 		dur.put("text", formatDurationKo(totalSec + "s"));
+		r.set("segments", segmentsArr);
+		return r;
+	}
 
-		legacy.putArray("routes").add(r);
-		return JSON_MAPPER.writeValueAsString(legacy);
+	private static void appendLonLatChainDedupe(List<double[]> accum, List<double[]> segPts) {
+		final double eps = 1e-9;
+		for (double[] p : segPts) {
+			if (!accum.isEmpty()) {
+				double[] last = accum.get(accum.size() - 1);
+				if (Math.abs(last[0] - p[0]) <= eps && Math.abs(last[1] - p[1]) <= eps) {
+					continue;
+				}
+			}
+			accum.add(p);
+		}
+	}
+
+	private static List<int[]> parseTrafficQuads(JsonNode trafficNode) {
+		List<int[]> out = new ArrayList<>();
+		if (trafficNode == null || trafficNode.isNull() || !trafficNode.isArray()) {
+			return out;
+		}
+		if (trafficNode.size() >= 4 && trafficNode.get(0).isNumber()) {
+			for (int i = 0; i + 3 < trafficNode.size(); i += 4) {
+				out.add(new int[]{
+						trafficNode.get(i).asInt(),
+						trafficNode.get(i + 1).asInt(),
+						trafficNode.get(i + 2).asInt(),
+						trafficNode.get(i + 3).asInt()
+				});
+			}
+			return out;
+		}
+		for (JsonNode chunk : trafficNode) {
+			if (chunk != null && chunk.isArray() && chunk.size() >= 4
+					&& chunk.get(0).isNumber()) {
+				out.add(new int[]{
+						chunk.get(0).asInt(),
+						chunk.get(1).asInt(),
+						chunk.get(2).asInt(),
+						chunk.get(3).asInt()
+				});
+			}
+		}
+		return out;
 	}
 
 	private static List<double[]> dedupeConsecutiveLonLat(List<double[]> pts) {

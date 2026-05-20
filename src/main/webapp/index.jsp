@@ -46,7 +46,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>New_Db-Field</title>
 	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/styles.css?v=1">
-	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/custom.css?v=69">
+	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/custom.css?v=70">
 	<!-- OpenLayers CSS will be injected dynamically when needed -->
 </head>
 <body class="<%= isAdminMode ? "admin-mode" : "" %>" data-context-path="<%=request.getContextPath()%>">
@@ -706,14 +706,12 @@
 
 					<div class="route-input-box mt-2">
 						<div class="route-input-row" id="routeOriginRow">
-							<div class="route-input-label">출발지</div>
-							<input type="text" id="routeOriginInput" class="form-control form-control-sm route-input" placeholder="출발지를 입력하거나 지도/마커에서 선택" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" name="route_origin_no_autofill">
+							<input type="text" id="routeOriginInput" class="form-control form-control-sm route-input" placeholder="출발지 입력" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" name="route_origin_no_autofill">
 							<button type="button" class="btn btn-sm btn-outline-primary route-pick-btn" id="routePickOriginBtn">지도 선택</button>
 						</div>
 						<div id="routeOriginSuggest" class="route-suggest-list" style="display:none;"></div>
 						<div class="route-input-row" id="routeDestRow">
-							<div class="route-input-label">도착지</div>
-							<input type="text" id="routeDestInput" class="form-control form-control-sm route-input" placeholder="도착지를 입력하거나 지도/마커에서 선택" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" name="route_dest_no_autofill">
+							<input type="text" id="routeDestInput" class="form-control form-control-sm route-input" placeholder="도착지 입력" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" name="route_dest_no_autofill">
 							<button type="button" class="btn btn-sm btn-outline-primary route-pick-btn" id="routePickDestBtn">지도 선택</button>
 						</div>
 						<div id="routeDestSuggest" class="route-suggest-list" style="display:none;"></div>
@@ -731,7 +729,6 @@
 						<option value="walking">도보</option>
 					</select>
 
-					<div id="routeSectionHint" class="route-section-hint mt-2" style="display:none;"></div>
 					<div id="routeAltList" class="route-alt-list mt-2" style="display:none;"></div>
 					<div id="routeRecentList" class="route-recent-list mt-2"></div>
 				</div>
@@ -1275,13 +1272,13 @@
 	<script src="<%=request.getContextPath()%>/assets/js/project-management.js?v=7"></script>
 
 	<script src="<%=request.getContextPath()%>/assets/js/app.js?v=2"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/map.js?v=10"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/map.js?v=15"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/wms-presets.js?v=2"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/sidebar-panels.js?v=10"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/ui.js?v=8"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/list.js?v=2"></script>
 	<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js" crossorigin="anonymous"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/facility.js?v=96"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility.js?v=97"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/facility-photo-import.js?v=1"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/project-filter.js?v=10"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/facility-search.js?v=11"></script>

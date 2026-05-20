@@ -191,6 +191,8 @@
 			return getOlState();
 		},
 		destroy: function () {
+			cancelRoutePickInternal(false);
+			clearRouteOverlayInternal();
 			var container = document.getElementById("map");
 			container.innerHTML = "";
 			App.state.google = null;
@@ -1319,7 +1321,773 @@
 		s.overlays[key] = layer;
 		s.map.addLayer(layer);
 	};
+
+	/** ui.js 길찾기 패널 → NewDbField.facility 에 연결 (이전에는 미구현으로 버튼이 무동작) */
+	var routeFlowState = {
+		origin: null,
+		destination: null,
+		originText: "",
+		destText: "",
+		armRole: null,
+		googlePickListener: null,
+		olPickKey: null,
+		googleRouteHandles: [],
+		lastDirectionsJson: null,
+		selectedRouteIndex: 0
+	};
+	var ROUTE_OL_LAYER_KEY = "ndfRouteFlowActive";
+	var ROUTE_OL_ALT_PREFIX = "ndfRouteAlt:";
+	var ROUTE_OL_ARROWS_KEY = "ndfRouteArrows";
+	var ROUTE_FLOW_ARROW_ICON_SRC_CACHE = null;
+
+	function getRouteFlowArrowIconDataUri() {
+		if (!ROUTE_FLOW_ARROW_ICON_SRC_CACHE) {
+			var svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"22\" height=\"22\" viewBox=\"0 0 22 22\">"
+				+ "<polygon points=\"3,11 17,7 17,15\" fill=\"rgba(255,255,255,0.95)\""
+				+ " stroke=\"rgba(30,41,59,0.52)\" stroke-width=\"1.7\" stroke-linejoin=\"round\"/></svg>";
+			ROUTE_FLOW_ARROW_ICON_SRC_CACHE = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+		}
+		return ROUTE_FLOW_ARROW_ICON_SRC_CACHE;
+	}
+
+	function getWebappContextPath() {
+		var b = document.body;
+		if (b && b.getAttribute("data-context-path")) {
+			return b.getAttribute("data-context-path") || "";
+		}
+		if (typeof window.CONTEXT_PATH === "string") return window.CONTEXT_PATH;
+		return "";
+	}
+
+	function decodeGooglePolyline(encoded) {
+		if (!encoded || typeof encoded !== "string") return [];
+		var index = 0;
+		var len = encoded.length;
+		var lat = 0;
+		var lng = 0;
+		var array = [];
+		while (index < len) {
+			var b = 0;
+			var shift = 0;
+			var result = 0;
+			do {
+				b = encoded.charCodeAt(index++) - 63;
+				result |= (b & 0x1f) << shift;
+				shift += 5;
+			} while (b >= 0x20);
+			var dlat = (result & 1) !== 0 ? ~(result >> 1) : (result >> 1);
+			lat += dlat;
+			shift = 0;
+			result = 0;
+			do {
+				b = encoded.charCodeAt(index++) - 63;
+				result |= (b & 0x1f) << shift;
+				shift += 5;
+			} while (b >= 0x20);
+			var dlng = (result & 1) !== 0 ? ~(result >> 1) : (result >> 1);
+			lng += dlng;
+			array.push({ lat: lat * 1e-5, lng: lng * 1e-5 });
+		}
+		return array;
+	}
+
+	function clearRouteOverlayInternal() {
+		if (routeFlowState.googleRouteHandles && routeFlowState.googleRouteHandles.length) {
+			routeFlowState.googleRouteHandles.forEach(function (h) {
+				try {
+					h.setMap(null);
+				} catch (eIg) {}
+			});
+		}
+		routeFlowState.googleRouteHandles = [];
+		var s = isOlProvider() ? getOlState() : null;
+		if (s && s.overlays && s.map) {
+			var keys = Object.keys(s.overlays);
+			for (var ki = 0; ki < keys.length; ki++) {
+				var k = keys[ki];
+				if (k === ROUTE_OL_LAYER_KEY || k === ROUTE_OL_ARROWS_KEY || k.indexOf(ROUTE_OL_ALT_PREFIX) === 0) {
+					var pack = s.overlays[k];
+					try {
+						if (pack && pack.layer) s.map.removeLayer(pack.layer);
+					} catch (eIgnore) {}
+					delete s.overlays[k];
+				}
+			}
+		}
+	}
+
+	function escapeHtmlRoute(str) {
+		return String(str == null ? "" : str)
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/\"/g, "&quot;");
+	}
+
+	function congestionStrokeColor(congestion, isWalkingLeg) {
+		if (isWalkingLeg) return "#0f766e";
+		var n = parseInt(congestion, 10);
+		if (!isFinite(n) || n <= 0) return "#2563eb";
+		if (n === 1) return "#22c55e";
+		if (n === 2) return "#eab308";
+		if (n === 3) return "#f97316";
+		return "#dc2626";
+	}
+
+	function haversineMetersJs(lat1, lon1, lat2, lon2) {
+		var R = 6371000;
+		var p1 = Math.PI * lat1 / 180;
+		var p2 = Math.PI * lat2 / 180;
+		var dLat = Math.PI * (lat2 - lat1) / 180;
+		var dLon = Math.PI * (lon2 - lon1) / 180;
+		var a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+			+ Math.cos(p1) * Math.cos(p2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+		var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+		return R * c;
+	}
+
+	/**
+	 * 경로 따라 일정 간격 화살표 — 좌표·접선 모두 EPSG:3857 (지도에 그려진 선과 동일).
+	 * OpenLayers 스타일 rotation 은 시계 방향(rad) 이므로 접선 각에는 -atan2(dy,dx) 사용.
+	 */
+	function buildOlRouteArrowMarkers3857(pathLatLng, olProjFromLonLat, spacingM) {
+		var out = [];
+		if (!pathLatLng || pathLatLng.length < 2 || typeof olProjFromLonLat !== "function") return out;
+
+		var spacingMeters = spacingM;
+		if (!isFinite(spacingMeters) || spacingMeters < 140) spacingMeters = 340;
+		if (spacingMeters > 620) spacingMeters = 620;
+
+		var coordsRaw = [];
+		var i;
+		for (i = 0; i < pathLatLng.length; i++) {
+			var q = pathLatLng[i];
+			coordsRaw.push(olProjFromLonLat([q.lng, q.lat]));
+		}
+
+		var dedLL = [];
+		var dedPx = [];
+		var minVertexSq = 49;
+		for (i = 0; i < pathLatLng.length; i++) {
+			if (dedPx.length === 0) {
+				dedLL.push(pathLatLng[i]);
+				dedPx.push(coordsRaw[i]);
+				continue;
+			}
+			var vx = coordsRaw[i][0] - dedPx[dedPx.length - 1][0];
+			var vy = coordsRaw[i][1] - dedPx[dedPx.length - 1][1];
+			if (vx * vx + vy * vy < minVertexSq) continue;
+			dedLL.push(pathLatLng[i]);
+			dedPx.push(coordsRaw[i]);
+		}
+		if (dedPx.length < 2) return [];
+
+		var cumH = [0];
+		var haversSeg = [];
+		for (i = 0; i < dedLL.length - 1; i++) {
+			var a = dedLL[i];
+			var b = dedLL[i + 1];
+			var h = haversineMetersJs(a.lat, a.lng, b.lat, b.lng);
+			haversSeg.push(h);
+			cumH.push(cumH[cumH.length - 1] + h);
+		}
+		var totalH = cumH[cumH.length - 1];
+
+		var cumP = [0];
+		var projSeg = [];
+		for (i = 0; i < dedPx.length - 1; i++) {
+			var dx = dedPx[i + 1][0] - dedPx[i][0];
+			var dy = dedPx[i + 1][1] - dedPx[i][1];
+			var pl = Math.sqrt(dx * dx + dy * dy);
+			projSeg.push(pl);
+			cumP.push(cumP[cumP.length - 1] + pl);
+		}
+		var totalP = cumP[cumP.length - 1];
+		if (totalH < 90 || totalP < 1e-9) return out;
+
+		var scale = totalP / totalH;
+		var stepP = spacingMeters * scale;
+		if (stepP < totalP / 140) stepP = totalP / 140;
+		if (stepP > totalP / 2.5) stepP = totalP / 2.5;
+
+		var prevPx = NaN;
+		var prevPy = NaN;
+		var minSepSq = stepP * stepP * 0.36;
+
+		for (var distP = stepP * 0.7; distP < totalP - stepP * 0.42; distP += stepP) {
+			var j = 0;
+			for (; j < projSeg.length; j++) {
+				if (distP < cumP[j + 1]) break;
+			}
+			if (j >= projSeg.length) break;
+			var segStart = cumP[j];
+			var len = projSeg[j];
+			var t = len > 1e-12 ? (distP - segStart) / len : 0;
+			var ax = dedPx[j][0];
+			var ay = dedPx[j][1];
+			var bx = dedPx[j + 1][0];
+			var by = dedPx[j + 1][1];
+			var px = ax + (bx - ax) * t;
+			var py = ay + (by - ay) * t;
+			var rdx = bx - ax;
+			var rdy = by - ay;
+			if (rdx * rdx + rdy * rdy < 1e-20) continue;
+
+			if (isFinite(prevPx)) {
+				var sx = px - prevPx;
+				var sy = py - prevPy;
+				if (sx * sx + sy * sy < minSepSq) continue;
+			}
+			prevPx = px;
+			prevPy = py;
+
+			out.push({
+				coord3857: [px, py],
+				rotation: -Math.atan2(rdy, rdx)
+			});
+		}
+		return out;
+	}
+
+	function drawGoogleDirectionsRoutes(json, selectedIndex) {
+		var map = App.state.google && App.state.google.map;
+		if (!map || !window.google || !google.maps) return;
+		var routes = json.routes || [];
+		var idx = selectedIndex || 0;
+		var modeWalk = String(json.effectiveTravelMode || "") === "walking";
+		var handles = [];
+
+		function pushPoly(poly) {
+			handles.push(poly);
+		}
+
+		var arrowIcon = google.maps.SymbolPath && google.maps.SymbolPath.FORWARD_CLOSED_ARROW
+			? {
+				path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+				scale: 2.3,
+				strokeWeight: 2,
+				strokeColor: "#ffffff",
+				fillColor: "#ffffff",
+				fillOpacity: 1
+			}
+			: null;
+
+		for (var i = 0; i < routes.length; i++) {
+			if (i === idx) continue;
+			var encI = routes[i].overview_polyline && routes[i].overview_polyline.points;
+			var pathI = decodeGooglePolyline(encI || "");
+			if (pathI.length < 2) continue;
+			pushPoly(new google.maps.Polyline({
+				path: pathI.map(function (p) { return { lat: p.lat, lng: p.lng }; }),
+				geodesic: true,
+				strokeColor: "#94a3b8",
+				strokeOpacity: 0.42,
+				strokeWeight: 6,
+				zIndex: 80,
+				map: map
+			}));
+		}
+
+		var sel = routes[idx];
+		if (!sel) {
+			routeFlowState.googleRouteHandles = handles;
+			return;
+		}
+
+		var useSegments = json.provider === "tmap" && sel.segments && sel.segments.length && !modeWalk;
+
+		if (useSegments) {
+			for (var si = 0; si < sel.segments.length; si++) {
+				var seg = sel.segments[si];
+				var pts = decodeGooglePolyline(seg.encodedPolyline || "");
+				if (pts.length < 2) continue;
+				var stroke = congestionStrokeColor(seg.congestion, false);
+				var lineOpts = {
+					path: pts.map(function (p) { return { lat: p.lat, lng: p.lng }; }),
+					geodesic: true,
+					strokeColor: stroke,
+					strokeOpacity: 0.95,
+					strokeWeight: 8,
+					zIndex: 140,
+					map: map
+				};
+				if (arrowIcon) {
+					lineOpts.icons = [{
+						icon: arrowIcon,
+						offset: "30%",
+						repeat: "130px"
+					}];
+				}
+				pushPoly(new google.maps.Polyline(lineOpts));
+			}
+		} else {
+			var enc2 = sel.overview_polyline && sel.overview_polyline.points;
+			var path2 = decodeGooglePolyline(enc2 || "");
+			if (path2.length >= 2) {
+				var strokeMain = congestionStrokeColor(modeWalk ? 0 : 1, modeWalk);
+				var opt = {
+					path: path2.map(function (p) { return { lat: p.lat, lng: p.lng }; }),
+					geodesic: true,
+					strokeColor: strokeMain,
+					strokeOpacity: 0.92,
+					strokeWeight: modeWalk ? 5 : 8,
+					zIndex: 140,
+					map: map
+				};
+				if (arrowIcon) {
+					opt.icons = [{
+						icon: arrowIcon,
+						offset: "30%",
+						repeat: "130px"
+					}];
+				}
+				pushPoly(new google.maps.Polyline(opt));
+			}
+		}
+
+		var mergePath = decodeGooglePolyline((sel.overview_polyline && sel.overview_polyline.points) || "");
+		if (mergePath.length >= 2) {
+			var bounds = new google.maps.LatLngBounds();
+			for (var bi = 0; bi < mergePath.length; bi++) {
+				bounds.extend({ lat: mergePath[bi].lat, lng: mergePath[bi].lng });
+			}
+			map.fitBounds(bounds);
+		}
+
+		routeFlowState.googleRouteHandles = handles;
+	}
+
+	function drawOlDirectionsRoutes(json, selectedIndex) {
+		var olLib = window.OL || window.ol;
+		var s = isOlProvider() ? getOlState() : null;
+		if (!olLib || !s || !s.map) return;
+		if (!s.overlays) s.overlays = {};
+
+		var routes = json.routes || [];
+		var idx = selectedIndex || 0;
+		var modeWalk = String(json.effectiveTravelMode || "") === "walking";
+
+		for (var i = 0; i < routes.length; i++) {
+			if (i === idx) continue;
+			var enc = routes[i].overview_polyline && routes[i].overview_polyline.points;
+			var path = decodeGooglePolyline(enc || "");
+			if (path.length < 2) continue;
+			var coords3857 = path.map(function (p) {
+				return olLib.proj.fromLonLat([p.lng, p.lat]);
+			});
+			var feat = new olLib.Feature({ geometry: new olLib.geom.LineString(coords3857) });
+			var src = new olLib.source.Vector({ features: [feat] });
+			var layer = new olLib.layer.Vector({
+				source: src,
+				zIndex: 7420,
+				style: new olLib.style.Style({
+					stroke: new olLib.style.Stroke({
+						color: "rgba(148,163,184,0.52)",
+						width: 6,
+						lineCap: "round",
+						lineJoin: "round"
+					})
+				})
+			});
+			s.map.addLayer(layer);
+			s.overlays[ROUTE_OL_ALT_PREFIX + i] = { layer: layer, source: src };
+		}
+
+		var sel = routes[idx];
+		if (!sel) return;
+
+		var activeSrc = new olLib.source.Vector();
+		var activeLayer = new olLib.layer.Vector({
+			source: activeSrc,
+			zIndex: 7620,
+			style: function (feature) {
+				var c = feature.get("congestion");
+				var col = congestionStrokeColor(c, modeWalk);
+				return new olLib.style.Style({
+					stroke: new olLib.style.Stroke({
+						color: col,
+						width: modeWalk ? 5 : 8,
+						lineCap: "round",
+						lineJoin: "round"
+					})
+				});
+			}
+		});
+		s.map.addLayer(activeLayer);
+		s.overlays[ROUTE_OL_LAYER_KEY] = { layer: activeLayer, source: activeSrc };
+
+		var useSegments = json.provider === "tmap" && sel.segments && sel.segments.length && !modeWalk;
+		if (useSegments) {
+			for (var si = 0; si < sel.segments.length; si++) {
+				var seg = sel.segments[si];
+				var pts = decodeGooglePolyline(seg.encodedPolyline || "");
+				if (pts.length < 2) continue;
+				var coords = pts.map(function (p) {
+					return olLib.proj.fromLonLat([p.lng, p.lat]);
+				});
+				var f = new olLib.Feature({ geometry: new olLib.geom.LineString(coords) });
+				f.set("congestion", seg.congestion);
+				activeSrc.addFeature(f);
+			}
+		} else {
+			var enc2 = sel.overview_polyline && sel.overview_polyline.points;
+			var path2 = decodeGooglePolyline(enc2 || "");
+			if (path2.length >= 2) {
+				var coords2 = path2.map(function (p) {
+					return olLib.proj.fromLonLat([p.lng, p.lat]);
+				});
+				var f2 = new olLib.Feature({ geometry: new olLib.geom.LineString(coords2) });
+				f2.set("congestion", modeWalk ? 0 : 1);
+				activeSrc.addFeature(f2);
+			}
+		}
+
+		var pathForArrows = decodeGooglePolyline((sel.overview_polyline && sel.overview_polyline.points) || "");
+		var arrowMarks = buildOlRouteArrowMarkers3857(pathForArrows, olLib.proj.fromLonLat.bind(olLib.proj), 340);
+		var aFeats = [];
+		var arrowIconSrc = getRouteFlowArrowIconDataUri();
+		for (var ai = 0; ai < arrowMarks.length; ai++) {
+			var am = arrowMarks[ai];
+			var g = new olLib.geom.Point(am.coord3857);
+			var af = new olLib.Feature({ geometry: g });
+			af.set("routeArrowRotation", am.rotation);
+			aFeats.push(af);
+		}
+		var arrowSrc = new olLib.source.Vector({ features: aFeats });
+		var arrowLayer = new olLib.layer.Vector({
+			source: arrowSrc,
+			zIndex: 7720,
+			style: function (feature) {
+				var rot = feature.get("routeArrowRotation");
+				if (rot == null || !isFinite(rot)) rot = 0;
+				return new olLib.style.Style({
+					image: new olLib.style.Icon({
+						src: arrowIconSrc,
+						anchor: [0.5, 0.5],
+						anchorXUnits: "fraction",
+						anchorYUnits: "fraction",
+						scale: 1,
+						rotation: rot,
+						rotateWithView: true
+					})
+				});
+			}
+		});
+		s.map.addLayer(arrowLayer);
+		s.overlays[ROUTE_OL_ARROWS_KEY] = { layer: arrowLayer, source: arrowSrc };
+
+		var ext = activeSrc.getExtent();
+		if (ext && olLib.extent && !olLib.extent.isEmpty(ext)) {
+			s.map.getView().fit(ext, { padding: [48, 48, 48, 48], maxZoom: 17, duration: 280 });
+		}
+	}
+
+	function drawDirectionsFull(json) {
+		var idx = routeFlowState.selectedRouteIndex || 0;
+		if (App.state.provider === "google" && App.state.google && App.state.google.map && window.google) {
+			drawGoogleDirectionsRoutes(json, idx);
+		} else {
+			drawOlDirectionsRoutes(json, idx);
+		}
+	}
+
+	function applyRouteSummaryEl(json, routeIndex) {
+		var sumEl = document.getElementById("routePanelSummary");
+		if (!sumEl) return;
+		var r = (json.routes || [])[routeIndex];
+		var leg = r && r.legs && r.legs[0];
+		if (leg && leg.distance && leg.duration) {
+			var title = r.routeLabel ? r.routeLabel + " · " : "";
+			sumEl.textContent = title + leg.distance.text + " · " + leg.duration.text;
+			sumEl.style.display = "block";
+		} else {
+			sumEl.style.display = "none";
+		}
+	}
+
+	function renderRouteAlternativesList(json) {
+		var host = document.getElementById("routeAltList");
+		if (!host) return;
+		host.innerHTML = "";
+		var routes = json.routes || [];
+		if (routes.length <= 1) {
+			host.style.display = "none";
+			return;
+		}
+		host.style.display = "block";
+		var hint = document.createElement("div");
+		hint.className = "route-alt-list-label";
+		hint.textContent = "경로 선택";
+		host.appendChild(hint);
+		for (var i = 0; i < routes.length; i++) {
+			(function (idx) {
+				var r = routes[idx];
+				var btn = document.createElement("button");
+				btn.type = "button";
+				btn.className = "route-alt-item" + (idx === routeFlowState.selectedRouteIndex ? " active" : "");
+				var title = r.routeLabel || ("경로 " + (idx + 1));
+				var leg = r.legs && r.legs[0];
+				var meta = leg && leg.distance && leg.duration
+					? leg.distance.text + " · " + leg.duration.text
+					: "";
+				btn.innerHTML = "<span class=\"route-alt-title\">" + escapeHtmlRoute(title) + "</span>"
+					+ (meta ? "<div class=\"route-alt-meta\">" + escapeHtmlRoute(meta) + "</div>" : "");
+				btn.addEventListener("click", function () {
+					if (!routeFlowState.lastDirectionsJson) return;
+					routeFlowState.selectedRouteIndex = idx;
+					clearRouteOverlayInternal();
+					drawDirectionsFull(routeFlowState.lastDirectionsJson);
+					var items = host.querySelectorAll(".route-alt-item");
+					for (var j = 0; j < items.length; j++) {
+						items[j].classList.toggle("active", j === idx);
+					}
+					applyRouteSummaryEl(routeFlowState.lastDirectionsJson, idx);
+				});
+				host.appendChild(btn);
+			})(i);
+		}
+	}
+
+	function clearRouteAltListDom() {
+		var alt = document.getElementById("routeAltList");
+		if (alt) {
+			alt.innerHTML = "";
+			alt.style.display = "none";
+		}
+	}
+
+	function cancelRoutePickInternal(skipClearArmRole) {
+		if (routeFlowState.googlePickListener && window.google && google.maps && google.maps.event) {
+			google.maps.event.removeListener(routeFlowState.googlePickListener);
+		}
+		routeFlowState.googlePickListener = null;
+		if (routeFlowState.olPickKey) {
+			var olLib = window.OL || window.ol;
+			try {
+				if (olLib && olLib.Observable && typeof olLib.Observable.unByKey === "function") {
+					olLib.Observable.unByKey(routeFlowState.olPickKey);
+				}
+			} catch (eIgn) {}
+		}
+		routeFlowState.olPickKey = null;
+		if (!skipClearArmRole) routeFlowState.armRole = null;
+	}
+
+	function kakaoKeywordFirstCoord(placeText) {
+		var q = String(placeText || "").trim();
+		if (!q) return Promise.reject(new Error("장소 이름을 입력하세요."));
+		var url = getWebappContextPath() + "/api/kakao/keyword?q=" + encodeURIComponent(q);
+		return fetch(url, { credentials: "same-origin" }).then(function (r) {
+			return r.json().then(function (j) {
+				if (!r.ok) {
+					var err = (j && j.error) || r.statusText || "keyword";
+					return Promise.reject(new Error("장소 검색 실패: " + err));
+				}
+				var docs = j.documents || [];
+				if (!docs.length) return Promise.reject(new Error("검색 결과가 없습니다: " + q));
+				var d0 = docs[0];
+				var lng = parseFloat(d0.x);
+				var lat = parseFloat(d0.y);
+				if (!isFinite(lng) || !isFinite(lat)) return Promise.reject(new Error("좌표를 찾을 수 없습니다."));
+				return { lng: lng, lat: lat, title: d0.place_name || q };
+			});
+		});
+	}
+
+	function fetchDirectionsJson(olng, olat, dlng, dlat, mode) {
+		var modeNorm = mode === "walking" ? "walking" : "driving";
+		var params = "originLat=" + encodeURIComponent(String(olat))
+			+ "&originLng=" + encodeURIComponent(String(olng))
+			+ "&destinationLat=" + encodeURIComponent(String(dlat))
+			+ "&destinationLng=" + encodeURIComponent(String(dlng))
+			+ "&mode=" + encodeURIComponent(modeNorm);
+		function one(apiName) {
+			var u = getWebappContextPath() + "/api/" + apiName + "/directions?" + params;
+			return fetch(u, { credentials: "same-origin" }).then(function (r) {
+				return r.json().then(function (j) {
+					if (!r.ok) {
+						var err = (j && (j.error_message || j.error)) || r.statusText;
+						return Promise.reject(new Error(String(err || apiName)));
+					}
+					return j;
+				});
+			});
+		}
+		function directionsPayloadLooksOk(j) {
+			if (!j || typeof j !== "object") return false;
+			var st = j.status ? String(j.status).toUpperCase() : "";
+			if (st !== "OK") return false;
+			var routes = j.routes;
+			if (!routes || !routes.length) return false;
+			var r0 = routes[0];
+			var pts = r0 && r0.overview_polyline && r0.overview_polyline.points;
+			return typeof pts === "string" && pts.length > 0;
+		}
+		return one("tmap").then(function (j) {
+			if (directionsPayloadLooksOk(j)) return j;
+			return one("google");
+		}).catch(function () {
+			return one("google");
+		});
+	}
+
+	function syncRouteTextsFromInputs() {
+		var oi = document.getElementById("routeOriginInput");
+		var di = document.getElementById("routeDestInput");
+		if (oi) routeFlowState.originText = String(oi.value || "");
+		if (di) routeFlowState.destText = String(di.value || "");
+	}
+
+	function installRouteFlowOnFacility() {
+		if (!window.NewDbField.facility) window.NewDbField.facility = {};
+		var F = window.NewDbField.facility;
+		F.setRouteFlowText = function (role, text) {
+			syncRouteTextsFromInputs();
+			var t = String(text || "");
+			if (role === "origin") {
+				routeFlowState.originText = t;
+				routeFlowState.origin = null;
+			} else {
+				routeFlowState.destText = t;
+				routeFlowState.destination = null;
+			}
+		};
+		F.setRouteFlowPoint = function (role, coord, title) {
+			cancelRoutePickInternal(false);
+			if (!coord || coord.length < 2) return;
+			var lng = parseFloat(coord[0]);
+			var lat = parseFloat(coord[1]);
+			if (!isFinite(lng) || !isFinite(lat)) return;
+			if (role === "origin") {
+				routeFlowState.origin = [lng, lat];
+				routeFlowState.originText = title || routeFlowState.originText;
+			} else {
+				routeFlowState.destination = [lng, lat];
+				routeFlowState.destText = title || routeFlowState.destText;
+			}
+			var inp = document.getElementById(role === "origin" ? "routeOriginInput" : "routeDestInput");
+			if (inp && title) inp.value = title;
+			routeFlowState.armRole = null;
+		};
+		F.getRouteFlowState = function () {
+			return {
+				origin: routeFlowState.origin,
+				destination: routeFlowState.destination,
+				originText: routeFlowState.originText,
+				destText: routeFlowState.destText,
+				picking: routeFlowState.armRole
+			};
+		};
+		F.startRouteFlow = function () {
+			cancelRoutePickInternal(false);
+			clearRouteOverlayInternal();
+			routeFlowState.lastDirectionsJson = null;
+			routeFlowState.selectedRouteIndex = 0;
+			clearRouteAltListDom();
+			routeFlowState.origin = null;
+			routeFlowState.destination = null;
+			routeFlowState.originText = "";
+			routeFlowState.destText = "";
+			var oi = document.getElementById("routeOriginInput");
+			var di = document.getElementById("routeDestInput");
+			if (oi) oi.value = "";
+			if (di) di.value = "";
+			var sum = document.getElementById("routePanelSummary");
+			if (sum) {
+				sum.style.display = "none";
+				sum.textContent = "";
+			}
+		};
+		F.cancelRouteFlow = function () {
+			cancelRoutePickInternal(false);
+			clearRouteOverlayInternal();
+			routeFlowState.lastDirectionsJson = null;
+			routeFlowState.selectedRouteIndex = 0;
+			clearRouteAltListDom();
+			routeFlowState.armRole = null;
+		};
+		F.armRouteFlowFor = function (role) {
+			cancelRoutePickInternal(true);
+			routeFlowState.armRole = role || "origin";
+			if (App.state.provider === "google" && App.state.google && App.state.google.map && google.maps && google.maps.event) {
+				var gmap = App.state.google.map;
+				routeFlowState.googlePickListener = google.maps.event.addListenerOnce(gmap, "click", function (e) {
+					routeFlowState.googlePickListener = null;
+					var arm = routeFlowState.armRole;
+					routeFlowState.armRole = null;
+					if (!arm || !e.latLng) return;
+					var lat = e.latLng.lat();
+					var lng = e.latLng.lng();
+					F.setRouteFlowPoint(arm, [lng, lat], lng.toFixed(5) + ", " + lat.toFixed(5));
+				});
+				return;
+			}
+			var s = isOlProvider() ? getOlState() : null;
+			var olLib = window.OL || window.ol;
+			if (s && s.map && olLib && olLib.Observable) {
+				routeFlowState.olPickKey = s.map.on("singleclick", function (evt) {
+					if (routeFlowState.olPickKey) {
+						olLib.Observable.unByKey(routeFlowState.olPickKey);
+						routeFlowState.olPickKey = null;
+					}
+					var arm = routeFlowState.armRole;
+					routeFlowState.armRole = null;
+					if (!arm || !evt.coordinate) return;
+					var lonlat = olLib.proj.toLonLat(evt.coordinate);
+					F.setRouteFlowPoint(arm, lonlat, lonlat[0].toFixed(5) + ", " + lonlat[1].toFixed(5));
+				});
+				return;
+			}
+			alert("지도가 준비되지 않았습니다. 화면을 새로고침 한 뒤 다시 시도하세요.");
+		};
+		F.resolveRouteFlowText = function (role) {
+			syncRouteTextsFromInputs();
+			var coordExisting = role === "origin" ? routeFlowState.origin : routeFlowState.destination;
+			if (coordExisting && coordExisting.length >= 2) return Promise.resolve();
+			var txt = role === "origin"
+				? String(routeFlowState.originText || "").trim()
+				: String(routeFlowState.destText || "").trim();
+			if (!txt) return Promise.reject(new Error(role === "origin" ? "출발지를 입력하세요." : "도착지를 입력하세요."));
+			return kakaoKeywordFirstCoord(txt).then(function (hit) {
+				F.setRouteFlowPoint(role, [hit.lng, hit.lat], hit.title);
+			});
+		};
+		F.runRouteFlow = function () {
+			syncRouteTextsFromInputs();
+			var modeEl = document.getElementById("routeModeSelect");
+			var mode = modeEl && modeEl.value ? modeEl.value : "driving";
+			clearRouteOverlayInternal();
+			clearRouteAltListDom();
+			routeFlowState.lastDirectionsJson = null;
+			routeFlowState.selectedRouteIndex = 0;
+			return F.resolveRouteFlowText("origin")
+				.then(function () {
+					return F.resolveRouteFlowText("destination");
+				})
+				.then(function () {
+					var o = routeFlowState.origin;
+					var d = routeFlowState.destination;
+					if (!o || !d) throw new Error("출발지·도착지 좌표를 확인할 수 없습니다.");
+					return fetchDirectionsJson(o[0], o[1], d[0], d[1], mode);
+				})
+				.then(function (json) {
+					var st = json.status ? String(json.status).toUpperCase() : "";
+					if (st !== "OK") {
+						var msg = json.error_message || json.error || ("경로 응답: " + (st || "UNKNOWN"));
+						throw new Error(msg);
+					}
+					var routes = json.routes;
+					if (!routes || !routes.length || !routes[0].overview_polyline || !routes[0].overview_polyline.points) {
+						throw new Error("경로 데이터가 비어 있습니다.");
+					}
+					routeFlowState.lastDirectionsJson = json;
+					routeFlowState.selectedRouteIndex = 0;
+					renderRouteAlternativesList(json);
+					drawDirectionsFull(json);
+					applyRouteSummaryEl(json, 0);
+				});
+		};
+	}
+
+	installRouteFlowOnFacility();
+
 })();
-
-
-
