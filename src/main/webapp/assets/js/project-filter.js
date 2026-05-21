@@ -5,10 +5,7 @@
 	var allUserProjects = []; // 사용자에게 부여된 모든 프로젝트 코드 리스트 (SQL1, SQL2 조건에 부합)
 	var userManuallySelected = false; // 사용자가 직접 드롭다운을 변경했는지 여부 (덮어쓰기 방지)
 	var allProjectsList = []; // 전체 프로젝트 목록 (검색 필터링용)
-	var zoomTimeoutId = null; // 줌 조정 타임아웃 ID
-	var zoomLoadListener = null; // 줌 조정용 featuresloadend 리스너
-	var shouldZoomToProject = false; // 사업번호 변경으로 인한 줌 조정이 필요한지 여부
-	var pendingProjectCode = null; // 줌 조정 대기 중인 사업번호
+	var zoomRequestId = 0; // 사업 변경 시 줌 요청 세대 (이전 비동기 결과 무시)
 	
 	// 프로젝트 진행 상태 필터 상태 (진행 중 / 사전기획 구분)
 	var projectStatusFilters = {
@@ -53,6 +50,50 @@
 			return "-";
 		}
 		return formatProjectNameCode(project.code, project.name);
+	}
+
+	function findProjectByCode(code) {
+		var c = code != null ? String(code).trim() : "";
+		if (!c || !allProjectsList || !allProjectsList.length) {
+			return null;
+		}
+		for (var i = 0; i < allProjectsList.length; i++) {
+			if (allProjectsList[i].code === c) {
+				return allProjectsList[i];
+			}
+		}
+		return null;
+	}
+
+	function updateProjectSelectorTriggerDisplay(code) {
+		var textEl = document.getElementById("projectCodeFilterTriggerText");
+		var trigger = document.getElementById("projectCodeFilterTrigger");
+		if (!textEl) {
+			return;
+		}
+		var c = code != null ? String(code).trim() : "";
+		if (!c) {
+			textEl.textContent = "사업번호를 선택하세요";
+			if (trigger) {
+				trigger.setAttribute("title", "");
+			}
+			return;
+		}
+		var project = findProjectByCode(c);
+		var label = project ? projectOptionLabel(project) : formatProjectNameCode(c, "");
+		textEl.textContent = label;
+		if (trigger) {
+			trigger.setAttribute("title", label);
+		}
+	}
+
+	function setProjectFilterSelectValue(code) {
+		var select = document.getElementById("projectCodeFilter");
+		var v = code || "";
+		if (select && select.value !== v) {
+			select.value = v;
+		}
+		updateProjectSelectorTriggerDisplay(v);
 	}
 
 	/**
@@ -161,11 +202,19 @@
 	 */
 	function showCustomDropdown() {
 		var dropdown = document.getElementById("projectCodeFilterDropdown");
+		var container = document.getElementById("projectSelectorContainer");
+		var trigger = document.getElementById("projectCodeFilterTrigger");
 		if (dropdown) {
 			dropdown.style.display = "block";
 			// 드롭다운이 열릴 때 상태 필터링된 옵션 표시
 			var statusFiltered = filterProjectsByStatus(allProjectsList);
 			updateCustomDropdownOptions(statusFiltered, "");
+		}
+		if (container) {
+			container.classList.add("is-open");
+		}
+		if (trigger) {
+			trigger.setAttribute("aria-expanded", "true");
 		}
 	}
 	
@@ -175,8 +224,17 @@
 	function hideCustomDropdown() {
 		var dropdown = document.getElementById("projectCodeFilterDropdown");
 		var searchInput = document.getElementById("projectCodeFilterSearch");
+		var container = document.getElementById("projectSelectorContainer");
+		var trigger = document.getElementById("projectCodeFilterTrigger");
 		if (dropdown) {
 			dropdown.style.display = "none";
+		}
+		if (container) {
+			container.classList.remove("is-open");
+		}
+		if (trigger) {
+			trigger.setAttribute("aria-expanded", "false");
+			trigger.blur();
 		}
 		if (searchInput) {
 			searchInput.value = "";
@@ -190,10 +248,11 @@
 	function setupProjectSearch() {
 		var searchInput = document.getElementById("projectCodeFilterSearch");
 		var select = document.getElementById("projectCodeFilter");
+		var trigger = document.getElementById("projectCodeFilterTrigger");
 		var dropdown = document.getElementById("projectCodeFilterDropdown");
 		var container = document.getElementById("projectSelectorContainer");
 		
-		if (!searchInput || !select || !dropdown || !container) return;
+		if (!searchInput || !select || !trigger || !dropdown || !container) return;
 		
 		// 검색 입력 이벤트
 		searchInput.addEventListener("input", function(e) {
@@ -271,7 +330,7 @@
 				e.target.value = "";
 				filterProjectDropdown("");
 				hideCustomDropdown();
-				select.blur();
+				trigger.blur();
 			}
 		});
 		
@@ -286,8 +345,8 @@
 			});
 		}
 		
-		// select 클릭 시 커스텀 드롭다운 토글
-		select.addEventListener("mousedown", function(e) {
+		// 트리거 클릭 시 커스텀 드롭다운 토글
+		trigger.addEventListener("mousedown", function(e) {
 			e.preventDefault();
 			e.stopPropagation();
 			var isOpen = dropdown.style.display === "block";
@@ -301,17 +360,16 @@
 			}
 		});
 		
-		select.addEventListener("focus", function(e) {
+		trigger.addEventListener("focus", function() {
 			showCustomDropdown();
 		});
 		
-		// select blur 시 드롭다운 숨김 (드롭다운 내부 클릭은 제외)
-		select.addEventListener("blur", function(e) {
+		// 트리거 blur 시 드롭다운 숨김 (드롭다운 내부 클릭은 제외)
+		trigger.addEventListener("blur", function() {
 			setTimeout(function() {
-				// 드롭다운이나 검색바에 포커스가 있으면 닫지 않음
 				var activeElement = document.activeElement;
-				if (activeElement !== searchInput && 
-				    activeElement !== dropdown && 
+				if (activeElement !== searchInput &&
+				    activeElement !== dropdown &&
 				    !dropdown.contains(activeElement)) {
 					hideCustomDropdown();
 				}
@@ -685,9 +743,10 @@
 		projects.forEach(function (project) {
 			var customOption = document.createElement("div");
 			customOption.className = "project-option";
-			customOption.style.cssText = "padding: 6px 10px; font-size: 13px; color: #374151; cursor: pointer; border-bottom: 1px solid #f3f4f6; min-height: 32px; height: 32px; display: flex; align-items: center; box-sizing: border-box; line-height: 20px;";
+			customOption.setAttribute("role", "option");
 			
 			var displayText = projectOptionLabel(project);
+			customOption.title = displayText;
 			
 			// 검색어가 있으면 강조 표시
 			if (searchTerm && searchTerm.trim() !== "") {
@@ -698,18 +757,10 @@
 			
 			customOption.dataset.value = project.code;
 			
-			// 호버 효과
-			customOption.addEventListener("mouseenter", function() {
-				this.style.backgroundColor = "#f9fafb";
-			});
-			customOption.addEventListener("mouseleave", function() {
-				this.style.backgroundColor = "white";
-			});
-			
 			// 클릭 이벤트
 			customOption.addEventListener("click", function(e) {
 				e.stopPropagation();
-				select.value = project.code;
+				setProjectFilterSelectValue(project.code);
 				var changeEvent = new Event("change", { bubbles: true });
 				select.dispatchEvent(changeEvent);
 				hideCustomDropdown();
@@ -742,9 +793,7 @@
 			currentProjectFilter = "";
 		}
 
-		if (select.value !== appliedCode) {
-			select.value = appliedCode;
-		}
+		setProjectFilterSelectValue(appliedCode);
 		if (appliedCode) {
 			var facility = window.NewDbField && window.NewDbField.facility;
 			if (facility && facility.ensureFacilityLayerInitialized) {
@@ -820,10 +869,7 @@
 		currentProjectFilter = newFilter;
 		
 		// 드롭다운 값도 강제로 동기화 (다른 코드가 덮어쓸 수 있으므로)
-		var select = document.getElementById("projectCodeFilter");
-		if (select && select.value !== newFilter) {
-			select.value = newFilter;
-		}
+		setProjectFilterSelectValue(newFilter);
 		
 		console.log("[project-filter] Filter changed from", oldFilter || "ALL", "to:", currentProjectFilter || "ALL");
 
@@ -891,61 +937,12 @@
 			}
 		}
 
-		// 레이어 새로고침 시 이전 줌 조정 리스너 제거 (새로운 featuresloadend 이벤트가 발생하므로)
-		// 단, shouldZoomToProject가 true인 경우에는 새로운 리스너를 등록해야 하므로 제거만 함
-		if (zoomLoadListener && sourceA) {
-			sourceA.un('featuresloadend', zoomLoadListener);
-			zoomLoadListener = null;
-		}
-
 		// 기존 features 완전히 제거
 		sourceA.clear();
 
 		// sourceA의 url 함수는 이미 window.ProjectFilter.buildProjectCqlFilter()를 동적으로 참조하므로
 		// refresh()만 호출하면 됨 (지연 없이 즉시 실행)
 		sourceA.refresh();
-		
-		// 사업번호 변경으로 인한 줌 조정이 필요한 경우 featuresloadend 이벤트 리스너 등록
-		if (shouldZoomToProject && pendingProjectCode !== null) {
-			var projectCode = pendingProjectCode;
-			shouldZoomToProject = false; // 플래그 리셋
-			pendingProjectCode = null;
-			
-			// features 로드 완료 이벤트 리스너 추가
-			zoomLoadListener = function() {
-				// 리스너 제거
-				if (sourceA && zoomLoadListener) {
-					sourceA.un('featuresloadend', zoomLoadListener);
-				}
-				zoomLoadListener = null;
-				
-				// features 로드 완료 후 약간의 지연을 두고 줌 조정 (렌더링 완료 대기)
-				if (zoomTimeoutId !== null) {
-					clearTimeout(zoomTimeoutId);
-				}
-				zoomTimeoutId = setTimeout(function() {
-					zoomTimeoutId = null;
-					zoomToProjectFacilities(projectCode);
-				}, 200);
-			};
-			
-			// features 로드 대기
-			sourceA.on('featuresloadend', zoomLoadListener);
-			
-			// 타임아웃 설정 (5초 후에도 로드되지 않으면 실행)
-			if (zoomTimeoutId !== null) {
-				clearTimeout(zoomTimeoutId);
-			}
-			zoomTimeoutId = setTimeout(function() {
-				// 타임아웃 발생 시 리스너도 제거
-				if (sourceA && zoomLoadListener) {
-					sourceA.un('featuresloadend', zoomLoadListener);
-				}
-				zoomLoadListener = null;
-				zoomTimeoutId = null;
-				zoomToProjectFacilities(projectCode);
-			}, 5000);
-		}
 		
 		// 레이어도 강제로 업데이트
 		if (layerA) {
@@ -1201,6 +1198,7 @@
 		if (select) {
 			select.addEventListener("change", function () {
 				var selectedValue = this.value || "";
+				updateProjectSelectorTriggerDisplay(selectedValue);
 				var oldFilter = currentProjectFilter;
 				
 				// 값이 실제로 변경되었는지 확인
@@ -1213,37 +1211,16 @@
 					
 					var userId = getCurrentUserId();
 					
-					// 이전 줌 조정 관련 타임아웃 및 리스너 정리
-					clearZoomToProjectFacilities();
-					
-					// 사업번호 변경으로 인한 줌 조정 플래그 설정
-					shouldZoomToProject = true;
-					pendingProjectCode = selectedValue;
-					
-					// 레이어 새로고침 (지도·벡터 준비 후)
+					// 레이어 새로고침 (지도·벡터 준비 후) + 프로젝트 전체 시설물 API로 줌
 					var facMod = window.NewDbField && window.NewDbField.facility;
-					if (facMod && facMod.ensureFacilityLayerInitialized) {
-						facMod.ensureFacilityLayerInitialized(function () {
-							refreshFacilityLayer();
-						});
-					} else {
+					var afterLayerReady = function () {
 						refreshFacilityLayer();
-					}
-					
-					// 이미 features가 로드되어 있는 경우를 대비하여 즉시 확인
-					var facility = window.NewDbField && window.NewDbField.facility ? window.NewDbField.facility : null;
-					var sourceA = facility && facility.getSourceA ? facility.getSourceA() : null;
-					if (sourceA && sourceA.getFeatures().length > 0) {
-						// 이미 features가 있으면 리스너를 기다리지 않고 즉시 줌 조정
-						if (zoomTimeoutId !== null) {
-							clearTimeout(zoomTimeoutId);
-						}
-						zoomTimeoutId = setTimeout(function() {
-							zoomTimeoutId = null;
-							shouldZoomToProject = false;
-							pendingProjectCode = null;
-							zoomToProjectFacilities(selectedValue);
-						}, 200);
+						scheduleZoomToProjectAfterFilter(selectedValue);
+					};
+					if (facMod && facMod.ensureFacilityLayerInitialized) {
+						facMod.ensureFacilityLayerInitialized(afterLayerReady);
+					} else {
+						afterLayerReady();
 					}
 					
 					// WMS와 SHP 레이어는 병렬로 실행 (setTimeout 0으로 다음 이벤트 루프에서 실행)
@@ -1300,144 +1277,47 @@
 	});
 
 	/**
-	 * 이전 줌 조정 관련 타임아웃 및 리스너 정리
+	 * 사업 변경 후 프로젝트 전체 시설물 API로 지도 줌 (bbox 로드·featuresloadend와 분리)
 	 */
-	function clearZoomToProjectFacilities() {
-		// 이전 타임아웃 클리어
-		if (zoomTimeoutId !== null) {
-			clearTimeout(zoomTimeoutId);
-			zoomTimeoutId = null;
+	function scheduleZoomToProjectAfterFilter(projectCode) {
+		var code = projectCode != null ? String(projectCode).trim() : "";
+		if (!code) {
+			return;
 		}
-		
-		// 이전 이벤트 리스너 제거
-		if (zoomLoadListener !== null) {
-			var facility = window.NewDbField && window.NewDbField.facility ? window.NewDbField.facility : null;
-			var sourceA = facility && facility.getSourceA ? facility.getSourceA() : null;
-			if (sourceA) {
-				sourceA.un('featuresloadend', zoomLoadListener);
-			}
-			zoomLoadListener = null;
+		var reqId = ++zoomRequestId;
+		var facMod = window.NewDbField && window.NewDbField.facility;
+		if (!facMod || typeof facMod.fetchProjectFacilitiesForZoom !== "function") {
+			console.warn("[project-filter] fetchProjectFacilitiesForZoom not available");
+			return;
 		}
-		
-		// 플래그 리셋
-		shouldZoomToProject = false;
-		pendingProjectCode = null;
+
+		facMod.fetchProjectFacilitiesForZoom(code)
+			.then(function (facilities) {
+				if (reqId !== zoomRequestId) {
+					return;
+				}
+				if (!facilities || !facilities.length) {
+					console.log("[project-filter] No facilities for zoom:", code);
+					return;
+				}
+				if (typeof facMod.zoomMapToFacilities === "function") {
+					var ok = facMod.zoomMapToFacilities(facilities);
+					if (ok) {
+						console.log("[project-filter] Map zoomed to", facilities.length, "facilities for project:", code);
+					}
+				}
+			})
+			.catch(function (err) {
+				if (reqId !== zoomRequestId) {
+					return;
+				}
+				console.warn("[project-filter] Project zoom fetch failed:", err);
+			});
 	}
 
-	/**
-	 * 선택된 사업번호의 시설물 포인트들로 지도 이동 및 줌 조정
-	 */
+	/** @deprecated scheduleZoomToProjectAfterFilter 사용 */
 	function zoomToProjectFacilities(projectCode) {
-		if (!window.NewDbField || !window.NewDbField.facility) {
-			console.warn("[project-filter] Facility module not loaded");
-			return;
-		}
-
-		var facility = window.NewDbField.facility;
-		var sourceA = facility.getSourceA ? facility.getSourceA() : null;
-		var layerA = facility.getLayerA ? facility.getLayerA() : null;
-
-		if (!sourceA) {
-			console.warn("[project-filter] Source not available");
-			return;
-		}
-
-		// 지도 상태 가져오기
-		// facility.js에서 사용하는 방식과 동일하게 window.NewDbField 사용
-		var App = window.NewDbField || window.App;
-		var getOlState = function() {
-			if (!App || !App.state) return null;
-			var provider = App.state.provider;
-			if (provider === "vworld") return App.state.vworld;
-			if (provider === "googleTiles") return App.state.googleTiles;
-			if (provider === "osm") return App.state.osm;
-			return null;
-		};
-		
-		var s = getOlState();
-		if (!s || !s.map) {
-			console.warn("[project-filter] Map not available");
-			return;
-		}
-
-		var view = s.map.getView();
-		if (!view) {
-			console.warn("[project-filter] View not available");
-			return;
-		}
-
-		// sourceA의 features 가져오기
-		var features = sourceA.getFeatures();
-		
-		// 필터에 맞는 features만 필터링
-		var filteredFeatures = [];
-		if (projectCode && projectCode !== "") {
-			// 특정 사업번호 선택 시
-			filteredFeatures = features.filter(function(feature) {
-				var project_code = feature.get("project_code");
-				return project_code === projectCode;
-			});
-		} else {
-			// "전체 사업" 선택 시 - allUserProjects에 포함된 프로젝트만 (권한 없으면 0건)
-			if (allUserProjects && allUserProjects.length > 0) {
-				filteredFeatures = features.filter(function(feature) {
-					var project_code = feature.get("project_code");
-					return project_code && allUserProjects.indexOf(project_code) !== -1;
-				});
-			} else {
-				filteredFeatures = [];
-			}
-		}
-
-		if (filteredFeatures.length === 0) {
-			console.log("[project-filter] No facilities found for project:", projectCode || "ALL");
-			return;
-		}
-
-		console.log("[project-filter] Found", filteredFeatures.length, "facilities for project:", projectCode || "ALL");
-
-		// OpenLayers 객체 가져오기
-		var ol = window.OL || window.ol;
-		if (!ol) {
-			console.warn("[project-filter] OpenLayers not available");
-			return;
-		}
-
-		// 모든 features의 extent 계산
-		var extent = null;
-		for (var i = 0; i < filteredFeatures.length; i++) {
-			var feature = filteredFeatures[i];
-			var geometry = feature.getGeometry();
-			if (geometry) {
-				var featureExtent = geometry.getExtent();
-				if (extent === null) {
-					extent = featureExtent.slice(); // 복사
-				} else {
-					extent = ol.extent.extend(extent, featureExtent);
-				}
-			}
-		}
-
-		if (!extent) {
-			console.warn("[project-filter] Could not calculate extent");
-			return;
-		}
-
-		// extent에 패딩 추가 (여유 공간)
-		var padding = [50, 50, 50, 50]; // [top, right, bottom, left]
-		extent = ol.extent.buffer(extent, Math.max(
-			(extent[2] - extent[0]) * 0.1, // 너비의 10%
-			(extent[3] - extent[1]) * 0.1  // 높이의 10%
-		));
-
-		// 지도 뷰를 extent로 fit
-		view.fit(extent, {
-			duration: 500,
-			padding: padding,
-			maxZoom: 18 // 최대 줌 레벨 제한
-		});
-
-		console.log("[project-filter] Map zoomed to project facilities extent");
+		scheduleZoomToProjectAfterFilter(projectCode);
 	}
 
 	/**
@@ -1518,7 +1398,7 @@
 							var shouldApplyDBValue = !skipEmptyDbOverride && ((currentProjectFilter !== dbFilter) || (currentValue !== dbFilter));
 							if (shouldApplyDBValue) {
 								currentProjectFilter = dbFilter;
-								select.value = dbFilter;
+								setProjectFilterSelectValue(dbFilter);
 								refreshFacilityLayer();
 								refreshWmsLayers();
 								refreshShpLayer();
@@ -1532,9 +1412,7 @@
 								if (skipEmptyDbOverride) {
 									console.log("[project-filter] DB empty, keeping localStorage value:", currentValue || "ALL");
 								}
-								if (select.value !== currentProjectFilter) {
-									select.value = currentProjectFilter;
-								}
+								setProjectFilterSelectValue(currentProjectFilter);
 							}
 						}
 					}
@@ -1644,10 +1522,11 @@
 				// 외부에서 호출되는 경우도 사용자 선택으로 간주
 				userManuallySelected = true;
 				currentProjectFilter = newFilter;
-				select.value = newFilter;
+				setProjectFilterSelectValue(newFilter);
 				var userId = getCurrentUserId();
-				// 레이어 새로고침
+				// 레이어 새로고침 + 줌
 				refreshFacilityLayer();
+				scheduleZoomToProjectAfterFilter(newFilter);
 				refreshWmsLayers();
 				refreshShpLayer();
 				// DB 저장

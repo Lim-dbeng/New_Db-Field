@@ -422,25 +422,14 @@
 				item.addEventListener("click", function () {
 					var code = this.getAttribute("data-code");
 					var projectCode = this.getAttribute("data-project-code") || "";
+					var lng = this.getAttribute("data-lng") || "";
+					var lat = this.getAttribute("data-lat") || "";
 					if (window.NewDbField && NewDbField.facility && NewDbField.facility.openFacilityFromSearchList) {
-						NewDbField.facility.openFacilityFromSearchList(code, projectCode);
+						NewDbField.facility.openFacilityFromSearchList(code, projectCode, lng, lat);
 					} else if (window.NewDbField && NewDbField.facility && NewDbField.facility.selectFacilityByCode) {
 						NewDbField.facility.selectFacilityByCode(code, true);
 					}
 				});
-				var photoEl = item.querySelector(".result-photo");
-				if (photoEl) {
-					photoEl.addEventListener("click", function (e) {
-						e.stopPropagation();
-						var row = this.closest(".fac-search-result-item");
-						if (!row) return;
-						var code = row.getAttribute("data-code");
-						var projectCode = row.getAttribute("data-project-code") || "";
-						if (window.NewDbField && NewDbField.facility && NewDbField.facility.openFacilityFromSearchList) {
-							NewDbField.facility.openFacilityFromSearchList(code, projectCode);
-						}
-					});
-				}
 			});
 		}
 
@@ -694,7 +683,7 @@
 
 	/**
 	 * 시설물 정보 검색 섹션 표시.
-	 * 지도 프로젝트 필터와 사업번호 동기화. 화면 내 시설물(지도 보이는 영역)만 실시간 표시.
+	 * 지도 프로젝트 필터와 사업번호 동기화. 선택 사업의 전체 시설물 목록 표시.
 	 */
 	function showFacilitySearch() {
 		hasActiveSearch = false;
@@ -724,22 +713,20 @@
 		if (menuRoute) {
 			menuRoute.classList.remove("active");
 		}
-		// 결과 영역 바로 표시 (화면 내 시설물이 나오는 자리)
+		// 결과 영역 — 선택 사업 전체 시설물
 		var resultsEl = document.getElementById("facSearchResults");
 		var countEl = document.getElementById("facSearchResultsCount");
 		var listEl = document.getElementById("facSearchResultsList");
 		var paginationEl = document.getElementById("facSearchPagination");
 		if (resultsEl) resultsEl.style.display = "flex";
-		if (countEl) countEl.textContent = "화면 내 시설물: -";
+		if (countEl) countEl.textContent = "프로젝트 시설물: -";
 		if (listEl) listEl.innerHTML = "<div class=\"empty-state\" style=\"padding:12px;text-align:center;font-size:12px;color:#94a3b8;\">불러오는 중...</div>";
 		if (paginationEl) paginationEl.innerHTML = "";
-		// 화면 내 시설물 갱신 (지도 extent 기준, 사이드바 가린 영역 제외)
-		if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.updateVisibleFacilityCount) {
-			var uvc = window.NewDbField.facility.updateVisibleFacilityCount;
-			uvc();
-			setTimeout(function () { uvc(); }, 200);
-			setTimeout(function () { uvc(); }, 600);
-			setTimeout(function () { uvc(); }, 1200);
+		if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.updateProjectFacilityList) {
+			var loadAll = window.NewDbField.facility.updateProjectFacilityList;
+			loadAll(true);
+		} else if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.updateVisibleFacilityCount) {
+			window.NewDbField.facility.updateVisibleFacilityCount(true);
 		}
 		// 지도 프로젝트 필터와 사업번호 동기화
 		var projectCodeInput = document.getElementById("facSearchProjectCode");
@@ -753,7 +740,7 @@
 	}
 
 	/**
-	 * 검색 초기화. 검색 결과를 숨기고 지도 내 시설물 자동 검색을 활성화.
+	 * 검색 초기화. 검색 결과를 숨기고 프로젝트 전체 시설물 목록을 다시 표시.
 	 */
 	function resetFacilitySearch() {
 		hasActiveSearch = false;
@@ -767,8 +754,10 @@
 		if (paginationEl) paginationEl.innerHTML = "";
 		totalCount = 0;
 		currentPage = 1;
-		if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.updateVisibleFacilityCount) {
-			window.NewDbField.facility.updateVisibleFacilityCount();
+		if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.updateProjectFacilityList) {
+			window.NewDbField.facility.updateProjectFacilityList(true);
+		} else if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.updateVisibleFacilityCount) {
+			window.NewDbField.facility.updateVisibleFacilityCount(true);
 		}
 	}
 

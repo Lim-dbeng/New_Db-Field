@@ -540,7 +540,13 @@
 		if (facilitySubmenuPanel) { facilitySubmenuPanel.style.display = "none"; }
 		var facModeSection = document.getElementById("facModeSection");
 		if (facModeSection) { facModeSection.style.display = "none"; }
-		if (window.ShpDraw && window.ShpDraw.stop) { window.ShpDraw.stop(); }
+		if (window.ShpDraw && window.ShpDraw.cancel) {
+			window.ShpDraw.cancel(true);
+		} else if (window.ShpDraw && window.ShpDraw.stop) {
+			window.ShpDraw.stop();
+			if (window.ShpDraw.clear) { window.ShpDraw.clear(); }
+			if (window.ShpDraw.hideSaveModal) { window.ShpDraw.hideSaveModal(); }
+		}
 		var menuDrawShp = document.getElementById("menuDrawShp");
 		if (menuDrawShp) { menuDrawShp.classList.remove("active"); }
 		var shpDrawModePopupEl = document.getElementById("shpDrawModePopup");
@@ -1257,11 +1263,20 @@
 			});
 		}
 		
-		// 취소 버튼
+		// 저장 모달 취소 — 그린 선 폐기 후 종료
 		var shpDrawCancel = document.getElementById("shpDrawCancel");
 		if (shpDrawCancel) {
 			shpDrawCancel.addEventListener("click", function() {
-				hideShpDrawModal();
+				if (window.ShpDraw && window.ShpDraw.cancel && window.ShpDraw.getFeatureCount() > 0) {
+					if (window.ShpDraw.cancel()) {
+						hideShpDrawModal();
+						if (menuDrawShp) {
+							menuDrawShp.classList.remove("active");
+						}
+					}
+				} else {
+					hideShpDrawModal();
+				}
 			});
 		}
 		
@@ -1299,6 +1314,21 @@
 			shpDrawFinishButton.addEventListener("click", function() {
 				if (window.ShpDraw) {
 					window.ShpDraw.finish();
+				}
+			});
+		}
+
+		// 그리기 취소 버튼 (그리기 중 우측 하단)
+		var shpDrawCancelButton = document.getElementById("shpDrawCancelButton");
+		if (shpDrawCancelButton) {
+			shpDrawCancelButton.addEventListener("click", function() {
+				if (!window.ShpDraw || !window.ShpDraw.cancel) {
+					return;
+				}
+				if (window.ShpDraw.cancel()) {
+					if (menuDrawShp) {
+						menuDrawShp.classList.remove("active");
+					}
 				}
 			});
 		}

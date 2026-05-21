@@ -581,6 +581,48 @@
 	/**
 	 * SHP 레이어 목록 렌더링
 	 */
+	function resolveUploadLayerKey(layer) {
+		if (window.ShpPanel && window.ShpPanel.resolveLayerKey) {
+			return window.ShpPanel.resolveLayerKey(layer);
+		}
+		if (layer.layerKey != null && layer.layerKey !== "") {
+			return layer.layerKey;
+		}
+		if (layer.isFreehand) {
+			return "free_" + layer.idx;
+		}
+		return layer.idx;
+	}
+
+	function isUploadLayerVisible(layer) {
+		var key = resolveUploadLayerKey(layer);
+		if (window.ShpPanel && window.ShpPanel.getLayerVisibleState) {
+			return window.ShpPanel.getLayerVisibleState(key);
+		}
+		return false;
+	}
+
+	function toggleUploadLayerVisible(layer, visible) {
+		var key = resolveUploadLayerKey(layer);
+		if (window.ShpPanel && window.ShpPanel.setLayerVisible) {
+			window.ShpPanel.setLayerVisible(key, !!visible);
+		}
+	}
+
+	function formatShpRegDt(regDt) {
+		if (!regDt) {
+			return "";
+		}
+		var s = String(regDt).trim();
+		if (s.indexOf("T") >= 0) {
+			s = s.replace("T", " ");
+		}
+		if (s.length > 16) {
+			s = s.slice(0, 16);
+		}
+		return s;
+	}
+
 	function renderShpLayerList(layers) {
 		var listContainer = document.getElementById("shpUploadLayerList");
 		var contentContainer = document.getElementById("shpLayerListContent");
@@ -598,26 +640,44 @@
 		var html = "";
 		layers.forEach(function (layer) {
 			var isOwner = currentUserId && layer.userId === currentUserId;
-			var fileName = layer.fileName || "";
+			var fileName = layer.fileName || "(이름 없음)";
 			var publisherLabel = layer.userName || layer.userId || "";
-			var displayLabel = fileName + (publisherLabel ? " (" + publisherLabel + ")" : "");
-			var hasExtent = layer.extent && layer.extent.length === 4;
-			var clickableStyle = hasExtent ? "cursor: pointer;" : "";
-			var clickHandler = hasExtent ? "onclick=\"ShpUpload.centerToLayer(" + layer.idx + ", [" + layer.extent.join(",") + "])\"" : "";
-
-			html += "<div class=\"fac-search-result-item\" style=\"display: flex; justify-content: space-between; align-items: center; " + clickableStyle + "\" " + clickHandler + ">";
-			html += "<div class=\"result-info\" style=\"flex: 1;\">";
-			html += "<div class=\"result-code\">" + escapeHtml(displayLabel) + "</div>";
-			html += "<div class=\"result-project\">사업번호: " + escapeHtml(layer.projectCode || "-") + "</div>";
-			html += "<div class=\"result-project\" style=\"font-size: 11px; color: #94a3b8;\">" + escapeHtml(layer.regDt) + "</div>";
-			html += "</div>";
-			html += "<div style=\"display: flex; gap: 5px;\" onclick=\"event.stopPropagation();\">";
-			if (isOwner) {
-				html += "<button type=\"button\" class=\"btn btn-sm btn-primary\" onclick=\"ShpUpload.editLayer(" + layer.idx + ")\">수정</button>";
+			var subLine = publisherLabel;
+			var regDtText = formatShpRegDt(layer.regDt);
+			if (regDtText) {
+				subLine = subLine ? (subLine + " · " + regDtText) : regDtText;
 			}
-			html += "<button type=\"button\" class=\"btn btn-sm btn-success\" onclick=\"ShpUpload.downloadLayer(" + layer.idx + ", '" + escapeHtml(fileName) + "')\">다운로드</button>";
+			var layerColor = (layer.color && /^#[0-9A-Fa-f]{6}$/.test(layer.color)) ? layer.color : "#00b7a5";
+			var hasExtent = layer.extent && layer.extent.length === 4;
+			var clickHandler = hasExtent ? "onclick=\"ShpUpload.centerToLayer(" + layer.idx + ", [" + layer.extent.join(",") + "])\"" : "";
+			var layerVisible = isUploadLayerVisible(layer);
+			var visibleChecked = layerVisible ? " checked" : "";
+
+			html += "<div class=\"shp-upload-layer-item\"" + (hasExtent ? " data-has-extent=\"1\"" : "") + " " + clickHandler + ">";
+			html += "<input type=\"checkbox\" class=\"shp-upload-layer-check\" title=\"지도에 표시\"" + visibleChecked
+				+ " onclick=\"event.stopPropagation();\""
+				+ " onchange=\"ShpUpload.toggleLayerVisible(" + layer.idx + ", " + (layer.isFreehand ? "true" : "false") + ", this.checked)\">";
+			html += "<span class=\"shp-upload-layer-swatch\" style=\"background-color:" + escapeHtml(layerColor) + ";\" aria-hidden=\"true\"></span>";
+			html += "<div class=\"shp-upload-layer-main\">";
+			html += "<div class=\"shp-upload-layer-name\" title=\"" + escapeHtml(fileName) + "\">" + escapeHtml(fileName) + "</div>";
+			if (subLine) {
+				html += "<div class=\"shp-upload-layer-sub\">" + escapeHtml(subLine) + "</div>";
+			}
+			html += "</div>";
+			html += "<div class=\"shp-upload-layer-actions\" onclick=\"event.stopPropagation();\">";
+			if (hasExtent) {
+				html += "<button type=\"button\" class=\"shp-upload-layer-act\" title=\"위치로 이동\" onclick=\"ShpUpload.centerToLayer(" + layer.idx + ", [" + layer.extent.join(",") + "])\">";
+				html += "<iconify-icon icon=\"tabler:focus-2\"></iconify-icon></button>";
+			}
 			if (isOwner) {
-				html += "<button type=\"button\" class=\"btn btn-sm btn-danger\" onclick=\"ShpUpload.deleteLayer(" + layer.idx + ")\">삭제</button>";
+				html += "<button type=\"button\" class=\"shp-upload-layer-act\" title=\"수정\" onclick=\"ShpUpload.editLayer(" + layer.idx + ")\">";
+				html += "<iconify-icon icon=\"tabler:edit\"></iconify-icon></button>";
+			}
+			html += "<button type=\"button\" class=\"shp-upload-layer-act\" title=\"다운로드\" onclick=\"ShpUpload.downloadLayer(" + layer.idx + ", '" + escapeHtml(fileName) + "')\">";
+			html += "<iconify-icon icon=\"tabler:download\"></iconify-icon></button>";
+			if (isOwner) {
+				html += "<button type=\"button\" class=\"shp-upload-layer-act shp-upload-layer-act--danger\" title=\"삭제\" onclick=\"ShpUpload.deleteLayer(" + layer.idx + ")\">";
+				html += "<iconify-icon icon=\"tabler:trash\"></iconify-icon></button>";
 			}
 			html += "</div>";
 			html += "</div>";
@@ -720,8 +780,12 @@
 		syncShpUploadProjectCode();
 		setTimeout(syncShpUploadProjectCode, 150);
 		
-		// 목록 로드
+		if (window.ShpPanel && window.ShpPanel.reloadPreferences) {
+			window.ShpPanel.reloadPreferences();
+		}
+		// 목록 로드 (표시 여부는 ShpPanel layerStates·DB 설정과 동기)
 		loadShpLayerList();
+		setTimeout(loadShpLayerList, 400);
 	}
 
 	/**
@@ -963,6 +1027,10 @@
 		downloadLayer: downloadShpLayer,
 		centerToLayer: centerToLayer,
 		loadList: loadShpLayerList,
+		toggleLayerVisible: function (idx, isFreehand, visible) {
+			var layer = { idx: idx, isFreehand: !!isFreehand };
+			toggleUploadLayerVisible(layer, visible);
+		},
 		isRnDPreviewUser: isShpRnDPreviewUser,
 		applyUiMode: applyShpUploadUiMode
 	};

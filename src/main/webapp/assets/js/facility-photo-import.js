@@ -205,6 +205,10 @@
 			return;
 		}
 		var fetchFn = window.NewDbField && window.NewDbField.fetchWithAuth ? window.NewDbField.fetchWithAuth : fetch;
+		var facUi = window.NewDbField && window.NewDbField.facility;
+		if (facUi && facUi.setLoading) {
+			facUi.setLoading(true, "포인트·사진 등록 중...");
+		}
 		var confirmBtn = document.getElementById("facPhotoImportModalConfirm");
 		if (confirmBtn) {
 			confirmBtn.disabled = true;
@@ -226,6 +230,9 @@
 				});
 			})
 			.then(function (pack) {
+				if (facUi && facUi.setLoading) {
+					facUi.setLoading(false);
+				}
 				if (confirmBtn) {
 					confirmBtn.disabled = false;
 					confirmBtn.textContent = "등록하기";
@@ -235,7 +242,12 @@
 				var input = document.getElementById("facImportPhotosFile");
 				if (input) input.value = "";
 				if (!pack.ok && j.success === false) {
-					alert("등록 실패: " + (j.message || (j.errors && j.errors.join("\n")) || "오류"));
+					var failMsg = "등록 실패: " + (j.message || (j.errors && j.errors.join("\n")) || "오류");
+					if (facUi && facUi.showToast) {
+						facUi.showToast(failMsg, "error", 4000);
+					} else {
+						alert(failMsg);
+					}
 					return;
 				}
 				var fac = window.NewDbField && window.NewDbField.facility;
@@ -244,18 +256,34 @@
 					if (src) src.refresh();
 				}
 				if (fac && fac.loadCodesWithFieldData) fac.loadCodesWithFieldData();
-				var msg = "완료: 포인트 " + (j.pointsCreated || 0) + "개, 사진 " + (j.photosSaved || 0) + "장";
-				if (j.skipped) msg += ", 건너뜀 " + j.skipped + "건";
-				if (j.errors && j.errors.length) msg += "\n\n오류:\n" + j.errors.slice(0, 5).join("\n");
-				alert(msg);
+				var msg = "등록 완료 · 포인트 " + (j.pointsCreated || 0) + "개, 사진 " + (j.photosSaved || 0) + "장";
+				if (j.skipped) {
+					msg += " (건너뜀 " + j.skipped + "건)";
+				}
+				if (facUi && facUi.showToast) {
+					facUi.showToast(msg, "success", 3500);
+				} else {
+					alert(msg);
+				}
+				if (j.errors && j.errors.length) {
+					console.warn("[facility-photo-import] partial errors:", j.errors);
+				}
 			})
 			.catch(function (e) {
+				if (facUi && facUi.setLoading) {
+					facUi.setLoading(false);
+				}
 				if (confirmBtn) {
 					confirmBtn.disabled = false;
 					confirmBtn.textContent = "등록하기";
 				}
 				console.error(e);
-				alert("등록 오류: " + (e && e.message ? e.message : "알 수 없는 오류"));
+				var errMsg = "등록 오류: " + (e && e.message ? e.message : "알 수 없는 오류");
+				if (facUi && facUi.showToast) {
+					facUi.showToast(errMsg, "error", 4000);
+				} else {
+					alert(errMsg);
+				}
 			});
 	}
 
@@ -274,6 +302,10 @@
 			fd.append("photos", files[i]);
 		}
 		var fetchFn = window.NewDbField && window.NewDbField.fetchWithAuth ? window.NewDbField.fetchWithAuth : fetch;
+		var facUi = window.NewDbField && window.NewDbField.facility;
+		if (facUi && facUi.setLoading) {
+			facUi.setLoading(true, "사진 분석 중...");
+		}
 		fetchFn(facApiUrl("/api/fac/import-photos/parse"), {
 			method: "POST",
 			credentials: "include",
@@ -288,11 +320,22 @@
 				});
 			})
 			.then(function (json) {
+				if (facUi && facUi.setLoading) {
+					facUi.setLoading(false);
+				}
 				showFacPhotoImportReviewModal(json);
 			})
 			.catch(function (e) {
+				if (facUi && facUi.setLoading) {
+					facUi.setLoading(false);
+				}
 				console.error(e);
-				alert("사진 분석 오류: " + (e && e.message ? e.message : "알 수 없는 오류"));
+				var errMsg = "사진 분석 오류: " + (e && e.message ? e.message : "알 수 없는 오류");
+				if (facUi && facUi.showToast) {
+					facUi.showToast(errMsg, "error", 4000);
+				} else {
+					alert(errMsg);
+				}
 				input.value = "";
 			});
 	}

@@ -3099,12 +3099,41 @@
 	}
 
 	// 외부 노출
+	function resolveLayerKey(layer) {
+		if (!layer) return null;
+		if (layer.layerKey != null && layer.layerKey !== "") return layer.layerKey;
+		if (layer.isFreehand || layer.freeLayer) return "free_" + layer.idx;
+		return layer.idx;
+	}
+
+	function getLayerVisibleState(key) {
+		var userId = window.USER_SESSION && window.USER_SESSION.userId ? window.USER_SESSION.userId : "guest";
+		var allChecked = localStorage.getItem("shpLayerAllVisible_" + userId) === "true";
+		var allCheckbox = document.getElementById("shpLayerToggleAll");
+		if (allCheckbox && allCheckbox.checked) {
+			allChecked = true;
+		}
+		var state = layerStates[key];
+		if (!state) {
+			return allChecked;
+		}
+		return allChecked || !!state.visible;
+	}
+
+	function setLayerVisible(key, visible) {
+		toggleLayer(key, visible);
+		renderLayerList();
+	}
+
 	window.ShpPanel = {
 		reload: loadShpLayers,
 		togglePanel: togglePanel,
 		updatePosition: updateShpButtonPosition,
 		toggleAllLayers: toggleAllLayers,
 		syncShpLayerCheckbox: syncShpLayerCheckbox,
+		resolveLayerKey: resolveLayerKey,
+		getLayerVisibleState: getLayerVisibleState,
+		setLayerVisible: setLayerVisible,
 		openEditModal: openEditModal,
 		toggleGeometryEdit: toggleGeometryEdit,
 		stopGeometryEdit: stopGeometryEdit,

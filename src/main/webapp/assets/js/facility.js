@@ -28,6 +28,16 @@
 	// test.field에 use_yn='Y' 데이터가 있는 code 집합. 마커 색상(초록/주황) 판단용.
 	var codesWithFieldData = new Set();
 	var fieldDataRefreshInterval = null; // 다른 사용자 업로드 시 마커 색상 갱신용 주기 폴링
+	/** 시설물 정보 탭 목록 — 현재 프로젝트 전체(지도 이동과 무관) */
+	var projectFacilityListCache = [];
+	var projectFacilityListLoadedFor = "";
+	var projectFacilityListLoading = false;
+	var PROJECT_FAC_LIST_BOUNDS = { minx: 124.0, miny: 33.0, maxx: 132.0, maxy: 39.5 };
+	var PROJECT_FAC_LIST_PAGE_SIZE = 100;
+	var projectFacilityListPage = 1;
+	var MAP_FAC_LIST_LIMIT = 5000;
+	var _facilityStyleOrange = null;
+	var _facilityStyleGreen = null;
 
 	function formatProjectDisplay(code) {
 		if (window.ProjectFilter && typeof window.ProjectFilter.formatProjectNameCode === "function") {
@@ -37,11 +47,22 @@
 		return c || "-";
 	}
 
+	function facilityListPhotoUrl(photo1) {
+		if (photo1 == null || !String(photo1).trim()) {
+			return null;
+		}
+		var p = String(photo1).trim();
+		if (p.indexOf("/DCIM/") === 0) {
+			return p;
+		}
+		return "/DCIM/" + p;
+	}
+
 	function buildFacSearchResultItemHtml(code, projectCode, photoUrl, lng, lat) {
 		var projectText = formatProjectDisplay(projectCode);
 		var html = "<div class=\"fac-search-result-item\" data-code=\"" + escapeHtml(code) + "\" data-lng=\"" + lng + "\" data-lat=\"" + lat + "\" data-project-code=\"" + escapeHtml(projectCode || "") + "\">";
 		if (photoUrl) {
-			html += "<div class=\"result-photo-wrap\"><img src=\"" + escapeHtml(photoUrl) + "\" alt=\"시설물 사진\" class=\"result-photo\" onerror=\"this.parentElement.style.display='none'\"></div>";
+			html += "<div class=\"result-photo-wrap\"><img src=\"" + escapeHtml(photoUrl) + "\" alt=\"시설물 사진\" class=\"result-photo\" loading=\"lazy\" decoding=\"async\" onerror=\"this.parentElement.style.display='none'\"></div>";
 		}
 		html += "<div class=\"result-body\"><div class=\"result-code\">" + escapeHtml(code) + "</div>";
 		html += "<div class=\"result-project\">" + escapeHtml(projectText) + "</div></div></div>";
@@ -77,6 +98,83 @@
 		representativePhotoName: null // 대표사진 파일명
 	};
 
+	var _facilityToastTimer = null;
+
+	function showFacilityToast(message, type, durationMs) {
+		if (!message) {
+			return;
+		}
+		type = type || "success";
+		durationMs = durationMs == null ? 2800 : durationMs;
+		var existing = document.querySelector(".ndf-fac-toast");
+		if (existing && existing.parentNode) {
+			existing.parentNode.removeChild(existing);
+		}
+		if (_facilityToastTimer) {
+			clearTimeout(_facilityToastTimer);
+			_facilityToastTimer = null;
+		}
+		var el = document.createElement("div");
+		el.className = "ndf-fac-toast ndf-fac-toast--" + type;
+		el.setAttribute("role", "status");
+		el.textContent = message;
+		document.body.appendChild(el);
+		_facilityToastTimer = setTimeout(function () {
+			el.classList.add("ndf-fac-toast--hide");
+			setTimeout(function () {
+				if (el.parentNode) {
+					el.parentNode.removeChild(el);
+				}
+			}, 220);
+			_facilityToastTimer = null;
+		}, durationMs);
+	}
+
+	function setFacilityLoading(on, message) {
+		var el = document.getElementById("ndfFacilityLoading");
+		if (!el) {
+			return;
+		}
+		var msgEl = el.querySelector(".ndf-fac-loading__msg");
+		if (msgEl) {
+			msgEl.textContent = message || "처리 중...";
+		}
+		if (on) {
+			el.classList.add("is-visible");
+			el.setAttribute("aria-hidden", "false");
+		} else {
+			el.classList.remove("is-visible");
+			el.setAttribute("aria-hidden", "true");
+		}
+	}
+
+	function setFacilitySaveButtonsLoading(loading, loadingLabel) {
+		var ids = ["saveFacBtn", "saveInsertBtn", "detailSaveBtn"];
+		for (var i = 0; i < ids.length; i++) {
+			var btn = document.getElementById(ids[i]);
+			if (!btn) {
+				continue;
+			}
+			if (loading) {
+				if (!btn.dataset.ndfOrigHtml) {
+					btn.dataset.ndfOrigHtml = btn.innerHTML;
+				}
+				btn.disabled = true;
+				btn.classList.add("ndf-btn-loading");
+				if (loadingLabel) {
+					btn.textContent = loadingLabel;
+				}
+			} else {
+				btn.disabled = false;
+				btn.classList.remove("ndf-btn-loading");
+				if (btn.dataset.ndfOrigHtml) {
+					btn.innerHTML = btn.dataset.ndfOrigHtml;
+					delete btn.dataset.ndfOrigHtml;
+				}
+			}
+		}
+	}
+
 	function getOlState() {
 		if (!App || !App.state) return null;
 		var provider = App.state.provider;
@@ -97,6 +195,8 @@
 	function resetFacilityLayerForNewMap() {
 		layerA = null;
 		sourceA = null;
+		_facilityStyleOrange = null;
+		_facilityStyleGreen = null;
 		selectInteraction = null;
 		highlightLayer = null;
 		highlightSource = null;
@@ -169,6 +269,55 @@
 		return code;
 	}
 
+	/** 프로젝트 전체 시설물 목록용 — 한국 전역 bbox + projectCode */
+	function buildFacListApiUrlForProject(projectCode) {
+		if (!projectCode) {
+			return null;
+		}
+		var b = PROJECT_FAC_LIST_BOUNDS;
+		var ctx = getAppContextPath();
+		return ctx + "/api/fac/list?minx=" + encodeURIComponent(b.minx)
+			+ "&miny=" + encodeURIComponent(b.miny)
+			+ "&maxx=" + encodeURIComponent(b.maxx)
+			+ "&maxy=" + encodeURIComponent(b.maxy)
+			+ "&limit=5000&projectCode=" + encodeURIComponent(projectCode);
+	}
+
+	function ensureFacilityPointStyles(ol) {
+		if (_facilityStyleOrange && _facilityStyleGreen) {
+			return;
+		}
+		_facilityStyleOrange = new ol.style.Style({
+			image: new ol.style.Circle({
+				stroke: new ol.style.Stroke({ color: "rgba(0, 0, 0, 1.0)", width: 2 }),
+				fill: new ol.style.Fill({ color: "rgba(255, 152, 0, 1)" }),
+				radius: 9
+			})
+		});
+		_facilityStyleGreen = new ol.style.Style({
+			image: new ol.style.Circle({
+				stroke: new ol.style.Stroke({ color: "rgba(0, 0, 0, 1.0)", width: 2 }),
+				fill: new ol.style.Fill({ color: "rgba(80, 224, 29, 1)" }),
+				radius: 9
+			})
+		});
+	}
+
+	function facilityLayerStyleFunction(feature) {
+		if (!feature) {
+			return null;
+		}
+		var ol = window.OL || window.ol;
+		if (!ol) {
+			return null;
+		}
+		ensureFacilityPointStyles(ol);
+		var vals = feature.values_ || {};
+		var code = vals.code || (feature.get ? feature.get("code") : null) || "";
+		var hasFieldData = code && codesWithFieldData && codesWithFieldData.has(code);
+		return hasFieldData ? [_facilityStyleGreen] : [_facilityStyleOrange];
+	}
+
 	/** REST API — GeoServer WFS 타일/직접호출 대신 /api/fac/list 사용 */
 	function buildFacListApiUrlFromLonLatBounds(minLng, minLat, maxLng, maxLat) {
 		var projectCode = getCurrentProjectCodeForMap();
@@ -180,7 +329,7 @@
 			+ "&miny=" + encodeURIComponent(minLat)
 			+ "&maxx=" + encodeURIComponent(maxLng)
 			+ "&maxy=" + encodeURIComponent(maxLat)
-			+ "&limit=5000&projectCode=" + encodeURIComponent(projectCode);
+			+ "&limit=" + MAP_FAC_LIST_LIMIT + "&projectCode=" + encodeURIComponent(projectCode);
 	}
 
 	function buildFacListApiUrlFromExtent3857(extent) {
@@ -384,7 +533,7 @@
 					position: { lat: lat, lng: lng },
 					map: googleFacilityLayerVisible ? gs.map : null,
 					icon: googleMarkerIcon(codesWithFieldData.has(facilityCode), false),
-					optimized: false
+					optimized: true
 				});
 				marker.addListener("click", function () {
 					if (addModeActive) return;
@@ -409,7 +558,6 @@
 				delete googleFeatureStubsByCode[existingCodes[j]];
 			}
 		}
-		updateVisibleFacilityCount();
 	}
 
 	function initFacilityLayerGoogle() {
@@ -437,6 +585,7 @@
 			loadCodesWithFieldData();
 			if (fieldDataRefreshInterval) clearInterval(fieldDataRefreshInterval);
 			fieldDataRefreshInterval = setInterval(loadCodesWithFieldData, 60000);
+			setupProjectFacilityListListener();
 		}
 		scheduleGoogleFacilityLoad();
 	}
@@ -630,51 +779,11 @@
 			strategy: ol.loadingstrategy.bbox
 		});
 
-		var baseStyleFn = null;
-		if (App.mapApi && typeof App.mapApi.getSpotsystemStyle === "function") {
-			baseStyleFn = App.mapApi.getSpotsystemStyle("fac:gis_a_layer");
-		} else if (App.mapApi && typeof App.mapApi.buildSpotsystemStyle === "function") {
-			baseStyleFn = App.mapApi.buildSpotsystemStyle;
-		} else {
-			baseStyleFn = function () {
-				return [new ol.style.Style({
-					image: new ol.style.Circle({
-						radius: 8,
-						fill: new ol.style.Fill({ color: "#00b7a5" }),
-						stroke: new ol.style.Stroke({ color: "#ffffff", width: 2 })
-					})
-				})];
-			};
-		}
-
 		layerA = new ol.layer.Vector({
 			source: sourceA,
-			updateWhileAnimating: true,
-			updateWhileInteracting: true,
-			style: function(feature, resolution){
-				if (!feature) {
-					return null;
-				}
-				var vals = feature.values_ || {};
-				// 색상은 test.field 기준: use_yn='Y' 데이터가 있으면 초록, 없으면 주황 (사진 파일 유무와 무관)
-				var styleOrange = new ol.style.Style({
-					image: new ol.style.Circle({
-						stroke: new ol.style.Stroke({ color: 'rgba(0, 0, 0, 1.0)', width: 2 }),
-						fill: new ol.style.Fill({ color: 'rgba(255, 152, 0, 1)' }),
-						radius: 9
-					})
-				});
-				var styleGreen = new ol.style.Style({
-					image: new ol.style.Circle({
-						stroke: new ol.style.Stroke({ color: 'rgba(0, 0, 0, 1.0)', width: 2 }),
-						fill: new ol.style.Fill({ color: 'rgba(80, 224, 29, 1)' }),
-						radius: 9
-					})
-				});
-				var code = vals.code || (feature.get ? feature.get("code") : null) || "";
-				var hasFieldData = code && codesWithFieldData && codesWithFieldData.has(code);
-				return hasFieldData ? [styleGreen] : [styleOrange];
-			}
+			updateWhileAnimating: false,
+			updateWhileInteracting: false,
+			style: facilityLayerStyleFunction
 		});
 
 		s.map.addLayer(layerA);
@@ -693,9 +802,7 @@
 		}
 		
 		setupSelectInteraction();
-		// 화면 내 시설물 개수 실시간 갱신 (지도 이동 시, 사이드바 가린 영역 제외)
-		setupVisibleFacilityCountListener(s.map);
-		updateVisibleFacilityCount();
+		setupProjectFacilityListListener();
 		// test.field 데이터 있는 code 목록 로드 → 마커 색상(초록/주황) 반영
 		loadCodesWithFieldData();
 		// 다른 사용자가 다른 기기에서 사진 업로드 시 마커 색상 동기화용 주기 폴링 (60초)
@@ -718,7 +825,11 @@
 				if (data.success && Array.isArray(data.codes)) {
 					data.codes.forEach(function (c) { codesWithFieldData.add(c); });
 				}
-				if (sourceA) { sourceA.changed(); }
+				if (layerA) {
+					layerA.changed();
+				} else if (sourceA) {
+					sourceA.changed();
+				}
 				if (isGoogleProvider()) { refreshGoogleMarkerStyles(); }
 			})
 			.catch(function (err) {
@@ -751,65 +862,251 @@
 		setFacilityLayerVisible(visible);
 	}
 
-	/**
-	 * 지도 이동/줌 시 화면 내 시설물 개수 갱신 리스너 등록
-	 */
-	/**
-	 * 현재 화면 extent 내 시설물을 API 형식으로 반환 (검색 결과 폴백용)
-	 */
+	/** 프로젝트 시설물 목록 캐시 (검색 폴백 등) */
 	function getFacilitiesInView() {
-		var state = getOlState();
-		if (!state || !state.map || !sourceA) return [];
-		var ol = window.OL || window.ol;
-		if (!ol || !ol.proj) return [];
-		var view = state.map.getView();
-		var size = state.map.getSize();
-		if (!view || !size || size[0] <= 0 || size[1] <= 0) return [];
-		try {
-			var topLeft = state.map.getCoordinateFromPixel([0, 0]);
-			var bottomRight = state.map.getCoordinateFromPixel([size[0], size[1]]);
-			if (!topLeft || !bottomRight) return [];
-			var extent = [topLeft[0], bottomRight[1], bottomRight[0], topLeft[1]];
-			var features = sourceA.getFeaturesInExtent(extent);
-			if (!features || features.length === 0) return [];
-			var out = [];
-			for (var i = 0; i < features.length; i++) {
-				var f = features[i];
-				var geom = f.getGeometry();
-				var vals = f.getProperties ? f.getProperties() : {};
-				var code = vals.code || f.get("code") || "";
-				var projectCode = vals.project_code || f.get("project_code") || "";
-				var photo1 = vals.photo1 || f.get("photo1") || "";
-				var lat = null, lng = null;
-				if (geom) {
-					var coord = geom.getCoordinates();
-					if (coord && coord.length >= 2) {
-						var lonLat = ol.proj.toLonLat([coord[0], coord[1]]);
-						lng = lonLat[0]; lat = lonLat[1];
-					}
-				}
-				out.push({ code: code, projectCode: projectCode, photo1: photo1, lat: lat, lng: lng });
+		return projectFacilityListCache.slice(0);
+	}
+
+	function facilitiesFromListApiJson(json) {
+		var items = [];
+		var feats = json && json.features;
+		if (!feats || !feats.length) {
+			return items;
+		}
+		for (var i = 0; i < feats.length; i++) {
+			var f = feats[i];
+			var props = f.properties || {};
+			var code = props.code || props.name || "";
+			if (!code) {
+				continue;
 			}
-			return out;
-		} catch (e) {
-			return [];
+			var projectCode = props.project_code || "";
+			var photo1 = props.photo1 || "";
+			var lng = "";
+			var lat = "";
+			var geom = f.geometry;
+			if (geom && geom.type === "Point" && geom.coordinates && geom.coordinates.length >= 2) {
+				lng = geom.coordinates[0];
+				lat = geom.coordinates[1];
+			}
+			items.push({ code: code, projectCode: projectCode, photo1: photo1, lat: lat, lng: lng });
+		}
+		items.sort(function (a, b) {
+			return String(a.code).localeCompare(String(b.code), "ko");
+		});
+		return items;
+	}
+
+	/**
+	 * 시설물 좌표 배열로 지도 뷰 맞춤 (Google / OpenLayers)
+	 * @returns {boolean} 줌 적용 여부
+	 */
+	function zoomMapToFacilities(facilities) {
+		if (!facilities || !facilities.length) {
+			return false;
+		}
+		var validCoords = [];
+		for (var i = 0; i < facilities.length; i++) {
+			var f = facilities[i];
+			if (f.lat == null || f.lng == null) {
+				continue;
+			}
+			var lat = parseFloat(f.lat);
+			var lng = parseFloat(f.lng);
+			if (!isNaN(lat) && !isNaN(lng)) {
+				validCoords.push({ lat: lat, lng: lng });
+			}
+		}
+		if (!validCoords.length) {
+			return false;
+		}
+
+		if (window.App && window.App.state && window.App.state.provider === "google" &&
+			window.App.state.google && window.App.state.google.map && window.google && window.google.maps) {
+			var bounds = new google.maps.LatLngBounds();
+			validCoords.forEach(function (coord) {
+				bounds.extend(new google.maps.LatLng(coord.lat, coord.lng));
+			});
+			window.App.state.google.map.fitBounds(bounds);
+			return true;
+		}
+
+		var ol = window.OL || window.ol;
+		if (!ol || !ol.proj) {
+			return false;
+		}
+		var state = getOlState();
+		if (!state || !state.map) {
+			return false;
+		}
+		var view = state.map.getView();
+		if (!view) {
+			return false;
+		}
+
+		var minLng = Infinity;
+		var maxLng = -Infinity;
+		var minLat = Infinity;
+		var maxLat = -Infinity;
+		validCoords.forEach(function (coord) {
+			if (coord.lng < minLng) { minLng = coord.lng; }
+			if (coord.lng > maxLng) { maxLng = coord.lng; }
+			if (coord.lat < minLat) { minLat = coord.lat; }
+			if (coord.lat > maxLat) { maxLat = coord.lat; }
+		});
+
+		var lngPad = (maxLng - minLng) * 0.1;
+		var latPad = (maxLat - minLat) * 0.1;
+		if (lngPad < 0.0001) { lngPad = 0.001; }
+		if (latPad < 0.0001) { latPad = 0.001; }
+
+		var bottomLeft = ol.proj.fromLonLat([minLng - lngPad, minLat - latPad]);
+		var topRight = ol.proj.fromLonLat([maxLng + lngPad, maxLat + latPad]);
+		var extent = [bottomLeft[0], bottomLeft[1], topRight[0], topRight[1]];
+
+		view.fit(extent, {
+			duration: 500,
+			padding: [50, 50, 50, 50],
+			maxZoom: 18
+		});
+		return true;
+	}
+
+	/**
+	 * 프로젝트 전체 시설물 좌표 조회 (한국 전역 bbox + projectCode)
+	 */
+	function fetchProjectFacilitiesForZoom(projectCode) {
+		var code = projectCode != null ? String(projectCode).trim() : "";
+		if (!code) {
+			return Promise.resolve([]);
+		}
+		var url = buildFacListApiUrlForProject(code);
+		if (!url) {
+			return Promise.resolve([]);
+		}
+		var fetchFn = (window.NewDbField && window.NewDbField.fetchWithAuth) ? window.NewDbField.fetchWithAuth : fetch;
+		return fetchFn(url, { credentials: "include" })
+			.then(function (res) {
+				if (!res.ok) {
+					return Promise.reject(new Error("HTTP " + res.status));
+				}
+				return res.json();
+			})
+			.then(function (json) {
+				return facilitiesFromListApiJson(json);
+			});
+	}
+
+	function bindFacSearchResultListClicks(listEl) {
+		if (!listEl) {
+			return;
+		}
+		var items = listEl.querySelectorAll(".fac-search-result-item");
+		for (var j = 0; j < items.length; j++) {
+			(function (it) {
+				it.addEventListener("click", function () {
+					var c = this.getAttribute("data-code");
+					var pc = this.getAttribute("data-project-code") || "";
+					var lng = this.getAttribute("data-lng") || "";
+					var lat = this.getAttribute("data-lat") || "";
+					if (window.NewDbField && NewDbField.facility && NewDbField.facility.openFacilityFromSearchList) {
+						NewDbField.facility.openFacilityFromSearchList(c, pc, lng, lat);
+					} else if (window.NewDbField && NewDbField.facility && NewDbField.facility.selectFacilityByCode) {
+						NewDbField.facility.selectFacilityByCode(c, true);
+					}
+				});
+			})(items[j]);
 		}
 	}
 
-	function setupVisibleFacilityCountListener(map) {
-		if (!map || !sourceA) return;
-		var view = map.getView();
-		if (!view) return;
-		function onViewChange() {
-			updateVisibleFacilityCount();
+	function renderProjectFacilityListPagination(totalItems, page, projectCode) {
+		var paginationEl = document.getElementById("facSearchPagination");
+		if (!paginationEl) {
+			return;
 		}
-		view.on("change:center", onViewChange);
-		view.on("change:resolution", onViewChange);
-		map.on("moveend", onViewChange);
-		if (sourceA) {
-			sourceA.on("change", onViewChange);
-			// WFS 로딩 완료 시 갱신 (bbox 전략으로 비동기 로드되므로)
-			sourceA.on("featuresloadend", onViewChange);
+		var totalPages = Math.max(1, Math.ceil(totalItems / PROJECT_FAC_LIST_PAGE_SIZE));
+		if (totalPages <= 1) {
+			paginationEl.innerHTML = "";
+			return;
+		}
+		var html = "";
+		var prevDisabled = page <= 1 ? " disabled" : "";
+		var nextDisabled = page >= totalPages ? " disabled" : "";
+		html += "<button type=\"button\" class=\"page-btn\" data-page=\"" + (page - 1) + "\"" + prevDisabled + " aria-label=\"이전\">‹</button>";
+		var startPage = Math.max(1, page - 2);
+		var endPage = Math.min(totalPages, startPage + 4);
+		startPage = Math.max(1, endPage - 4);
+		for (var p = startPage; p <= endPage; p++) {
+			var active = p === page ? " active" : "";
+			html += "<button type=\"button\" class=\"page-btn" + active + "\" data-page=\"" + p + "\">" + p + "</button>";
+		}
+		html += "<button type=\"button\" class=\"page-btn\" data-page=\"" + (page + 1) + "\"" + nextDisabled + " aria-label=\"다음\">›</button>";
+		paginationEl.innerHTML = html;
+		var buttons = paginationEl.querySelectorAll(".page-btn");
+		for (var i = 0; i < buttons.length; i++) {
+			(function (btn) {
+				btn.addEventListener("click", function () {
+					if (btn.disabled) {
+						return;
+					}
+					var nextPage = parseInt(btn.getAttribute("data-page"), 10);
+					if (!nextPage || nextPage < 1 || nextPage > totalPages) {
+						return;
+					}
+					renderProjectFacilityListPage(projectFacilityListCache, projectCode, nextPage);
+				});
+			})(buttons[i]);
+		}
+	}
+
+	function renderProjectFacilityListPage(items, projectCode, page) {
+		var countEl = document.getElementById("facSearchResultsCount");
+		var listEl = document.getElementById("facSearchResultsList");
+		if (!countEl || !listEl) {
+			return;
+		}
+		projectFacilityListPage = page;
+		var label = formatProjectDisplay(projectCode);
+		var suffix = items.length >= 5000 ? " (최대 5000건)" : "";
+		var totalPages = Math.max(1, Math.ceil(items.length / PROJECT_FAC_LIST_PAGE_SIZE));
+		var pageLabel = totalPages > 1 ? " · " + page + "/" + totalPages + "페이지" : "";
+		countEl.textContent = "프로젝트 시설물: " + items.length + "건 · " + label + suffix + pageLabel;
+		if (!items.length) {
+			listEl.innerHTML = "<div class=\"empty-state\" style=\"padding:12px;text-align:center;font-size:12px;color:#94a3b8;\">이 사업에 등록된 시설물이 없습니다.</div>";
+			renderProjectFacilityListPagination(0, 1, projectCode);
+			return;
+		}
+		var start = (page - 1) * PROJECT_FAC_LIST_PAGE_SIZE;
+		var pageItems = items.slice(start, start + PROJECT_FAC_LIST_PAGE_SIZE);
+		var html = "";
+		for (var i = 0; i < pageItems.length; i++) {
+			var row = pageItems[i];
+			html += buildFacSearchResultItemHtml(row.code, row.projectCode, facilityListPhotoUrl(row.photo1), row.lng, row.lat);
+		}
+		listEl.innerHTML = html;
+		bindFacSearchResultListClicks(listEl);
+		renderProjectFacilityListPagination(items.length, page, projectCode);
+	}
+
+	function renderProjectFacilityList(items, projectCode) {
+		var countEl = document.getElementById("facSearchResultsCount");
+		var listEl = document.getElementById("facSearchResultsList");
+		if (!countEl || !listEl) {
+			return;
+		}
+		showFacSearchResultsLayout();
+		projectFacilityListPage = 1;
+		renderProjectFacilityListPage(items, projectCode, 1);
+	}
+
+	function setupProjectFacilityListListener() {
+		var sel = document.getElementById("projectCodeFilter");
+		if (sel && !sel._ndfProjectFacListBound) {
+			sel._ndfProjectFacListBound = true;
+			sel.addEventListener("change", function () {
+				projectFacilityListLoadedFor = "";
+				updateProjectFacilityList(true);
+			});
 		}
 	}
 
@@ -911,132 +1208,92 @@
 	}
 
 	/**
-	 * 화면 내 시설물 개수+리스트 갱신 (사이드바 가린 영역 제외, 지도 이동 시 실시간 반영)
-	 * 검색 결과가 활성화된 경우에는 건드리지 않음
+	 * 현재 선택 사업의 전체 시설물 목록 갱신 (지도 이동과 무관).
+	 * 키워드 검색 결과 표시 중에는 건드리지 않음.
 	 */
-	function updateVisibleFacilityCount() {
+	function updateProjectFacilityList(forceReload) {
 		var facSearchSection = document.getElementById("facSearchSection");
-		if (!facSearchSection) return;
+		if (!facSearchSection) {
+			return;
+		}
 		var cs = window.getComputedStyle ? window.getComputedStyle(facSearchSection) : null;
-		if (cs && cs.display === "none") return;
-		// 검색 결과가 활성화된 동안은 화면 내 시설물 표시하지 않음
-		var hasActiveSearch = window.FacilitySearch && typeof window.FacilitySearch.hasActiveSearch === "function" && window.FacilitySearch.hasActiveSearch();
-		if (hasActiveSearch) return;
+		if (cs && cs.display === "none") {
+			return;
+		}
+		var hasActiveSearch = window.FacilitySearch && typeof window.FacilitySearch.hasActiveSearch === "function"
+			&& window.FacilitySearch.hasActiveSearch();
+		if (hasActiveSearch) {
+			return;
+		}
 
-		var resultsEl = document.getElementById("facSearchResults");
 		var countEl = document.getElementById("facSearchResultsCount");
 		var listEl = document.getElementById("facSearchResultsList");
 		var paginationEl = document.getElementById("facSearchPagination");
-		if (!resultsEl || !countEl || !listEl) return;
+		if (!countEl || !listEl) {
+			return;
+		}
 		showFacSearchResultsLayout();
-		var state = getOlState();
-		if (!state || !state.map || !sourceA) {
-			countEl.textContent = "화면 내 시설물: -";
-			listEl.innerHTML = "<div class=\"empty-state\" style=\"padding:12px;text-align:center;font-size:12px;color:#94a3b8;\">지도를 불러오는 중입니다.</div>";
-			if (paginationEl) paginationEl.innerHTML = "";
+		if (paginationEl) {
+			paginationEl.innerHTML = "";
+		}
+
+		var projectCode = getCurrentProjectCodeForMap();
+		if (!projectCode) {
+			projectFacilityListCache = [];
+			projectFacilityListLoadedFor = "";
+			countEl.textContent = "프로젝트 시설물: -";
+			listEl.innerHTML = "<div class=\"empty-state\" style=\"padding:12px;text-align:center;font-size:12px;color:#94a3b8;\">상단에서 사업을 선택해 주세요.</div>";
 			return;
 		}
 
-		var map = state.map;
-		var view = map.getView();
-		var size = map.getSize();
-		if (!size || size[0] <= 0 || size[1] <= 0) {
-			countEl.textContent = "화면 내 시설물: -";
-			listEl.innerHTML = "<div class=\"empty-state\" style=\"padding:12px;text-align:center;font-size:12px;color:#94a3b8;\">지도를 불러오는 중입니다.</div>";
+		if (!forceReload && projectCode === projectFacilityListLoadedFor && projectFacilityListCache.length) {
+			renderProjectFacilityList(projectFacilityListCache, projectCode);
 			return;
 		}
-		var mapEl = document.getElementById("map");
-		if (!mapEl) {
-			countEl.textContent = "화면 내 시설물: -";
-			listEl.innerHTML = "<div class=\"empty-state\" style=\"padding:12px;text-align:center;font-size:12px;color:#94a3b8;\">지도를 불러오는 중입니다.</div>";
+		if (projectFacilityListLoading && !forceReload) {
 			return;
 		}
-		// 사이드바에 가려진 영역 제외한 지도 extent 계산
-		var rect = mapEl.getBoundingClientRect();
-		var pageEl = document.querySelector(".page");
-		var sidebarVisible = pageEl && !pageEl.classList.contains("sidebar-hidden");
-		var leftPx = 0;
-		if (sidebarVisible) {
-			var sidebarRight = 64 + 445;
-			if (window.NewDbField && NewDbField.SidebarPanels && NewDbField.SidebarPanels.getVisibleSidebarWidthPx) {
-				sidebarRight = 64 + NewDbField.SidebarPanels.getVisibleSidebarWidthPx();
-			}
-			leftPx = Math.max(0, Math.min(sidebarRight - rect.left, size[0]));
+
+		var url = buildFacListApiUrlForProject(projectCode);
+		if (!url) {
+			return;
 		}
-		try {
-			var ol = window.OL || window.ol;
-			var topLeft = map.getCoordinateFromPixel([leftPx, 0]);
-			var bottomRight = map.getCoordinateFromPixel([size[0], size[1]]);
-			if (!topLeft || !bottomRight) {
-				countEl.textContent = "화면 내 시설물: -";
-				listEl.innerHTML = "<div class=\"empty-state\" style=\"padding:12px;text-align:center;font-size:12px;color:#94a3b8;\">화면 영역을 계산하는 중입니다.</div>";
-				return;
-			}
-			var extent = [topLeft[0], bottomRight[1], bottomRight[0], topLeft[1]];
-			var features = sourceA.getFeaturesInExtent(extent);
-			var count = features ? features.length : 0;
 
-			showFacSearchResultsLayout();
-			countEl.textContent = "화면 내 시설물: " + count + "건";
-			if (paginationEl) paginationEl.innerHTML = "";
+		projectFacilityListLoading = true;
+		countEl.textContent = "프로젝트 시설물: 불러오는 중…";
+		listEl.innerHTML = "<div class=\"empty-state\" style=\"padding:12px;text-align:center;font-size:12px;color:#94a3b8;\">목록을 불러오는 중입니다.</div>";
 
-			if (listEl && ol && ol.proj) {
-				if (count === 0) {
-					listEl.innerHTML = "<div class=\"empty-state\" style=\"padding:12px;text-align:center;font-size:12px;color:#94a3b8;\">화면에 시설물이 없습니다.</div>";
-				} else {
-					var html = "";
-					for (var i = 0; i < features.length; i++) {
-						var f = features[i];
-						var geom = f.getGeometry();
-						var vals = f.getProperties ? f.getProperties() : {};
-						var code = vals.code || f.get("code") || "";
-						var projectCode = vals.project_code || f.get("project_code") || "";
-						var photo1 = vals.photo1 || f.get("photo1") || "";
-						var lat = "", lng = "";
-						if (geom) {
-							var coord = geom.getCoordinates();
-							if (coord && coord.length >= 2) {
-								var lonLat = ol.proj.toLonLat([coord[0], coord[1]]);
-								lng = lonLat[0]; lat = lonLat[1];
-							}
-						}
-						var photoUrl = photo1 ? "/DCIM/" + photo1 : "";
-						html += buildFacSearchResultItemHtml(code, projectCode, photoUrl, lng, lat);
-					}
-					listEl.innerHTML = html;
-					var items = listEl.querySelectorAll(".fac-search-result-item");
-					for (var j = 0; j < items.length; j++) {
-						(function (it) {
-							it.addEventListener("click", function (e) {
-								var c = this.getAttribute("data-code");
-								var pc = this.getAttribute("data-project-code") || "";
-								if (window.NewDbField && NewDbField.facility && NewDbField.facility.openFacilityFromSearchList) {
-									NewDbField.facility.openFacilityFromSearchList(c, pc);
-								} else if (window.NewDbField && NewDbField.facility && NewDbField.facility.selectFacilityByCode) {
-									NewDbField.facility.selectFacilityByCode(c, true);
-								}
-							});
-							var photoEl = it.querySelector(".result-photo");
-							if (photoEl) {
-								photoEl.addEventListener("click", function (e) {
-									e.stopPropagation();
-									var row = this.closest(".fac-search-result-item");
-									if (!row) return;
-									var c = row.getAttribute("data-code");
-									var pc = row.getAttribute("data-project-code") || "";
-									if (window.NewDbField && NewDbField.facility && NewDbField.facility.openFacilityFromSearchList) {
-										NewDbField.facility.openFacilityFromSearchList(c, pc);
-									}
-								});
-							}
-						})(items[j]);
-					}
+		var fetchFn = (window.NewDbField && window.NewDbField.fetchWithAuth) ? window.NewDbField.fetchWithAuth : fetch;
+		fetchFn(url, { credentials: "include" })
+			.then(function (res) {
+				if (!res.ok) {
+					return Promise.reject(new Error("HTTP " + res.status));
 				}
-			}
-		} catch (e) {
-			countEl.textContent = "화면 내 시설물: -";
-			listEl.innerHTML = "<div class=\"empty-state\" style=\"padding:12px;text-align:center;font-size:12px;color:#94a3b8;\">화면 내 시설물을 불러오지 못했습니다.</div>";
-		}
+				return res.json();
+			})
+			.then(function (json) {
+				projectFacilityListCache = facilitiesFromListApiJson(json);
+				projectFacilityListLoadedFor = projectCode;
+				renderProjectFacilityList(projectFacilityListCache, projectCode);
+			})
+			.catch(function (err) {
+				console.warn("[facility.js] project facility list failed:", err);
+				countEl.textContent = "프로젝트 시설물: -";
+				listEl.innerHTML = "<div class=\"empty-state\" style=\"padding:12px;text-align:center;font-size:12px;color:#94a3b8;\">시설물 목록을 불러오지 못했습니다.</div>";
+			})
+			.finally(function () {
+				projectFacilityListLoading = false;
+			});
+	}
+
+	/** @deprecated 호환 — updateProjectFacilityList 와 동일 */
+	function updateVisibleFacilityCount(forceReload) {
+		updateProjectFacilityList(!!forceReload);
+	}
+
+	function refreshProjectFacilityListAfterDataChange() {
+		projectFacilityListLoadedFor = "";
+		updateProjectFacilityList(true);
 	}
 
 	function setupSelectInteraction() {
@@ -1272,10 +1529,108 @@
 		loadFacilityDetail(code);
 	}
 
+	function findFeatureOnMapByCode(code) {
+		if (!code) {
+			return null;
+		}
+		if (isGoogleProvider()) {
+			return googleFeatureStubsByCode[code] || null;
+		}
+		if (!sourceA) {
+			return null;
+		}
+		var features = sourceA.getFeatures();
+		for (var i = 0; i < features.length; i++) {
+			var feature = features[i];
+			var vals = feature.values_ || {};
+			var featureCode = vals.code || vals.CODE || feature.get("code") || feature.get("CODE") || feature.getId();
+			if (featureCode === code) {
+				return feature;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * 목록 API 좌표로 상세 열기 (지도 bbox에 아직 로드되지 않은 포인트)
+	 */
+	function openFacilityDetailFromListCoords(code, projectCode, lng, lat) {
+		if (!code) {
+			return;
+		}
+		detailState.fromSearch = true;
+		detailState.active = true;
+		detailState.code = code;
+		detailState.feature = null;
+		detailState.groups = [];
+		detailState.removedPhotos = [];
+		detailState.removedGroups = [];
+		detailState.representativePhotoName = null;
+		detailState.projectCode = (projectCode && String(projectCode).trim()) ||
+			(window.ProjectFilter && window.ProjectFilter.getCurrentFilter ? window.ProjectFilter.getCurrentFilter() || "" : "");
+		detailState.surveyComplete = false;
+		detailState.title = "시설물 정보";
+
+		var lngN = parseFloat(lng);
+		var latN = parseFloat(lat);
+		if (!isNaN(lngN) && !isNaN(latN)) {
+			if (isGoogleProvider()) {
+				centerMapOnFacilityCoordGoogle({ _lng: lngN, _lat: latN }, { zoom: 16, duration: 320 });
+			} else {
+				var ol = window.OL || window.ol;
+				if (ol && ol.proj) {
+					centerMapOnFacilityCoord(ol.proj.fromLonLat([lngN, latN]), { zoom: 16, duration: 320 });
+				}
+			}
+		}
+
+		if (highlightSource) {
+			highlightSource.clear();
+		}
+		if (selectInteraction) {
+			selectInteraction.getFeatures().clear();
+		}
+		markFacSearchResultSelection(code);
+		showFacDetailSection();
+		loadFacilityDetail(code);
+		scheduleMapFeatureSyncForListItem(code, lng, lat);
+	}
+
+	function scheduleMapFeatureSyncForListItem(code, lng, lat) {
+		var existing = findFeatureOnMapByCode(code);
+		if (existing) {
+			if (detailState.code === code) {
+				detailState.feature = existing;
+				if (!isGoogleProvider() && highlightSource && existing.clone) {
+					highlightSource.clear();
+					highlightSource.addFeature(existing.clone());
+				}
+			}
+			return;
+		}
+		if (!sourceA || isGoogleProvider()) {
+			return;
+		}
+		sourceA.refresh();
+		setTimeout(function () {
+			if (detailState.code !== code) {
+				return;
+			}
+			var loaded = findFeatureOnMapByCode(code);
+			if (loaded) {
+				detailState.feature = loaded;
+				if (highlightSource && loaded.clone) {
+					highlightSource.clear();
+					highlightSource.addFeature(loaded.clone());
+				}
+			}
+		}, 900);
+	}
+
 	/**
 	 * code로 시설물을 찾아서 선택 (검색 결과에서 사용)
 	 */
-	function selectFacilityByCode(code, fromSearch, retryCount) {
+	function selectFacilityByCode(code, fromSearch, retryCount, listLng, listLat) {
 		retryCount = retryCount || 0;
 		var maxRetries = 3; // 최대 3번만 재시도
 		
@@ -1384,21 +1739,25 @@
 				}, 400);
 			}
 		} else {
+			if (fromSearch && retryCount >= maxRetries) {
+				if (detailState.code !== code || !detailState.active) {
+					openFacilityDetailFromListCoords(code, detailState.projectCode, listLng, listLat);
+				}
+				return;
+			}
 			// 재시도 횟수 확인
 			if (retryCount < maxRetries) {
 				console.log("[facility.js] selectFacilityByCode: Feature not found for code:", code, "- retrying (" + (retryCount + 1) + "/" + maxRetries + ")");
-				// 레이어를 새로고침하고 다시 시도
 				if (sourceA) {
 					sourceA.refresh();
-					setTimeout(function() {
-						selectFacilityByCode(code, fromSearch, retryCount + 1);
+					setTimeout(function () {
+						selectFacilityByCode(code, fromSearch, retryCount + 1, listLng, listLat);
 					}, 1000);
 				}
-			} else {
-				// 최대 재시도 횟수 초과 시 경고 한 번만 출력
-				if (retryCount === maxRetries) {
-					console.warn("[facility.js] selectFacilityByCode: Feature not found for code:", code, "- max retries (" + maxRetries + ") reached. Feature may not exist in current project filter.");
-				}
+			} else if (fromSearch) {
+				openFacilityDetailFromListCoords(code, detailState.projectCode, listLng, listLat);
+			} else if (retryCount === maxRetries) {
+				console.warn("[facility.js] selectFacilityByCode: Feature not found for code:", code);
 			}
 		}
 	}
@@ -1508,26 +1867,40 @@
 		markFacSearchResultSelection(null);
 		updateDetailHeaderButtons(false);
 		setTimeout(function () {
-			if (window.NewDbField && NewDbField.facility && NewDbField.facility.updateVisibleFacilityCount) {
-				NewDbField.facility.updateVisibleFacilityCount();
+			if (window.NewDbField && NewDbField.facility && NewDbField.facility.updateProjectFacilityList) {
+				NewDbField.facility.updateProjectFacilityList(true);
 			}
 		}, 100);
 	}
 
-	function openFacilityFromSearchList(code, projectCode) {
-		if (!code) return;
+	function openFacilityFromSearchList(code, projectCode, lng, lat) {
+		if (!code) {
+			return;
+		}
 		detailState.fromSearch = true;
+		var listLng = lng;
+		var listLat = lat;
 		if (projectCode && projectCode.trim() !== "" && window.ProjectFilter && window.ProjectFilter.setFilter) {
 			var currentFilter = window.ProjectFilter.getCurrentFilter ? window.ProjectFilter.getCurrentFilter() || "" : "";
 			if (currentFilter !== projectCode) {
 				window.ProjectFilter.setFilter(projectCode);
 				setTimeout(function () {
-					selectFacilityByCode(code, true);
+					var onMap = findFeatureOnMapByCode(code);
+					if (onMap) {
+						selectFacilityByCode(code, true, 0, listLng, listLat);
+					} else {
+						openFacilityDetailFromListCoords(code, projectCode, listLng, listLat);
+					}
 				}, 1500);
 				return;
 			}
 		}
-		selectFacilityByCode(code, true);
+		var mapped = findFeatureOnMapByCode(code);
+		if (mapped) {
+			selectFacilityByCode(code, true, 0, listLng, listLat);
+		} else {
+			openFacilityDetailFromListCoords(code, projectCode, listLng, listLat);
+		}
 	}
 
 	function loadFacilityDetail(code) {
@@ -1742,11 +2115,28 @@
 					+ "</div>"
 					+ "</div>";
 			}).join("");
-			var galleryClass = photoCount <= 1 ? "naver-photo-gallery single-photo" : "naver-photo-gallery";
-			var navDisabled = photoCount <= 1 ? " disabled" : "";
-			var counterHtml = photoCount > 1
-				? "<span class=\"naver-photo-counter\" data-photo-counter>1 / " + photoCount + "</span>"
-				: "";
+			var galleryBlock;
+			if (photoCount === 0) {
+				galleryBlock = "<div class=\"naver-photo-gallery naver-photo-gallery--empty\">"
+					+ "<button type=\"button\" class=\"photo-empty-slot\" data-action=\"add-photo\" data-group-index=\"" + idx + "\">"
+					+ "<iconify-icon icon=\"tabler:photo-plus\" aria-hidden=\"true\"></iconify-icon>"
+					+ "<span class=\"photo-empty-slot__title\">사진을 추가하세요</span>"
+					+ "<span class=\"photo-empty-slot__hint\">클릭하거나 「사진 추가」 버튼을 사용하세요</span>"
+					+ "</button></div>";
+			} else {
+				var galleryClass = photoCount <= 1 ? "naver-photo-gallery single-photo" : "naver-photo-gallery";
+				var navDisabled = photoCount <= 1 ? " disabled" : "";
+				var counterHtml = photoCount > 1
+					? "<span class=\"naver-photo-counter\" data-photo-counter>1 / " + photoCount + "</span>"
+					: "";
+				galleryBlock = "<div class=\"" + galleryClass + "\">"
+					+ "<div class=\"naver-photo-stage\">"
+					+ counterHtml
+					+ "<button type=\"button\" class=\"slider-nav slider-nav--prev\" data-action=\"slide-prev\"" + navDisabled + " aria-label=\"이전 사진\"><iconify-icon icon=\"tabler:chevron-left\"></iconify-icon></button>"
+					+ "<div class=\"photo-track\" data-group-index=\"" + idx + "\">" + photosHtml + "</div>"
+					+ "<button type=\"button\" class=\"slider-nav slider-nav--next\" data-action=\"slide-next\"" + navDisabled + " aria-label=\"다음 사진\"><iconify-icon icon=\"tabler:chevron-right\"></iconify-icon></button>"
+					+ "</div></div>";
+			}
 			return "<div class=\"fac-group\" data-group-index=\"" + idx + "\">"
 				+ "<div class=\"fac-group-header\">"
 				+ "<h5>조사 " + (idx + 1) + "</h5>"
@@ -1754,13 +2144,7 @@
 				+ "<button type=\"button\" class=\"btn btn-xs btn-outline-primary\" data-action=\"add-photo\">사진 추가</button>"
 				+ "<button type=\"button\" class=\"btn btn-xs btn-danger\" data-action=\"delete-group\">삭제</button>"
 				+ "</div></div>"
-				+ "<div class=\"" + galleryClass + "\">"
-				+ "<div class=\"naver-photo-stage\">"
-				+ counterHtml
-				+ "<button type=\"button\" class=\"slider-nav slider-nav--prev\" data-action=\"slide-prev\"" + navDisabled + " aria-label=\"이전 사진\"><iconify-icon icon=\"tabler:chevron-left\"></iconify-icon></button>"
-				+ "<div class=\"photo-track\" data-group-index=\"" + idx + "\">" + (photosHtml || "<div class=\"empty-state\" data-action=\"add-photo\">사진 없음</div>") + "</div>"
-				+ "<button type=\"button\" class=\"slider-nav slider-nav--next\" data-action=\"slide-next\"" + navDisabled + " aria-label=\"다음 사진\"><iconify-icon icon=\"tabler:chevron-right\"></iconify-icon></button>"
-				+ "</div></div>"
+				+ galleryBlock
 				+ "<div class=\"fac-group-comment\">"
 				+ "<textarea class=\"form-control form-control-sm group-comment\" placeholder=\"그룹 코멘트를 입력하세요\">" + escapeHtml(group.comment || "") + "</textarea>"
 				+ "</div>"
@@ -2355,8 +2739,12 @@
 		lastFeature.set("save", "false");
 
 		console.log("WFS-T Transaction 호출 전");
+		setFacilityLoading(true, "포인트 저장 중...");
+		setFacilitySaveButtonsLoading(true, "저장 중...");
 		// transactWFS로 포인트만 저장 (비동기 처리)
 		transactWFS("insert", lastFeature, projectCodeEl.value, function(success) {
+			setFacilityLoading(false);
+			setFacilitySaveButtonsLoading(false);
 			console.log("transactWFS 콜백 호출, success:", success);
 			if (success) {
 				// 저장 후 상세 패널로 이동하여 사진 추가 가능하게
@@ -2364,6 +2752,7 @@
 					if (sourceA) {
 						sourceA.refresh();
 					}
+					refreshProjectFacilityListAfterDataChange();
 					// 방금 추가한 시설물을 상세 패널로 표시
 					handleFeatureSelection(lastFeature);
 				}, 500);
@@ -2377,10 +2766,10 @@
 				} else {
 					closeAdd();
 				}
-				alert("시설물 포인트가 저장되었습니다. 포인트를 클릭하여 사진을 추가하세요.");
+				showFacilityToast("포인트 저장 완료 · 지도에서 포인트를 눌러 사진을 추가하세요.", "success", 3200);
 			} else {
 				console.error("시설물 포인트 저장 실패");
-				alert("시설물 포인트 저장에 실패했습니다.");
+				showFacilityToast("포인트 저장에 실패했습니다.", "error");
 			}
 		});
 	}
@@ -2593,6 +2982,7 @@
 					clearDetailSelection();
 					if (sourceA) { sourceA.refresh(); }
 					loadCodesWithFieldData();
+					refreshProjectFacilityListAfterDataChange();
 					alert("포인트가 삭제되었습니다.");
 				})
 				.catch(function (err) {
@@ -2600,6 +2990,7 @@
 					clearDetailSelection();
 					if (sourceA) { sourceA.refresh(); }
 					loadCodesWithFieldData();
+					refreshProjectFacilityListAfterDataChange();
 					alert("포인트 삭제 중 오류가 발생했습니다.");
 				});
 		});
@@ -2889,6 +3280,7 @@
 			
 			// 기존 사진인 경우 즉시 반영
 			var photo1FileName = photo.name;
+			setFacilityLoading(true, "대표사진 변경 중...");
 			updateFeatureAttributes(detailState.code, {
 				photo1: photo1FileName
 			}).then(function() {
@@ -2912,9 +3304,12 @@
 					var photoUrl = photo1FileName.startsWith("/DCIM/") ? photo1FileName : ("/DCIM/" + photo1FileName);
 					popupImage.src = photoUrl;
 				}
+				showFacilityToast("대표사진이 변경되었습니다.", "success", 2200);
 			}).catch(function(err) {
 				console.error("대표사진 즉시 반영 실패:", err);
-				alert("대표사진 변경 중 오류가 발생했습니다.");
+				showFacilityToast("대표사진 변경에 실패했습니다.", "error");
+			}).finally(function () {
+				setFacilityLoading(false);
 			});
 		} else if (photo.kind === "new") {
 			// 새 사진인 경우도 대표사진으로 지정 가능 (저장 후 반영)
@@ -3041,6 +3436,8 @@
 		// surveyComplete는 상세 오픈 시 feature에서 설정된 값 유지 (조사 완료 토글 제거됨)
 
 		var fetchFn = (window.NewDbField && window.NewDbField.fetchWithAuth) ? window.NewDbField.fetchWithAuth : fetch;
+		setFacilityLoading(true, "시설물·사진 저장 중...");
+		setFacilitySaveButtonsLoading(true, "저장 중...");
 
 		// 1) 그룹 '삭제' 버튼으로 지운 그룹들 → DELETE /api/fac/detail/delete 호출
 		function runGroupDeletes() {
@@ -3068,7 +3465,7 @@
 		runGroupDeletes().then(function () {
 			return doDetailSaveSubmit(fetchFn);
 		}).then(function (photo1) {
-			alert("시설물 정보가 저장되었습니다.");
+			showFacilityToast("저장 완료", "success");
 			detailState.removedPhotos = [];
 			if (detailState.feature) {
 				detailState.feature.set("project_code", detailState.projectCode);
@@ -3107,7 +3504,10 @@
 				return;
 			}
 			console.error("시설물 정보 저장 실패:", err);
-			alert("시설물 정보를 저장하지 못했습니다.");
+			showFacilityToast("저장에 실패했습니다.", "error");
+		}).finally(function () {
+			setFacilityLoading(false);
+			setFacilitySaveButtonsLoading(false);
 		});
 	}
 
@@ -3371,6 +3771,277 @@
 		});
 	}
 
+	var lightboxZoomState = {
+		scale: 1,
+		min: 1,
+		max: 4,
+		translateX: 0,
+		translateY: 0,
+		baseWidth: 0,
+		baseHeight: 0,
+		panning: false,
+		panMoved: false,
+		panStartX: 0,
+		panStartY: 0,
+		panOriginX: 0,
+		panOriginY: 0,
+		suppressCloseUntil: 0
+	};
+	var lightboxZoomUiBound = false;
+
+	function measureLightboxBaseSize() {
+		var img = document.getElementById("lightboxImage");
+		var stage = document.getElementById("lightboxZoomStage");
+		if (!img || !stage) {
+			return;
+		}
+		stage.style.transform = "none";
+		lightboxZoomState.baseWidth = img.offsetWidth || 0;
+		lightboxZoomState.baseHeight = img.offsetHeight || 0;
+	}
+
+	function clampLightboxPan() {
+		var wrap = document.getElementById("lightboxImageWrap");
+		if (!wrap || lightboxZoomState.scale <= 1.01) {
+			lightboxZoomState.translateX = 0;
+			lightboxZoomState.translateY = 0;
+			return;
+		}
+		var bw = lightboxZoomState.baseWidth;
+		var bh = lightboxZoomState.baseHeight;
+		if (bw < 1 || bh < 1) {
+			measureLightboxBaseSize();
+			bw = lightboxZoomState.baseWidth;
+			bh = lightboxZoomState.baseHeight;
+		}
+		var scaledW = bw * lightboxZoomState.scale;
+		var scaledH = bh * lightboxZoomState.scale;
+		var maxX = Math.max(0, (scaledW - wrap.clientWidth) / 2);
+		var maxY = Math.max(0, (scaledH - wrap.clientHeight) / 2);
+		lightboxZoomState.translateX = Math.max(-maxX, Math.min(maxX, lightboxZoomState.translateX));
+		lightboxZoomState.translateY = Math.max(-maxY, Math.min(maxY, lightboxZoomState.translateY));
+	}
+
+	function applyLightboxZoomTransform() {
+		var stage = document.getElementById("lightboxZoomStage");
+		var wrap = document.getElementById("lightboxImageWrap");
+		var levelEl = document.getElementById("lightboxZoomLevel");
+		if (!stage) {
+			return;
+		}
+		clampLightboxPan();
+		stage.style.transform = "translate(" + lightboxZoomState.translateX + "px, " + lightboxZoomState.translateY + "px) scale(" + lightboxZoomState.scale + ")";
+		if (levelEl) {
+			levelEl.textContent = Math.round(lightboxZoomState.scale * 100) + "%";
+		}
+		if (wrap) {
+			if (lightboxZoomState.scale > 1.01) {
+				wrap.classList.add("can-pan");
+			} else {
+				wrap.classList.remove("can-pan");
+				wrap.classList.remove("is-panning");
+			}
+		}
+	}
+
+	function resetLightboxZoom() {
+		lightboxZoomState.scale = 1;
+		lightboxZoomState.translateX = 0;
+		lightboxZoomState.translateY = 0;
+		lightboxZoomState.panning = false;
+		lightboxZoomState.panMoved = false;
+		var stage = document.getElementById("lightboxZoomStage");
+		if (stage) {
+			stage.classList.remove("is-dragging");
+		}
+		measureLightboxBaseSize();
+		applyLightboxZoomTransform();
+	}
+
+	function changeLightboxZoom(delta, clientX, clientY) {
+		var wrap = document.getElementById("lightboxImageWrap");
+		var prev = lightboxZoomState.scale;
+		var next = Math.min(lightboxZoomState.max, Math.max(lightboxZoomState.min, prev + delta));
+		if (next === prev) {
+			return;
+		}
+		if (wrap && clientX != null && clientY != null && next > 1) {
+			var rect = wrap.getBoundingClientRect();
+			var cx = rect.left + rect.width / 2;
+			var cy = rect.top + rect.height / 2;
+			var ratio = next / prev;
+			lightboxZoomState.translateX = (lightboxZoomState.translateX - (clientX - cx)) * ratio + (clientX - cx);
+			lightboxZoomState.translateY = (lightboxZoomState.translateY - (clientY - cy)) * ratio + (clientY - cy);
+		}
+		lightboxZoomState.scale = next;
+		if (next <= 1) {
+			lightboxZoomState.translateX = 0;
+			lightboxZoomState.translateY = 0;
+		}
+		applyLightboxZoomTransform();
+	}
+
+	function shouldSuppressLightboxCloseClick() {
+		return lightboxZoomState.panning || lightboxZoomState.panMoved || Date.now() < lightboxZoomState.suppressCloseUntil;
+	}
+
+	function endLightboxPan(suppressClose) {
+		lightboxZoomState.panning = false;
+		var wrapEl = document.getElementById("lightboxImageWrap");
+		var stageEl = document.getElementById("lightboxZoomStage");
+		if (wrapEl) {
+			wrapEl.classList.remove("is-panning");
+		}
+		if (stageEl) {
+			stageEl.classList.remove("is-dragging");
+		}
+		if (suppressClose || lightboxZoomState.panMoved) {
+			lightboxZoomState.suppressCloseUntil = Date.now() + 600;
+		}
+		lightboxZoomState.panMoved = false;
+	}
+
+	function onLightboxWheel(e) {
+		var lightbox = document.getElementById("photoLightbox");
+		if (!lightbox || !lightbox.classList.contains("show")) {
+			return;
+		}
+		if (!e.ctrlKey && !e.metaKey) {
+			return;
+		}
+		e.preventDefault();
+		e.stopPropagation();
+		var delta = e.deltaY < 0 ? 0.15 : -0.15;
+		changeLightboxZoom(delta, e.clientX, e.clientY);
+	}
+
+	function bindLightboxZoomUi() {
+		if (lightboxZoomUiBound) {
+			return;
+		}
+		lightboxZoomUiBound = true;
+
+		var wrap = document.getElementById("lightboxImageWrap");
+		var zoomInBtn = document.getElementById("lightboxZoomInBtn");
+		var zoomOutBtn = document.getElementById("lightboxZoomOutBtn");
+		var zoomResetBtn = document.getElementById("lightboxZoomResetBtn");
+		var photoLightbox = document.getElementById("photoLightbox");
+
+		if (photoLightbox) {
+			photoLightbox.addEventListener("wheel", onLightboxWheel, { passive: false, capture: true });
+		}
+
+		if (zoomInBtn) {
+			zoomInBtn.addEventListener("click", function (e) {
+				e.stopPropagation();
+				changeLightboxZoom(0.2);
+			});
+		}
+		if (zoomOutBtn) {
+			zoomOutBtn.addEventListener("click", function (e) {
+				e.stopPropagation();
+				changeLightboxZoom(-0.2);
+			});
+		}
+		if (zoomResetBtn) {
+			zoomResetBtn.addEventListener("click", function (e) {
+				e.stopPropagation();
+				resetLightboxZoom();
+			});
+		}
+
+		if (wrap) {
+			wrap.addEventListener("pointerdown", function (e) {
+				if (e.button !== 0 && e.pointerType === "mouse") {
+					return;
+				}
+				if (lightboxZoomState.scale <= 1.01) {
+					return;
+				}
+				if (e.target.closest(".lightbox-direction")) {
+					return;
+				}
+				e.preventDefault();
+				e.stopPropagation();
+				lightboxZoomState.panning = true;
+				lightboxZoomState.panMoved = false;
+				lightboxZoomState.panStartX = e.clientX;
+				lightboxZoomState.panStartY = e.clientY;
+				lightboxZoomState.panOriginX = lightboxZoomState.translateX;
+				lightboxZoomState.panOriginY = lightboxZoomState.translateY;
+				wrap.classList.add("is-panning");
+				var stageEl = document.getElementById("lightboxZoomStage");
+				if (stageEl) {
+					stageEl.classList.add("is-dragging");
+				}
+				if (wrap.setPointerCapture) {
+					try {
+						wrap.setPointerCapture(e.pointerId);
+					} catch (err) { /* ignore */ }
+				}
+			});
+
+			wrap.addEventListener("pointermove", function (e) {
+				if (!lightboxZoomState.panning) {
+					return;
+				}
+				e.preventDefault();
+				e.stopPropagation();
+				var dx = e.clientX - lightboxZoomState.panStartX;
+				var dy = e.clientY - lightboxZoomState.panStartY;
+				if (!lightboxZoomState.panMoved && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+					lightboxZoomState.panMoved = true;
+				}
+				lightboxZoomState.translateX = lightboxZoomState.panOriginX + dx;
+				lightboxZoomState.translateY = lightboxZoomState.panOriginY + dy;
+				applyLightboxZoomTransform();
+			});
+
+			wrap.addEventListener("pointerup", function (e) {
+				if (!lightboxZoomState.panning) {
+					return;
+				}
+				e.preventDefault();
+				e.stopPropagation();
+				if (wrap.releasePointerCapture) {
+					try {
+						wrap.releasePointerCapture(e.pointerId);
+					} catch (err) { /* ignore */ }
+				}
+				endLightboxPan(true);
+			});
+
+			wrap.addEventListener("pointercancel", function () {
+				if (!lightboxZoomState.panning) {
+					return;
+				}
+				endLightboxPan(true);
+			});
+		}
+
+		var lbImg = document.getElementById("lightboxImage");
+		if (lbImg) {
+			lbImg.addEventListener("dblclick", function (e) {
+				e.stopPropagation();
+				if (lightboxZoomState.scale > 1.05) {
+					resetLightboxZoom();
+				} else {
+					changeLightboxZoom(1);
+				}
+			});
+		}
+
+	}
+
+	function onMapDimmerClick(e) {
+		if (shouldSuppressLightboxCloseClick()) {
+			e.preventDefault();
+			e.stopPropagation();
+			return;
+		}
+		closePhotoLightbox();
+	}
+
 	function openPhotoLightbox(groupIdx, photoIdx) {
 		var photo = getPhotoFromState(groupIdx, photoIdx);
 		if (!photo) { return; }
@@ -3388,7 +4059,17 @@
 			img.src = getPhotoMissingPlaceholderDataUri();
 			img.classList.add("photo-img-missing");
 		};
+		var prevOnload = img.onload;
+		img.onload = function () {
+			if (typeof prevOnload === "function") {
+				prevOnload.call(img);
+			}
+			resetLightboxZoom();
+		};
 		img.src = getPhotoPreview(photo) || getPhotoMissingPlaceholderDataUri();
+		if (img.complete && img.naturalWidth > 0) {
+			resetLightboxZoom();
+		}
 		if (caption) {
 			caption.textContent = (detailState.title || "") + " / 사진 " + (photoIdx + 1);
 		}
@@ -3403,6 +4084,7 @@
 			dimmer.classList.remove("hidden");
 			dimmer.classList.add("show");
 		}
+		bindLightboxZoomUi();
 	}
 
 	function closePhotoLightbox() {
@@ -3425,6 +4107,7 @@
 			dimmer.classList.remove("show");
 		}
 		document.body.classList.remove("photo-view-open");
+		resetLightboxZoom();
 	}
 
 	function navigateLightbox(direction) {
@@ -3483,16 +4166,16 @@
 	}
 
 	function refreshFacilityLayer() {
+		projectFacilityListLoadedFor = "";
 		if (isGoogleProvider()) {
 			clearGoogleFacilityMarkers();
 			googleFeatureStubsByCode = {};
 			scheduleGoogleFacilityLoad();
-			return;
-		}
-		if (sourceA) {
+		} else if (sourceA) {
 			sourceA.clear();
 			sourceA.refresh();
 		}
+		updateProjectFacilityList(true);
 	}
 
 	// 기존 속성 유지 (map.js에서 길찾기 등을 NewDbField.facility에 먼저 붙인 경우)
@@ -3520,9 +4203,14 @@
 		getSourceA: function() { return sourceA; },
 		getLayerA: function() { return layerA; },
 		getFacilitiesInView: getFacilitiesInView,
+		zoomMapToFacilities: zoomMapToFacilities,
+		fetchProjectFacilitiesForZoom: fetchProjectFacilitiesForZoom,
 		selectFacilityByCode: selectFacilityByCode,
 		closePointPopup: closePointPopup,
-		updateVisibleFacilityCount: updateVisibleFacilityCount
+		updateProjectFacilityList: updateProjectFacilityList,
+		updateVisibleFacilityCount: updateVisibleFacilityCount,
+		showToast: showFacilityToast,
+		setLoading: setFacilityLoading
 	});
 
 	// NewDbField 네임스페이스에도 노출
@@ -3544,7 +4232,12 @@
 	window.NewDbField.facility.showFacDetailSection = showFacDetailSection;
 	window.NewDbField.facility.showFacModePanel = showFacModePanel;
 	window.NewDbField.facility.isAddModeActive = function () { return addModeActive; };
+	window.NewDbField.facility.updateProjectFacilityList = updateProjectFacilityList;
 	window.NewDbField.facility.updateVisibleFacilityCount = updateVisibleFacilityCount;
+	window.NewDbField.facility.showToast = showFacilityToast;
+	window.NewDbField.facility.setLoading = setFacilityLoading;
+	window.NewDbField.facility.zoomMapToFacilities = zoomMapToFacilities;
+	window.NewDbField.facility.fetchProjectFacilitiesForZoom = fetchProjectFacilitiesForZoom;
 	window.NewDbField.facility.getFacilitiesInView = getFacilitiesInView;
 	window.NewDbField.facility.onPhotoImgError = onPhotoImgError;
 	window.NewDbField.facility.getPhotoMissingPlaceholderDataUri = getPhotoMissingPlaceholderDataUri;
@@ -3929,6 +4622,12 @@
 				var actionBtn = evt.target.closest("[data-action]");
 				if (!actionBtn) return;
 				var action = actionBtn.getAttribute("data-action");
+
+				if (action === "add-group") {
+					detailAddGroup();
+					return;
+				}
+
 				var groupEl = actionBtn.closest(".fac-group");
 				if (!groupEl) return;
 				var groupIdx = parseInt(groupEl.getAttribute("data-group-index"), 10);
@@ -3987,6 +4686,12 @@
 		var lightboxNextBtn = document.getElementById("lightboxNextBtn");
 		var photoLightbox = document.getElementById("photoLightbox");
 		var mapDimmer = document.getElementById("mapDimmer");
+
+		bindLightboxZoomUi();
+
+		if (mapDimmer) {
+			mapDimmer.addEventListener("click", onMapDimmerClick);
+		}
 		
 		if (lightboxCloseBtn) {
 			lightboxCloseBtn.addEventListener("click", closePhotoLightbox);
@@ -3998,29 +4703,56 @@
 			lightboxNextBtn.addEventListener("click", function () { navigateLightbox(1); });
 		}
 		
-		// ESC 키로 닫기
+		// ESC 키로 닫기 / 라이트박스 확대·축소
 		document.addEventListener("keydown", function(e) {
+			var lightbox = document.getElementById("photoLightbox");
+			if (!lightbox || !lightbox.classList.contains("show")) {
+				return;
+			}
 			if (e.key === "Escape") {
-				var lightbox = document.getElementById("photoLightbox");
-				if (lightbox && lightbox.classList.contains("show")) {
-					closePhotoLightbox();
+				closePhotoLightbox();
+				return;
+			}
+			// 100%일 때만 이전/다음 사진 (확대·패닝 중에는 방향키 무시)
+			if (lightboxZoomState.scale <= 1.01 && !lightboxZoomState.panning) {
+				if (e.key === "ArrowLeft") {
+					e.preventDefault();
+					navigateLightbox(-1);
+					return;
 				}
+				if (e.key === "ArrowRight") {
+					e.preventDefault();
+					navigateLightbox(1);
+					return;
+				}
+			}
+			if (e.key === "+" || e.key === "=") {
+				e.preventDefault();
+				changeLightboxZoom(0.25);
+				return;
+			}
+			if (e.key === "-" || e.key === "_") {
+				e.preventDefault();
+				changeLightboxZoom(-0.25);
+				return;
+			}
+			if (e.key === "0") {
+				e.preventDefault();
+				resetLightboxZoom();
 			}
 		});
 		
-		// 배경 클릭 시 닫기 (이미지나 버튼 클릭은 제외)
+		// 배경 클릭 시 닫기 (이미지나 버튼 클릭은 제외, 드래그 직후 클릭은 무시)
 		if (photoLightbox) {
 			photoLightbox.addEventListener("click", function(e) {
-				// lightbox 자체를 클릭한 경우에만 닫기 (이미지, 버튼, 캡션 클릭은 제외)
+				if (shouldSuppressLightboxCloseClick()) {
+					e.preventDefault();
+					e.stopPropagation();
+					return;
+				}
 				if (e.target === photoLightbox) {
 					closePhotoLightbox();
 				}
-			});
-		}
-		
-		if (mapDimmer) {
-			mapDimmer.addEventListener("click", function() {
-				closePhotoLightbox();
 			});
 		}
 		

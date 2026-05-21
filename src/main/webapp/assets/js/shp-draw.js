@@ -512,15 +512,47 @@
 		showSaveModal();
 	}
 
+	/**
+	 * 그리기 취소 — 진행 중 스케치·그린 선 제거 후 모드 종료
+	 * @param {boolean} [skipConfirm=false] — true면 확인 없이 취소 (메뉴 전환 등)
+	 * @returns {boolean} 취소 수행 여부
+	 */
+	function cancelDrawing(skipConfirm) {
+		if (!isDrawingMode && drawnFeatures.length === 0) {
+			hideSaveModal();
+			hideFinishButton();
+			return true;
+		}
+		if (!skipConfirm && drawnFeatures.length > 0) {
+			if (!confirm("그리기를 취소하시겠습니까? 그린 선은 저장되지 않습니다.")) {
+				return false;
+			}
+		}
+		if (drawInteraction && typeof drawInteraction.abortDrawing === "function") {
+			try {
+				drawInteraction.abortDrawing();
+			} catch (abortErr) {
+				console.warn("[shp-draw] abortDrawing:", abortErr);
+			}
+		}
+		clearDrawnFeatures();
+		hideSaveModal();
+		stopDrawing();
+		console.log("[shp-draw] Drawing cancelled");
+		return true;
+	}
+
 	// 전역 노출
 	window.ShpDraw = {
 		init: initDrawLayer,
 		start: startDrawing,
 		stop: stopDrawing,
 		finish: finishDrawing,
+		cancel: cancelDrawing,
 		clear: clearDrawnFeatures,
 		save: saveDrawnFeatures,
 		showSaveModal: showSaveModalIfNeeded,
+		hideSaveModal: hideSaveModal,
 		isActive: function() { return isDrawingMode; },
 		getFeatureCount: function() { return drawnFeatures.length; }
 	};

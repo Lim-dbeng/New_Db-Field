@@ -46,7 +46,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>New_Db-Field</title>
 	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/styles.css?v=1">
-	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/custom.css?v=70">
+	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/custom.css?v=85">
 	<!-- OpenLayers CSS will be injected dynamically when needed -->
 </head>
 <body class="<%= isAdminMode ? "admin-mode" : "" %>" data-context-path="<%=request.getContextPath()%>">
@@ -181,8 +181,8 @@
 
 감사합니다.
 
-26.04.02
- - 다운로드 파일 및 QR코드 수정
+26.05.15
+ - 모바일 앱 업데이트 알림(푸시알림) 기능 적용용
  - 새로운 QR코드로 재다운로드 권장
 </div>
 				<div style="margin-top:24px; display:flex; flex-direction:column; gap:10px;">
@@ -269,12 +269,21 @@
 			</div>
 		</div>
 		
-		<!-- SHP 그리기 종료 버튼 (그리기 모드 활성화 시 표시) -->
-		<div id="shpDrawFinishBtn" class="shp-draw-finish-btn" style="display: none;">
-			<button type="button" class="btn btn-primary" id="shpDrawFinishButton">
-				<iconify-icon icon="tabler:check"></iconify-icon>
-				<span>그리기 완료</span>
-			</button>
+		<!-- SHP 그리기 완료/취소 (그리기 모드 활성화 시 표시) -->
+		<div id="shpDrawFinishBtn" class="shp-draw-action-dock" style="display: none;" role="toolbar" aria-label="SHP 그리기">
+			<div class="shp-draw-action-dock__card">
+				<p class="shp-draw-action-dock__hint">선을 그린 뒤 <strong>완료</strong>를 누르세요 · <span class="shp-draw-action-dock__hint-sub">Shift+드래그: 지도 이동</span></p>
+				<div class="shp-draw-action-dock__row">
+					<button type="button" class="shp-draw-action-dock__primary" id="shpDrawFinishButton">
+						<iconify-icon icon="tabler:check" aria-hidden="true"></iconify-icon>
+						<span>완료</span>
+					</button>
+					<button type="button" class="shp-draw-action-dock__secondary" id="shpDrawCancelButton">
+						<iconify-icon icon="tabler:x" aria-hidden="true"></iconify-icon>
+						<span>취소</span>
+					</button>
+				</div>
+			</div>
 		</div>
 		
 		<!-- 사업관리 모달 (Authority 1 관리자는 전체 화면으로 표시) -->
@@ -584,7 +593,7 @@
 					<div class="fac-search-results-header">
 						<span class="text-muted">업로드된 레이어</span>
 					</div>
-					<div id="shpLayerListContent" class="fac-search-results-list"></div>
+					<div id="shpLayerListContent" class="fac-search-results-list shp-upload-layer-list"></div>
 				</div>
 			</section>
 
@@ -677,18 +686,18 @@
 					</button>
 				</div>
 				
-				<!-- 검색 결과 / 화면 내 시설물 -->
+				<!-- 검색 결과 / 프로젝트 시설물 목록 -->
 				<div id="facSearchResults" class="fac-search-results mt-3">
 					<div class="fac-search-results-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-						<span id="facSearchResultsCount" class="text-muted">화면 내 시설물: -</span>
+						<span id="facSearchResultsCount" class="text-muted">프로젝트 시설물: -</span>
 						<div class="d-flex gap-1 align-items-center">
 							<button type="button" class="btn btn-sm btn-outline-primary" id="multiSelectStartBtn" title="포인트를 클릭하거나 드래그로 복수 선택. Shift+드래그로 지도 이동">
 								<iconify-icon icon="tabler:mouse"></iconify-icon> 다중선택
 							</button>
-							<button type="button" class="btn btn-sm btn-outline-secondary" id="facSearchResetBtn" title="검색 초기화 후 지도 내 시설물 자동 표시">검색 초기화</button>
+							<button type="button" class="btn btn-sm btn-outline-secondary" id="facSearchResetBtn" title="검색 초기화 후 프로젝트 전체 시설물 목록 표시">검색 초기화</button>
 						</div>
 					</div>
-					<div id="facSearchResultsList" class="fac-search-results-list"><div class="empty-state" style="padding:12px;text-align:center;font-size:12px;color:#94a3b8;">지도 영역 내 시설물을 표시합니다</div></div>
+					<div id="facSearchResultsList" class="fac-search-results-list"><div class="empty-state" style="padding:12px;text-align:center;font-size:12px;color:#94a3b8;">선택한 사업의 시설물을 표시합니다</div></div>
 					<div id="facSearchPagination" class="fac-search-pagination mt-3"></div>
 				</div>
 			</section>
@@ -1058,7 +1067,11 @@
 		<!-- 사업번호 선택 드랍다운 -->
 		<div class="project-selector" id="projectSelectorContainer">
 			<div class="project-selector-controls">
-				<select id="projectCodeFilter" class="form-select form-select-sm">
+				<button type="button" class="project-selector-trigger" id="projectCodeFilterTrigger" aria-haspopup="listbox" aria-expanded="false">
+					<span class="project-selector-trigger-text" id="projectCodeFilterTriggerText">사업번호를 선택하세요</span>
+					<iconify-icon icon="tabler:chevron-down" class="project-selector-trigger-chevron" aria-hidden="true"></iconify-icon>
+				</button>
+				<select id="projectCodeFilter" class="project-selector-native-select" tabindex="-1" aria-hidden="true">
 					<option value="">사업번호를 선택하세요</option>
 				</select>
 				<button type="button" class="btn btn-sm btn-primary project-selector-add-btn" id="projectQuickAddBtn" title="프로젝트 추가">
@@ -1178,6 +1191,14 @@
 				</div>
 			</div>
 		
+		<!-- 시설물 저장·사진 처리 로딩 -->
+		<div id="ndfFacilityLoading" class="ndf-fac-loading" aria-hidden="true" aria-live="polite">
+			<div class="ndf-fac-loading__panel">
+				<div class="ndf-fac-loading__spinner" aria-hidden="true"></div>
+				<p class="ndf-fac-loading__msg">처리 중...</p>
+			</div>
+		</div>
+
 		<!-- 프로젝트 권한 요청 알림 (우측 하단) -->
 		<div id="projectRequestNotification" class="project-request-notification" style="display: none;">
 			<div class="notification-content">
@@ -1272,25 +1293,25 @@
 	<script src="<%=request.getContextPath()%>/assets/js/project-management.js?v=7"></script>
 
 	<script src="<%=request.getContextPath()%>/assets/js/app.js?v=2"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/map.js?v=15"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/map.js?v=20"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/wms-presets.js?v=2"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/sidebar-panels.js?v=10"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/ui.js?v=8"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/list.js?v=2"></script>
 	<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js" crossorigin="anonymous"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/facility.js?v=97"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/facility-photo-import.js?v=1"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/project-filter.js?v=10"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/facility-search.js?v=11"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/project-list.js?v=7"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility.js?v=110"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility-photo-import.js?v=2"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/project-filter.js?v=12"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility-search.js?v=12"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/project-list.js?v=8"></script>
 	<!-- JSZip, shpjs: SHP/ZIP → GeoJSON 변환 (브라우저) -->
 	<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/shpjs@3.5.0/dist/shp.min.js"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/shp-upload.js?v=12"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/shp-upload.js?v=15"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/shp-layer.js?v=2"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/shp-draw.js?v=1"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/shp-draw.js?v=2"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/shp-center.js?v=1"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/shp-panel.js?v=6"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/shp-panel.js?v=7"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/map-measure.js?v=1"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/map-capture.js?v=1"></script>
 
@@ -1343,9 +1364,21 @@
 		<button type="button" class="lightbox-nav prev" id="lightboxPrevBtn" aria-label="이전">
 			<iconify-icon icon="tabler:chevron-left"></iconify-icon>
 		</button>
-		<div class="lightbox-image-wrap">
-			<img id="lightboxImage" src="" alt="확대 이미지">
+		<div class="lightbox-image-wrap" id="lightboxImageWrap">
+			<div class="lightbox-zoom-stage" id="lightboxZoomStage">
+				<img id="lightboxImage" src="" alt="확대 이미지" draggable="false">
+			</div>
 			<div id="lightboxDirection" class="lightbox-direction" aria-hidden="true"></div>
+		</div>
+		<div class="lightbox-zoom-toolbar" id="lightboxZoomToolbar">
+			<button type="button" class="lightbox-zoom-btn" id="lightboxZoomOutBtn" aria-label="축소">
+				<iconify-icon icon="tabler:minus"></iconify-icon>
+			</button>
+			<span class="lightbox-zoom-level" id="lightboxZoomLevel">100%</span>
+			<button type="button" class="lightbox-zoom-btn" id="lightboxZoomInBtn" aria-label="확대">
+				<iconify-icon icon="tabler:plus"></iconify-icon>
+			</button>
+			<button type="button" class="lightbox-zoom-btn lightbox-zoom-btn--text" id="lightboxZoomResetBtn">맞춤</button>
 		</div>
 		<button type="button" class="lightbox-nav next" id="lightboxNextBtn" aria-label="다음">
 			<iconify-icon icon="tabler:chevron-right"></iconify-icon>

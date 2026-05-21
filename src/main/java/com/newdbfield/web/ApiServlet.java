@@ -10,10 +10,14 @@ import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.InputStream;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.Inflater;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -100,7 +104,8 @@ public class ApiServlet extends HttpServlet {
 					double[] o = normalizeLatLng(Double.parseDouble(oLat.trim()), Double.parseDouble(oLng.trim()));
 					double[] d = normalizeLatLng(Double.parseDouble(dLat.trim()), Double.parseDouble(dLng.trim()));
 					ArrayNode routesArr = JSON_MAPPER.createArrayNode();
-					Set<String> seenOverviewPolyline = new HashSet<>();
+					ArrayNode routeAttempts = null;
+					String legacyProviderHint = "tmap";
 
 					if ("walking".equals(mode)) {
 						try {
@@ -114,29 +119,86 @@ public class ApiServlet extends HttpServlet {
 							// 네트워크 등 실패 시 빈 배열 → 클라이언트가 Google 폴백 가능
 						}
 					} else {
-						String[][] labeledOpts = new String[][]{
-								{"00", "실시간 추천"},
-								{"01", "무료 도로 우선"},
-								{"10", "최단거리"}
+						routeAttempts = JSON_MAPPER.createArrayNode();
+						// SK Open API: searchOption 은 number (0·1·2·4·10). "00" 등 문자열은 400 유발.
+						int[] searchOpts = new int[]{0, 1, 2, 4, 10};
+						String[] routeLabels = new String[]{
+								"교통최적·추천",
+								"교통최적·무료우선",
+								"교통최적·최소시간",
+								"교통최적·고속도로우선",
+								"최단거리"
 						};
-						for (String[] pair : labeledOpts) {
+						Set<String> seenOverview = new HashSet<>();
+						boolean googleSupplemented = false;
+						int optIdx = 0;
+						for (int oi = 0; oi < searchOpts.length; oi++) {
+							int searchOpt = searchOpts[oi];
+							String routeLabel = routeLabels[oi];
+							if (optIdx > 0) {
+								try {
+									Thread.sleep(220L);
+								} catch (InterruptedException ie) {
+									Thread.currentThread().interrupt();
+								}
+							}
+							optIdx++;
+							ObjectNode attempt = routeAttempts.addObject();
+							attempt.put("searchOption", searchOpt);
+							attempt.put("routeLabel", routeLabel);
 							try {
-								JsonNode root = postTmapDirections(key, o[0], o[1], d[0], d[1], mode, pair[0]);
-								ObjectNode routeObj = buildTmapRouteObject(root, mode);
+								JsonNode root = null;
+								ObjectNode routeObj = null;
+								String trafficUsed = null;
+								for (String traffic : tmapTrafficInfoAttempts(searchOpt)) {
+									root = postTmapDirections(
+											key, o[0], o[1], d[0], d[1], mode, searchOpt, traffic);
+									routeObj = buildTmapRouteObject(root, mode);
+									if (routeObj != null) {
+										trafficUsed = traffic;
+										break;
+									}
+								}
+								if (trafficUsed != null) {
+									attempt.put("trafficInfo", trafficUsed);
+								}
 								if (routeObj == null) {
+									attempt.put("ok", false);
+									attempt.put("reason", describeTmapFailReason(root));
+									if (root != null && root.has("responseBody")) {
+										attempt.put("responseBody", root.path("responseBody").asText(""));
+									}
 									continue;
 								}
 								String ov = routeObj.path("overview_polyline").path("points").asText("");
-								if (ov.isEmpty() || seenOverviewPolyline.contains(ov)) {
+								if (ov.isEmpty()) {
+									attempt.put("ok", false);
+									attempt.put("reason", "empty_overview_polyline");
 									continue;
 								}
-								seenOverviewPolyline.add(ov);
-								routeObj.put("routeLabel", pair[1]);
-								routeObj.put("searchOption", pair[0]);
+								if (seenOverview.contains(ov)) {
+									attempt.put("ok", false);
+									attempt.put("reason", "duplicate_polyline_skipped");
+									continue;
+								}
+								seenOverview.add(ov);
+								routeObj.put("routeLabel", routeLabel);
+								routeObj.put("searchOption", searchOpt);
 								routesArr.add(routeObj);
-							} catch (Exception ignoreDriveLeg) {
-								// 한 옵션만 실패해도 나머지 경로 시도
+								attempt.put("ok", true);
+							} catch (Exception ex) {
+								attempt.put("ok", false);
+								attempt.put("reason", safe(ex.getMessage()));
 							}
+						}
+						if (routesArr.size() < 2) {
+							googleSupplemented = appendGoogleDirectionsIfNeeded(
+									routesArr, seenOverview, routeAttempts,
+									oLat, oLng, dLat, dLng, mode,
+									getConfigOrEnv("GOOGLE_MAPS_API_KEY"));
+						}
+						if (googleSupplemented) {
+							legacyProviderHint = "tmap+google";
 						}
 					}
 
@@ -151,10 +213,13 @@ public class ApiServlet extends HttpServlet {
 
 					ObjectNode legacy = JSON_MAPPER.createObjectNode();
 					legacy.put("status", "OK");
-					legacy.put("provider", "tmap");
+					legacy.put("provider", legacyProviderHint);
 					legacy.put("walkFallback", false);
 					legacy.put("effectiveTravelMode", "walking".equals(mode) ? "walking" : "driving");
 					legacy.set("routes", routesArr);
+					if (routeAttempts != null) {
+						legacy.set("routeAttempts", routeAttempts);
+					}
 					writeJson(resp, 200, JSON_MAPPER.writeValueAsString(legacy));
 				} catch (Exception ex) {
 					writeJson(resp, 500, "{\"status\":\"ERROR\",\"error_message\":\"" + safe(ex.getMessage()) + "\"}");
@@ -359,6 +424,9 @@ public class ApiServlet extends HttpServlet {
 			String durationStr = route.has("duration") ? route.get("duration").asText("") : "";
 
 			ObjectNode r = JSON_MAPPER.createObjectNode();
+			if (routes.size() > 1) {
+				r.put("routeLabel", "경로 " + (i + 1));
+			}
 			ObjectNode overview = r.putObject("overview_polyline");
 			overview.put("points", encoded);
 			ObjectNode leg = r.putArray("legs").addObject();
@@ -582,9 +650,25 @@ public class ApiServlet extends HttpServlet {
 	 * Tmap Open API(자동차/도보) POST 후 FeatureCollection JSON.
 	 * @param modeDrivingOrWalking "driving" | "walking"
 	 */
+	/** 최단(10)은 교통 포함 Y만, 교통최적 계열(0·1·2·4)은 Y 실패 시 N 재시도 */
+	private static String[] tmapTrafficInfoAttempts(int searchOption) {
+		if (searchOption == 10) {
+			return new String[]{"Y"};
+		}
+		return new String[]{"Y", "N"};
+	}
+
 	private static JsonNode postTmapDirections(
 			String apiKey, double olat, double olng, double dlat, double dlng, String modeDrivingOrWalking,
-			String searchOptionDrivingOrNull) throws IOException {
+			Integer searchOptionDrivingOrNull) throws IOException {
+		int so = searchOptionDrivingOrNull == null ? 0 : searchOptionDrivingOrNull;
+		String[] tries = tmapTrafficInfoAttempts(so);
+		return postTmapDirections(apiKey, olat, olng, dlat, dlng, modeDrivingOrWalking, so, tries[0]);
+	}
+
+	private static JsonNode postTmapDirections(
+			String apiKey, double olat, double olng, double dlat, double dlng, String modeDrivingOrWalking,
+			int searchOptionDriving, String trafficInfoYorN) throws IOException {
 		boolean walking = "walking".equals(modeDrivingOrWalking);
 		String path = walking
 				? "/tmap/routes/pedestrian?version=1"
@@ -600,13 +684,391 @@ public class ApiServlet extends HttpServlet {
 		body.put("resCoordType", "WGS84GEO");
 		body.put("sort", "index");
 		if (!walking) {
-			String so = searchOptionDrivingOrNull == null ? "" : searchOptionDrivingOrNull.trim();
-			body.put("searchOption", so.isEmpty() ? "00" : so);
-			body.put("trafficInfo", "Y");
-		} else {
-			body.put("searchOption", "0");
+			body.put("searchOption", searchOptionDriving);
+			String ti = trafficInfoYorN == null ? "N" : trafficInfoYorN.trim().toUpperCase(Locale.ROOT);
+			body.put("trafficInfo", "Y".equals(ti) ? "Y" : "N");
+			body.put("carType", 0);
+			body.put("endRpFlag", "G");
 		}
 		return postTmapPost(apiKey, path, body);
+	}
+
+	/** 티맵 응답은 항상 원시 바이트로 읽고, gzip 해제는 {@link #decodeTmapResponseBytes}에서만 수행한다. */
+	private static byte[] readTmapConnectionBodyBytes(HttpURLConnection conn, int httpCode) throws IOException {
+		InputStream primary = (httpCode >= 200 && httpCode < 300)
+				? conn.getInputStream()
+				: conn.getErrorStream();
+		byte[] data = readStreamBytes(primary);
+		if (httpCode < 200 || httpCode >= 300) {
+			try {
+				byte[] alt = readStreamBytes(conn.getInputStream());
+				if (alt.length > data.length) {
+					data = alt;
+				}
+			} catch (IOException ignore) {
+				// 일부 환경에서 4xx 본문이 getInputStream()에만 담기는 경우 대비
+			}
+		}
+		if (data.length == 0) {
+			try {
+				data = readStreamBytes(conn.getInputStream());
+			} catch (IOException ignore) {
+				// ignore
+			}
+		}
+		return data;
+	}
+
+	/**
+	 * 티맵 400 본문 hex가 {@code 1f ef bf bd 08} 인 경우: gzip 매직 8b 자리가 깨진 형태.
+	 * {@code 1f} 뒤 CM 바이트 {@code 08} 이 나오기 전까지를 건너뛰고 {@code 1f 8b} 헤더를 복원한다.
+	 */
+	private static byte[] repairLeadingGzipMagic(byte[] data) {
+		if (data == null || data.length < 4) {
+			return data;
+		}
+		if ((data[0] & 0xFF) != 0x1f) {
+			return data;
+		}
+		if ((data[1] & 0xFF) == 0x8b) {
+			return data;
+		}
+		for (int i = 2; i < Math.min(20, data.length); i++) {
+			if ((data[i] & 0xFF) == 0x08) {
+				byte[] fixed = new byte[2 + (data.length - i)];
+				fixed[0] = (byte) 0x1f;
+				fixed[1] = (byte) 0x8b;
+				System.arraycopy(data, i, fixed, 2, data.length - i);
+				return fixed;
+			}
+		}
+		return data;
+	}
+
+	private static boolean isUtf8ReplacementAt(byte[] data, int i) {
+		return i + 2 < data.length
+				&& (data[i] & 0xFF) == 0xef
+				&& (data[i + 1] & 0xFF) == 0xbf
+				&& (data[i + 2] & 0xFF) == 0xbd;
+	}
+
+	private static int indexOfUtf8Replacement(byte[] data, int from) {
+		for (int i = Math.max(0, from); i < data.length - 2; i++) {
+			if (isUtf8ReplacementAt(data, i)) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private static byte[] replaceUtf8ReplacementWithByte(byte[] data, int pos, byte single) {
+		byte[] out = new byte[data.length - 2];
+		System.arraycopy(data, 0, out, 0, pos);
+		out[pos] = single;
+		System.arraycopy(data, pos + 3, out, pos + 1, data.length - pos - 3);
+		return out;
+	}
+
+	/**
+	 * gzip 바이너리가 UTF-8 문자열 경유로 깨지면 invalid 바이트가 {@code ef bf bd} 3바이트로 늘어난다.
+	 * 후보 단일 바이트로 치환해 gunzip이 성공할 때까지 복원한다.
+	 */
+	private static byte[] repairUtf8ReplacementForGunzip(byte[] data) throws IOException {
+		byte[] cur = repairLeadingGzipMagic(data);
+		for (int round = 0; round < 32; round++) {
+			if (!decodeTmapBinaryPayload(cur).isEmpty()) {
+				return cur;
+			}
+			int pos = indexOfUtf8Replacement(cur, 0);
+			if (pos < 0) {
+				break;
+			}
+			boolean progressed = false;
+			for (int cand : gzipReplacementByteCandidates(pos, cur)) {
+				byte[] trial = repairLeadingGzipMagic(replaceUtf8ReplacementWithByte(cur, pos, (byte) cand));
+				if (!decodeTmapBinaryPayload(trial).isEmpty()) {
+					cur = trial;
+					progressed = true;
+					break;
+				}
+			}
+			if (!progressed) {
+				cur = repairLeadingGzipMagic(replaceUtf8ReplacementWithByte(cur, pos, (byte) 0x8b));
+			}
+		}
+		return cur;
+	}
+
+	private static int[] gzipReplacementByteCandidates(int pos, byte[] data) {
+		int[] ordered = new int[264];
+		int n = 0;
+		if (pos == 1 && data.length > 0 && (data[0] & 0xFF) == 0x1f) {
+			ordered[n++] = 0x8b;
+		}
+		int[] pri = {0x8b, 0x00, 0xff, 0x03, 0x78, 0x9c, 0x52, 0x56, 0x50, 0x4a, 0x2d, 0x2a};
+		for (int p : pri) {
+			boolean dup = false;
+			for (int j = 0; j < n; j++) {
+				if (ordered[j] == p) {
+					dup = true;
+					break;
+				}
+			}
+			if (!dup) {
+				ordered[n++] = p;
+			}
+		}
+		for (int i = 0; i < 256 && n < ordered.length; i++) {
+			boolean dup = false;
+			for (int j = 0; j < n; j++) {
+				if (ordered[j] == i) {
+					dup = true;
+					break;
+				}
+			}
+			if (!dup) {
+				ordered[n++] = i;
+			}
+		}
+		int[] out = new int[n];
+		System.arraycopy(ordered, 0, out, 0, n);
+		return out;
+	}
+
+	private static byte[] readStreamBytes(InputStream stream) throws IOException {
+		if (stream == null) {
+			return new byte[0];
+		}
+		try (InputStream in = stream) {
+			return readInputStreamFully(in);
+		}
+	}
+
+	/** Java 8 호환 — {@link InputStream#readAllBytes()} (Java 9+) 대체 */
+	private static byte[] readInputStreamFully(InputStream in) throws IOException {
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		byte[] buf = new byte[8192];
+		int n;
+		while ((n = in.read(buf)) != -1) {
+			out.write(buf, 0, n);
+		}
+		return out.toByteArray();
+	}
+
+	/**
+	 * 티맵 4xx 본문은 gzip(1f 8b)이 8바이트 헤더 뒤에 오는 경우가 많다.
+	 * 바이너리를 UTF-8 문자열로 먼저 만들면 깨지므로, 압축 해제를 먼저 시도한다.
+	 */
+	private static String decodeTmapResponseBytes(byte[] data) throws IOException {
+		if (data == null || data.length == 0) {
+			return "";
+		}
+		if (isMostlyAsciiPrintable(data)) {
+			String plain = new String(data, StandardCharsets.UTF_8).trim();
+			if (isUsableTmapDecodedText(plain)) {
+				return plain;
+			}
+		}
+		String fromGzip = decodeTmapBinaryPayload(repairLeadingGzipMagic(data));
+		if (!fromGzip.isEmpty()) {
+			return fromGzip;
+		}
+		if (indexOfUtf8Replacement(data, 0) >= 0) {
+			byte[] repaired = repairUtf8ReplacementForGunzip(data);
+			fromGzip = decodeTmapBinaryPayload(repaired);
+			if (!fromGzip.isEmpty()) {
+				return fromGzip;
+			}
+		}
+		return decodeTmapBinaryPayload(data);
+	}
+
+	private static String decodeTmapBinaryPayload(byte[] data) throws IOException {
+		if (data == null || data.length == 0) {
+			return "";
+		}
+		for (int i = 0; i <= data.length - 2; i++) {
+			if ((data[i] & 0xFF) == 0x1f && (data[i + 1] & 0xFF) == 0x8b) {
+				String gunz = tryGunzipUtf8(data, i);
+				if (isUsableTmapDecodedText(gunz)) {
+					return gunz.trim();
+				}
+			}
+		}
+		for (int skip : new int[]{0, 8, 4, 10, 12}) {
+			if (data.length <= skip + 2) {
+				continue;
+			}
+			if (isZlibHeader(data, skip)) {
+				String inflated = inflateUtf8(data, skip);
+				if (isUsableTmapDecodedText(inflated)) {
+					return inflated;
+				}
+			}
+			String nowrap = inflateNowrapUtf8(data, skip);
+			if (isUsableTmapDecodedText(nowrap)) {
+				return nowrap;
+			}
+		}
+		if (isMostlyAsciiPrintable(data)) {
+			String plain = new String(data, StandardCharsets.UTF_8).trim();
+			if (isUsableTmapDecodedText(plain)) {
+				return plain;
+			}
+		}
+		return "";
+	}
+
+	private static boolean isUsableTmapDecodedText(String gunz) {
+		if (gunz == null) {
+			return false;
+		}
+		String t = gunz.trim();
+		if (t.isEmpty()) {
+			return false;
+		}
+		if (looksLikeJsonText(t)) {
+			return true;
+		}
+		String lower = t.toLowerCase(Locale.ROOT);
+		return t.indexOf('{') >= 0
+				|| lower.contains("errormessage")
+				|| lower.contains("\"error\"")
+				|| lower.contains("\"message\"");
+	}
+
+	/** 버퍼 안 모든 gzip(1f 8b) 오프셋에서 해제 시도 */
+	private static String forceGunzipAnyOffset(byte[] data) {
+		if (data == null || data.length < 4) {
+			return "";
+		}
+		try {
+			byte[] repaired = repairUtf8ReplacementForGunzip(data);
+			String s = forceGunzipAnyOffsetOnBuffer(repaired);
+			if (!s.isEmpty()) {
+				return s;
+			}
+		} catch (IOException ignore) {
+			// ignore
+		}
+		return forceGunzipAnyOffsetOnBuffer(repairLeadingGzipMagic(data));
+	}
+
+	private static String forceGunzipAnyOffsetOnBuffer(byte[] data) {
+		for (int i = 0; i <= data.length - 2; i++) {
+			if ((data[i] & 0xFF) == 0x1f && (data[i + 1] & 0xFF) == 0x8b) {
+				String g = tryGunzipUtf8(data, i);
+				if (isUsableTmapDecodedText(g)) {
+					return g.trim();
+				}
+			}
+		}
+		return "";
+	}
+
+	private static String tryGunzipUtf8(byte[] data, int offset) {
+		try {
+			return gunzipUtf8(data, offset);
+		} catch (IOException ignore) {
+			return null;
+		}
+	}
+
+	private static boolean isMostlyAsciiPrintable(byte[] data) {
+		if (data == null || data.length == 0) {
+			return false;
+		}
+		int printable = 0;
+		for (byte b : data) {
+			int c = b & 0xFF;
+			if (c == 9 || c == 10 || c == 13 || (c >= 32 && c < 127)) {
+				printable++;
+			}
+		}
+		return printable * 100 / data.length >= 85;
+	}
+
+	private static boolean looksLikeJsonText(String s) {
+		if (s == null) {
+			return false;
+		}
+		String t = s.trim();
+		return t.startsWith("{") || t.startsWith("[");
+	}
+
+	private static boolean isZlibHeader(byte[] data, int offset) {
+		if (offset + 1 >= data.length) {
+			return false;
+		}
+		int b0 = data[offset] & 0xFF;
+		int b1 = data[offset + 1] & 0xFF;
+		return b0 == 0x78 && (b1 == 0x01 || b1 == 0x5e || b1 == 0x9c || b1 == 0xda);
+	}
+
+	private static int findBytePairOffset(byte[] data, int from, byte b0, byte b1) {
+		for (int i = Math.max(0, from); i < data.length - 1; i++) {
+			if (data[i] == b0 && data[i + 1] == b1) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private static String gunzipUtf8(byte[] data, int offset) throws IOException {
+		try (GZIPInputStream gz = new GZIPInputStream(new ByteArrayInputStream(data, offset, data.length - offset))) {
+			return new String(readInputStreamFully(gz), StandardCharsets.UTF_8);
+		}
+	}
+
+	private static String inflateUtf8(byte[] data, int offset) {
+		return inflateAt(data, offset, false);
+	}
+
+	/** gzip 헤더 없는 raw deflate (SK 8바이트 프레이밍 뒤에 오는 경우 시도) */
+	private static String inflateNowrapUtf8(byte[] data, int offset) {
+		return inflateAt(data, offset, true);
+	}
+
+	private static String inflateAt(byte[] data, int offset, boolean nowrap) {
+		Inflater inf = new Inflater(nowrap);
+		try {
+			inf.setInput(data, offset, data.length - offset);
+			ByteArrayOutputStream out = new ByteArrayOutputStream();
+			byte[] buf = new byte[8192];
+			while (!inf.finished()) {
+				int n = inf.inflate(buf);
+				if (n <= 0) {
+					if (inf.needsInput() || inf.needsDictionary()) {
+						break;
+					}
+				} else {
+					out.write(buf, 0, n);
+				}
+			}
+			return out.toString(StandardCharsets.UTF_8.name());
+		} catch (Exception ignore) {
+			return null;
+		} finally {
+			inf.end();
+		}
+	}
+
+	private static String bytesHexPrefix(byte[] data, int maxBytes) {
+		if (data == null || data.length == 0) {
+			return "";
+		}
+		int n = Math.min(data.length, maxBytes);
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < n; i++) {
+			if (i > 0) {
+				sb.append(' ');
+			}
+			sb.append(String.format(Locale.ROOT, "%02x", data[i] & 0xFF));
+		}
+		if (data.length > maxBytes) {
+			sb.append(" …");
+		}
+		return sb.toString();
 	}
 
 	private static String unwrapTmapJsonBody(String raw) {
@@ -631,6 +1093,7 @@ public class ApiServlet extends HttpServlet {
 		conn.setDoOutput(true);
 		conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
 		conn.setRequestProperty("Accept", "application/json");
+		conn.setRequestProperty("Accept-Encoding", "identity");
 		conn.setRequestProperty("appKey", apiKey);
 		conn.setConnectTimeout(8000);
 		conn.setReadTimeout(20000);
@@ -639,13 +1102,9 @@ public class ApiServlet extends HttpServlet {
 		}
 
 		int code = conn.getResponseCode();
-		InputStream stream = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-		String raw = "";
-		if (stream != null) {
-			try (Scanner scanner = new Scanner(stream, StandardCharsets.UTF_8.name()).useDelimiter("\\A")) {
-				raw = scanner.hasNext() ? scanner.next() : "";
-			}
-		}
+		byte[] bodyBytes = readTmapConnectionBodyBytes(conn, code);
+		String raw = decodeTmapResponseBytes(bodyBytes);
+		raw = raw.replace("\uFEFF", "").trim();
 		String jsonPayload = unwrapTmapJsonBody(raw);
 		JsonNode root;
 		try {
@@ -653,32 +1112,226 @@ public class ApiServlet extends HttpServlet {
 		} catch (Exception parseEx) {
 			ObjectNode err = JSON_MAPPER.createObjectNode();
 			err.put("status", "ERROR");
-			String snippet = raw.length() > 280 ? raw.substring(0, 280) + "…" : raw;
-			err.put("error_message", "티맵 응답 파싱 실패(HTTP " + code + "): " + parseEx.getClass().getSimpleName()
-					+ (snippet.isEmpty() ? "" : (" | 본문발췌: " + snippet)));
+			fillTmapHttpErrorDetails(err, code, bodyBytes, null);
+			String base = err.path("error_message").asText("");
+			if (base.contains("응답 본문 해석 불가") || base.startsWith("HTTP " + code)) {
+				err.put("error_message", base + " | JSON파싱: " + parseEx.getClass().getSimpleName());
+			} else {
+				err.put("error_message", "HTTP " + code + " | JSON파싱: " + parseEx.getClass().getSimpleName());
+			}
 			return err;
 		}
 		if (code < 200 || code >= 300) {
 			ObjectNode err = JSON_MAPPER.createObjectNode();
 			err.put("status", "ERROR");
-			String msg = "HTTP " + code;
-			if (root.has("errorMessage")) {
-				msg = root.get("errorMessage").asText(msg);
-			} else if (root.has("error")) {
-				msg = root.get("error").asText(msg);
-			}
-			err.put("error_message", msg);
+			fillTmapHttpErrorDetails(err, code, bodyBytes, root);
 			return err;
 		}
 		return root;
 	}
 
 	/**
+	 * HTTP 4xx/5xx 시 티맵 오류 본문을 풀어 {@code error_message}·{@code responseBody}에 담는다.
+	 */
+	private static void fillTmapHttpErrorDetails(ObjectNode err, int httpCode, byte[] bodyBytes, JsonNode parsedRoot) {
+		err.put("httpCode", httpCode);
+		String decoded = "";
+		try {
+			decoded = decodeTmapResponseBytes(bodyBytes);
+		} catch (IOException ignore) {
+			// ignore
+		}
+		if (decoded.isEmpty()) {
+			decoded = forceGunzipAnyOffset(bodyBytes);
+		}
+		String detail = extractTmapApiErrorText(parsedRoot);
+		if (detail.isEmpty() && !decoded.isEmpty()) {
+			try {
+				String jsonSlice = unwrapTmapJsonBody(decoded);
+				if (!jsonSlice.isEmpty()) {
+					detail = extractTmapApiErrorText(JSON_MAPPER.readTree(jsonSlice));
+				}
+			} catch (Exception ignore) {
+				// ignore
+			}
+			if (detail.isEmpty()) {
+				String compact = decoded.replaceAll("\\s+", " ").trim();
+				if (isUsableTmapDecodedText(compact)) {
+					if (compact.length() <= 900) {
+						detail = compact;
+					} else {
+						detail = compact.substring(0, 900) + "…";
+					}
+				}
+			}
+		}
+		if (detail.isEmpty() && bodyBytes != null && bodyBytes.length > 0) {
+			detail = "응답 본문 해석 불가 (len=" + bodyBytes.length + ", hex=" + bytesHexPrefix(bodyBytes, 20) + ")";
+		}
+		err.put("error_message", detail.isEmpty() ? ("HTTP " + httpCode) : ("HTTP " + httpCode + ": " + detail));
+		if (!decoded.isEmpty()) {
+			String preview = decoded.length() > 1200 ? decoded.substring(0, 1200) + "…" : decoded;
+			err.put("responseBody", preview);
+		}
+	}
+
+	/**
 	 * Tmap GeoJSON 한 경로 → Google Directions 호환 단일 route 객체 + 교통색용 {@code segments}.
 	 * {@code geometry.traffic}: [시작좌표인덱스, 끝인덱스, 혼잡도, 속도] 가 4개씩 반복(SK 문서 기준).
 	 */
+	private static String extractTmapApiErrorText(JsonNode root) {
+		if (root == null || root.isNull()) {
+			return "";
+		}
+		if (root.has("error_message") && !root.path("error_message").asText("").trim().isEmpty()) {
+			return root.path("error_message").asText("").trim();
+		}
+		if (root.has("errorMessage") && !root.path("errorMessage").asText("").trim().isEmpty()) {
+			return root.path("errorMessage").asText("").trim();
+		}
+		if (root.has("errorDetails") && !root.path("errorDetails").asText("").trim().isEmpty()) {
+			return root.path("errorDetails").asText("").trim();
+		}
+		if (root.has("msg") && !root.path("msg").asText("").trim().isEmpty()) {
+			return root.path("msg").asText("").trim();
+		}
+		if (root.has("message") && !root.path("message").asText("").trim().isEmpty()) {
+			return root.path("message").asText("").trim();
+		}
+		if (root.has("error")) {
+			JsonNode err = root.get("error");
+			if (err.isTextual()) {
+				return err.asText("").trim();
+			}
+			if (err.isObject()) {
+				String msg = err.path("message").asText("");
+				if (!msg.isEmpty()) {
+					return msg;
+				}
+				String code = err.path("code").asText("");
+				if (!code.isEmpty()) {
+					return code;
+				}
+			}
+		}
+		return "";
+	}
+
+	private static String describeTmapFailReason(JsonNode root) {
+		if (root == null || root.isNull()) {
+			return "empty_response";
+		}
+		if (root.has("status") && "ERROR".equals(root.path("status").asText(""))) {
+			String msg = root.path("error_message").asText("tmap_ERROR");
+			if (root.has("httpCode") && !msg.toUpperCase(Locale.ROOT).startsWith("HTTP")) {
+				msg = "HTTP " + root.path("httpCode").asInt() + ": " + msg;
+			}
+			return msg;
+		}
+		if (root.has("errorMessage") && !root.path("errorMessage").asText("").trim().isEmpty()) {
+			return root.path("errorMessage").asText();
+		}
+		if (root.has("error") && root.get("error").isObject()) {
+			JsonNode err = root.get("error");
+			String msg = err.path("message").asText("");
+			String code = err.path("code").asText("");
+			if (!msg.isEmpty()) {
+				return msg;
+			}
+			if (!code.isEmpty()) {
+				return code;
+			}
+		}
+		JsonNode features = root.get("features");
+		if (features == null || !features.isArray() || features.size() == 0) {
+			return "no_features";
+		}
+		int lineFeatures = 0;
+		for (JsonNode f : features) {
+			if ("LineString".equals(f.path("geometry").path("type").asText(""))) {
+				lineFeatures++;
+			}
+		}
+		if (lineFeatures == 0) {
+			return "no_linestring_geometry";
+		}
+		return "route_build_failed";
+	}
+
+	/**
+	 * 티맵 대안이 2개 미만일 때 Google Routes(대안 포함)로 routes 배열을 보강한다.
+	 * @return Google 경로를 하나라도 추가했으면 true
+	 */
+	private static boolean appendGoogleDirectionsIfNeeded(
+			ArrayNode routesArr,
+			Set<String> seenOverview,
+			ArrayNode routeAttempts,
+			String oLat,
+			String oLng,
+			String dLat,
+			String dLng,
+			String modeDrivingOrWalking,
+			String googleApiKey) {
+		if (googleApiKey == null || googleApiKey.trim().isEmpty()) {
+			ObjectNode att = routeAttempts.addObject();
+			att.put("searchOption", "google");
+			att.put("routeLabel", "Google 보강");
+			att.put("ok", false);
+			att.put("reason", "googleKeyMissing");
+			return false;
+		}
+		ObjectNode att = routeAttempts.addObject();
+		att.put("searchOption", "google");
+		att.put("routeLabel", "Google 보강");
+		try {
+			String gJson = computeRoutesAndToLegacyDirectionsJson(
+					googleApiKey.trim(), oLat, oLng, dLat, dLng, modeDrivingOrWalking);
+			JsonNode gRoot = JSON_MAPPER.readTree(gJson);
+			String st = gRoot.path("status").asText("");
+			if (!"OK".equals(st)) {
+				att.put("ok", false);
+				att.put("reason", gRoot.path("error_message").asText(st));
+				return false;
+			}
+			JsonNode gRoutes = gRoot.get("routes");
+			int added = 0;
+			if (gRoutes != null && gRoutes.isArray()) {
+				for (int i = 0; i < gRoutes.size(); i++) {
+					JsonNode gr = gRoutes.get(i);
+					String ov = gr.path("overview_polyline").path("points").asText("");
+					if (ov.isEmpty() || seenOverview.contains(ov)) {
+						continue;
+					}
+					seenOverview.add(ov);
+					ObjectNode copy = (ObjectNode) gr.deepCopy();
+					if (!copy.has("routeLabel")) {
+						copy.put("routeLabel", gRoutes.size() > 1 ? ("Google 경로 " + (i + 1)) : "Google 추천");
+					}
+					copy.put("searchOption", "google");
+					routesArr.add(copy);
+					added++;
+				}
+			}
+			att.put("ok", added > 0);
+			if (added == 0) {
+				att.put("reason", "no_new_google_routes");
+			}
+			return added > 0;
+		} catch (Exception ex) {
+			att.put("ok", false);
+			att.put("reason", safe(ex.getMessage()));
+			return false;
+		}
+	}
+
 	private static ObjectNode buildTmapRouteObject(JsonNode root, String modeDrivingOrWalking) {
+		if (root == null || root.isNull()) {
+			return null;
+		}
 		if (root.has("status") && "ERROR".equals(root.get("status").asText())) {
+			return null;
+		}
+		if (root.has("errorMessage") && !root.path("errorMessage").asText("").trim().isEmpty()) {
 			return null;
 		}
 		JsonNode features = root.get("features");

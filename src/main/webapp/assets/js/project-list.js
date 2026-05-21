@@ -221,12 +221,12 @@
 		return ' <span class="project-list-sort-ind project-list-sort-muted" title="정렬">↕</span>';
 	}
 
-	function sortHeaderHtml(dataKey, label, extraStyle) {
-		extraStyle = extraStyle || "";
+	function sortHeaderHtml(dataKey, label, colClass) {
+		colClass = colClass || "";
 		return (
-			'<th class="project-list-sort-th" style="padding: 10px 8px; text-align: left; font-weight: 600; color: #374151; white-space: nowrap; cursor: pointer; user-select: none; ' +
-			extraStyle +
-			'" data-sort-key="' +
+			'<th class="project-list-sort-th ' +
+			colClass +
+			'" style="text-align: left; font-weight: 600; color: #374151; cursor: pointer; user-select: none;" data-sort-key="' +
 			dataKey +
 			'" title="클릭하여 정렬">' +
 			label +
@@ -250,13 +250,13 @@
 			return;
 		}
 		
-		var html = '<div style="overflow-x: auto;"><table class="project-list-main-table" style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+		var html = '<div class="project-list-table-scroll"><table class="project-list-main-table">';
 		html += '<thead><tr style="background: #f9fafb; border-bottom: 2px solid #e5e7eb;">';
-		html += sortHeaderHtml("code", "프로젝트 코드", "width: 140px;");
-		html += sortHeaderHtml("name", "프로젝트명", "min-width: 160px;");
-		html += sortHeaderHtml("pm", "PM", "width: 78px; max-width: 78px; padding: 8px 4px;");
+		html += sortHeaderHtml("code", "코드", "pl-col-code");
+		html += sortHeaderHtml("name", "프로젝트명", "pl-col-name");
+		html += sortHeaderHtml("pm", "PM", "pl-col-pm");
 		html +=
-			'<th class="project-list-sort-th" style="padding: 8px 6px; text-align: center; font-weight: 600; color: #374151; white-space: nowrap; width: 130px; cursor: pointer; user-select: none;" data-sort-key="permission" title="클릭하여 정렬">권한' +
+			'<th class="project-list-sort-th pl-col-perm" style="text-align: center; font-weight: 600; color: #374151; cursor: pointer; user-select: none;" data-sort-key="permission" title="클릭하여 정렬">권한' +
 			sortHeaderArrow("permission") +
 			"</th>";
 		html += '</tr></thead>';
@@ -281,66 +281,57 @@
 			html += '>';
 			
 			// 프로젝트 코드
-			html += '<td style="padding: 12px 8px; font-weight: 600; color: #1f2937; white-space: nowrap; width: 120px;">' + escapeHtml(project.code || "") + '</td>';
+			html += '<td class="pl-code-cell" title="' + escapeHtml(project.code || "") + '">' + escapeHtml(project.code || "") + '</td>';
 			
-			// 프로젝트명 (더 넓게, 최소 너비 보장)
-			html += '<td style="padding: 12px 8px; color: #374151; min-width: 200px;">' + escapeHtml(project.name || "") + '</td>';
+			// 프로젝트명
+			html += '<td class="pl-name-cell" title="' + escapeHtml(project.name || "") + '">' + escapeHtml(project.name || "") + '</td>';
 			
-			// PM (3줄 유지: 사번, 부서, 이름 — 폰트·패딩만 줄여서 컬럼 너비 축소)
-			html += '<td style="padding: 6px 4px; color: #6b7280; width: 78px; max-width: 78px; line-height: 1.3; font-size: 11px;">';
+			// PM (사이드바: 이름·부서만 표시, 사번은 툴팁용으로 숨김)
+			html += '<td class="pl-pm-cell">';
 			if (project.pmId && project.pmId.trim() !== "") {
-				html += '<div style="font-weight: 500; color: #1f2937;">' + escapeHtml(project.pmId.trim()) + '</div>';
-				html += '<div style="color: #6b7280; margin-top: 0;">' + escapeHtml((project.mainDeptName || "-").trim()) + '</div>';
+				html += '<div class="project-list-pm-id" title="' + escapeHtml(project.pmId.trim()) + '">' + escapeHtml(project.pmId.trim()) + "</div>";
 				var pmSource = project.pmSource || "view";
 				if (project.pmName && project.pmName.trim() !== "") {
-					html += '<div style="color: #6b7280; margin-top: 0;">' + escapeHtml(project.pmName.trim());
-					if (pmSource === "admin") html += ' <img src="assets/images/blue_badge.png" alt="관리자 지정" style="height: 11px; vertical-align: middle;" />';
-					html += '</div>';
+					html += '<div class="pl-pm-name" title="' + escapeHtml(project.pmName.trim()) + '">' + escapeHtml(project.pmName.trim());
+					if (pmSource === "admin") {
+						html += ' <img src="assets/images/blue_badge.png" alt="관리자 지정" style="height: 11px; vertical-align: middle;" />';
+					}
+					html += "</div>";
 				} else {
-					html += '<div style="color: #9ca3af;">-' + (pmSource === "admin" ? ' <img src="assets/images/blue_badge.png" alt="관리자 지정" style="height: 11px; vertical-align: middle;" />' : '') + '</div>';
+					html += '<div class="pl-pm-name">-</div>';
 				}
+				html += '<div class="pl-pm-dept" title="' + escapeHtml((project.mainDeptName || "-").trim()) + '">' + escapeHtml((project.mainDeptName || "-").trim()) + "</div>";
 			} else {
-				html += '<div style="color: #9ca3af;">-</div><div style="color: #9ca3af;">-</div><div style="color: #9ca3af;">-</div>';
+				html += '<div class="pl-pm-name">-</div>';
 			}
-			html += '</td>';
+			html += "</td>";
 			
-			// 권한 상태별 버튼 렌더링 (한 줄 유지)
-			html += '<td style="padding: 8px 6px; text-align: center; white-space: nowrap;">';
+			// 권한 상태별 버튼
+			html += '<td class="pl-perm-cell">';
+			html += '<span class="pl-perm-actions">';
 			
 			if (permUi === 'NONE' || permUi === 'CANCELLED' || !permUi) {
-				// 신청 전 / 취소됨: 주황색 계열 '신청 가능' 버튼
-				html += '<button type="button" onclick="event.stopPropagation(); requestProjectPermission(\'' + escapeHtml(project.code) + '\');" ';
-				html += 'style="font-size: 11px; padding: 4px 12px; border: 1px solid #f97316; background-color: #fff7ed; color: #ea580c; border-radius: 4px; cursor: pointer; transition: all 0.2s;" ';
-				html += 'onmouseover="this.style.backgroundColor=\'#ffedd5\'; this.style.borderColor=\'#ea580c\';" ';
-				html += 'onmouseout="this.style.backgroundColor=\'#fff7ed\'; this.style.borderColor=\'#f97316\';">신청 가능</button>';
+				html += '<button type="button" class="pl-perm-btn" onclick="event.stopPropagation(); requestProjectPermission(\'' + escapeHtml(project.code) + '\');" ';
+				html += 'style="border: 1px solid #f97316; background-color: #fff7ed; color: #ea580c; cursor: pointer;">신청</button>';
 			} else if (permUi === 'PENDING') {
-				// 신청 중/심사 중: '승인 중' + 취소 버튼 (가로 배치). reqId는 숫자만 사용(URL 파싱 오류 방지)
 				var reqId = project.permissionRequestId != null ? String(project.permissionRequestId).trim().replace(/[^0-9]/g, "") : "";
-				html += '<span style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap;">';
-				html += '<button type="button" disabled ';
-				html += 'style="font-size: 11px; padding: 4px 8px; border: 1px solid #dc2626; background-color: #fef2f2; color: #dc2626; border-radius: 4px; cursor: not-allowed; opacity: 0.8; white-space: nowrap;">승인 중</button>';
+				html += '<button type="button" class="pl-perm-btn" disabled ';
+				html += 'style="border: 1px solid #dc2626; background-color: #fef2f2; color: #dc2626; cursor: not-allowed; opacity: 0.85;">대기</button>';
 				if (reqId) {
-					html += '<button type="button" onclick="event.stopPropagation(); cancelPermissionRequest(\'' + escapeHtml(reqId) + '\');" ';
-					html += 'style="font-size: 11px; padding: 4px 8px; border: 1px solid #6b7280; background-color: #f3f4f6; color: #4b5563; border-radius: 4px; cursor: pointer; white-space: nowrap;">취소</button>';
+					html += '<button type="button" class="pl-perm-btn" onclick="event.stopPropagation(); cancelPermissionRequest(\'' + escapeHtml(reqId) + '\');" ';
+					html += 'style="border: 1px solid #6b7280; background-color: #f3f4f6; color: #4b5563; cursor: pointer;">취소</button>';
 				}
-				html += '</span>';
 			} else if (permUi === 'APPROVED') {
-				// 승인 완료
-				html += '<button type="button" disabled ';
-				html += 'style="font-size: 11px; padding: 4px 12px; border: 1px solid #10b981; background-color: #ecfdf5; color: #059669; border-radius: 4px; cursor: default;">승인 완료</button>';
+				html += '<button type="button" class="pl-perm-btn" disabled ';
+				html += 'style="border: 1px solid #10b981; background-color: #ecfdf5; color: #059669; cursor: default;">완료</button>';
 			} else if (permUi === 'REJECTED') {
-				// 거부됨: '승인거부' 버튼 클릭 시 재신청 모달 오픈
-				html += '<button type="button" onclick="event.stopPropagation(); if(window.openProjectReapplyModal) window.openProjectReapplyModal(\'' + escapeHtml(project.code || "") + '\');" ';
-				html += 'style="font-size: 11px; padding: 4px 12px; border: 1px solid #6b7280; background-color: #f3f4f6; color: #4b5563; border-radius: 4px; cursor: pointer; transition: all 0.2s;" ';
-				html += 'onmouseover="this.style.backgroundColor=\'#e5e7eb\'; this.style.borderColor=\'#4b5563\';" ';
-				html += 'onmouseout="this.style.backgroundColor=\'#f3f4f6\'; this.style.borderColor=\'#6b7280\';">승인거부</button>';
+				html += '<button type="button" class="pl-perm-btn" onclick="event.stopPropagation(); if(window.openProjectReapplyModal) window.openProjectReapplyModal(\'' + escapeHtml(project.code || "") + '\');" ';
+				html += 'style="border: 1px solid #6b7280; background-color: #f3f4f6; color: #4b5563; cursor: pointer;">거부</button>';
 			} else {
-				// 그 외(신청 전 등) → 신청 가능
-				html += '<button type="button" onclick="event.stopPropagation(); requestProjectPermission(\'' + escapeHtml(project.code) + '\');" ';
-				html += 'style="font-size: 11px; padding: 4px 12px; border: 1px solid #f97316; background-color: #fff7ed; color: #ea580c; border-radius: 4px; cursor: pointer; transition: all 0.2s;" ';
-				html += 'onmouseover="this.style.backgroundColor=\'#ffedd5\'; this.style.borderColor=\'#ea580c\';" ';
-				html += 'onmouseout="this.style.backgroundColor=\'#fff7ed\'; this.style.borderColor=\'#f97316\';">신청 가능</button>';
+				html += '<button type="button" class="pl-perm-btn" onclick="event.stopPropagation(); requestProjectPermission(\'' + escapeHtml(project.code) + '\');" ';
+				html += 'style="border: 1px solid #f97316; background-color: #fff7ed; color: #ea580c; cursor: pointer;">신청</button>';
 			}
+			html += "</span>";
 			
 			html += '</td>';
 			
@@ -746,16 +737,28 @@
 			projectTabProjects.addEventListener("click", function() {
 				projectTabProjects.classList.add("active");
 				projectTabRequests.classList.remove("active");
-				if (projectTabContentProjects) projectTabContentProjects.style.display = "block";
-				if (projectTabContentRequests) projectTabContentRequests.style.display = "none";
+				if (projectTabContentProjects) {
+					projectTabContentProjects.classList.add("active");
+					projectTabContentProjects.style.display = "flex";
+				}
+				if (projectTabContentRequests) {
+					projectTabContentRequests.classList.remove("active");
+					projectTabContentRequests.style.display = "none";
+				}
 			});
 			
 			// 내가 관리하는 프로젝트 목록 탭 클릭
 			projectTabRequests.addEventListener("click", function() {
 				projectTabProjects.classList.remove("active");
 				projectTabRequests.classList.add("active");
-				if (projectTabContentProjects) projectTabContentProjects.style.display = "none";
-				if (projectTabContentRequests) projectTabContentRequests.style.display = "block";
+				if (projectTabContentProjects) {
+					projectTabContentProjects.classList.remove("active");
+					projectTabContentProjects.style.display = "none";
+				}
+				if (projectTabContentRequests) {
+					projectTabContentRequests.classList.add("active");
+					projectTabContentRequests.style.display = "flex";
+				}
 				loadMyManagedProjects();
 				hidePermissionRequestNotification();
 			});
@@ -835,11 +838,11 @@
 			return codeA.localeCompare(codeB);
 		});
 
-		var html = '<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+		var html = '<div class="project-list-table-scroll"><table class="project-list-managed-table">';
 		html += '<thead><tr style="background: #f9fafb; border-bottom: 2px solid #e5e7eb;">';
-		html += '<th style="padding: 10px 8px; text-align: left; font-weight: 600; color: #374151; white-space: nowrap; width: 120px;">프로젝트 코드</th>';
-		html += '<th style="padding: 10px 8px; text-align: left; font-weight: 600; color: #374151;">프로젝트명</th>';
-		html += '<th style="padding: 10px 8px; text-align: center; font-weight: 600; color: #374151; white-space: nowrap; width: 56px;">승인대기</th>';
+		html += '<th class="pl-col-code" style="text-align: left; font-weight: 600; color: #374151;">코드</th>';
+		html += '<th class="pl-col-name" style="text-align: left; font-weight: 600; color: #374151;">프로젝트명</th>';
+		html += '<th class="pl-col-pending" style="font-weight: 600; color: #374151;">대기</th>';
 		html += '</tr></thead>';
 		html += '<tbody>';
 		
@@ -851,9 +854,9 @@
 			html += '<tr class="project-managed-row" style="border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.2s;" ';
 			html += 'data-code="' + escapeHtml(code) + '" data-name="' + escapeHtml(name) + '" data-can-manage="' + (editable ? "1" : "0") + '" ';
 			html += 'onmouseover="this.style.background=\'#f9fafb\'" onmouseout="this.style.background=\'\'">';
-			html += '<td style="padding: 12px 8px; font-weight: 600; color: #1f2937; white-space: nowrap;">' + escapeHtml(project.code || "") + '</td>';
-			html += '<td style="padding: 12px 8px; color: #374151; min-width: 200px;">' + escapeHtml(project.name || "") + '</td>';
-			html += '<td style="padding: 12px 8px; text-align: center; vertical-align: middle;">';
+			html += '<td class="pl-code-cell" title="' + escapeHtml(project.code || "") + '">' + escapeHtml(project.code || "") + '</td>';
+			html += '<td class="pl-name-cell" title="' + escapeHtml(project.name || "") + '">' + escapeHtml(project.name || "") + '</td>';
+			html += '<td style="text-align: center; vertical-align: middle;">';
 			if (pendingCount > 0) {
 				html += '<span class="project-pending-badge" title="승인 대기 ' + pendingCount + '건">';
 				html += '<iconify-icon icon="tabler:circle-exclamation" style="font-size: 18px; color: #ea580c;"></iconify-icon>';
