@@ -21,11 +21,55 @@
 	String userDeptName = (String) session.getAttribute("deptName");
 	
 	if (userId == null) {
-		response.sendRedirect(request.getContextPath() + "/login.jsp");
+		String loginTarget = request.getContextPath() + "/index.jsp";
+		String qs = request.getQueryString();
+		if (qs != null && !qs.trim().isEmpty()) {
+			loginTarget += "?" + qs;
+		}
+		response.sendRedirect(request.getContextPath() + "/login.jsp?returnUrl="
+				+ java.net.URLEncoder.encode(loginTarget, "UTF-8"));
 		return;
 	}
 	
 	boolean isAdminMode = (userAuthority == 1);
+
+	// 딥링크: URL ?code= 또는 fac-open.jsp 쿠키(ndf_fac_dl)
+	String ndfDlCode = request.getParameter("code");
+	String ndfDlProject = request.getParameter("project");
+	String ndfDlLng = request.getParameter("lng");
+	String ndfDlLat = request.getParameter("lat");
+	boolean ndfClearFacDlCookie = false;
+	if (ndfDlCode == null || ndfDlCode.trim().isEmpty()) {
+		javax.servlet.http.Cookie[] reqCookies = request.getCookies();
+		if (reqCookies != null) {
+			for (javax.servlet.http.Cookie c : reqCookies) {
+				if (!"ndf_fac_dl".equals(c.getName())) continue;
+				String v = c.getValue();
+				if (v == null || v.trim().isEmpty()) continue;
+				for (String pair : v.split("&")) {
+					int eq = pair.indexOf('=');
+					if (eq <= 0) continue;
+					String k = pair.substring(0, eq);
+					String val = java.net.URLDecoder.decode(pair.substring(eq + 1), "UTF-8");
+					if ("code".equals(k)) ndfDlCode = val;
+					else if ("project".equals(k)) ndfDlProject = val;
+					else if ("lng".equals(k)) ndfDlLng = val;
+					else if ("lat".equals(k)) ndfDlLat = val;
+				}
+				ndfClearFacDlCookie = true;
+				break;
+			}
+		}
+	}
+	boolean ndfHasDeepLink = ndfDlCode != null && !ndfDlCode.trim().isEmpty();
+	if (ndfClearFacDlCookie) {
+		String cookiePath = request.getContextPath();
+		if (cookiePath == null || cookiePath.isEmpty()) cookiePath = "/";
+		javax.servlet.http.Cookie clearCk = new javax.servlet.http.Cookie("ndf_fac_dl", "");
+		clearCk.setMaxAge(0);
+		clearCk.setPath(cookiePath);
+		response.addCookie(clearCk);
+	}
 	
 	String googleKey = getServletContext().getInitParameter("GOOGLE_MAPS_API_KEY");
 	if (googleKey == null || googleKey.trim().isEmpty()) {
@@ -45,8 +89,49 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>New_Db-Field</title>
+	<script>
+	(function () {
+		var q = window.location.search;
+		var h = window.location.hash || "";
+		var store = null;
+		if (q && /(?:^|[?&])code=/.test(q)) {
+			store = q.charAt(0) === "?" ? q.substring(1) : q;
+		} else if (h.indexOf("#fac?") === 0) {
+			store = h.substring(1);
+		}
+		if (store) {
+			try { sessionStorage.setItem("ndf_pending_deep_link", store); } catch (e) { /* ignore */ }
+		}
+	})();
+	</script>
+	<% if (ndfHasDeepLink) {
+		String ndfJsCode = ndfDlCode.replace("\\", "\\\\").replace("\"", "\\\"").replace("\r", "").replace("\n", "\\n");
+		String ndfJsProject = ndfDlProject != null ? ndfDlProject.replace("\\", "\\\\").replace("\"", "\\\"").replace("\r", "").replace("\n", "\\n") : "";
+		String ndfJsLng = ndfDlLng != null ? ndfDlLng.replace("\\", "\\\\").replace("\"", "\\\"") : "";
+		String ndfJsLat = ndfDlLat != null ? ndfDlLat.replace("\\", "\\\\").replace("\"", "\\\"") : "";
+		StringBuilder ndfStore = new StringBuilder("code=");
+		ndfStore.append(java.net.URLEncoder.encode(ndfDlCode.trim(), "UTF-8"));
+		if (ndfDlProject != null && !ndfDlProject.trim().isEmpty()) {
+			ndfStore.append("&project=").append(java.net.URLEncoder.encode(ndfDlProject.trim(), "UTF-8"));
+		}
+		if (ndfDlLng != null && !ndfDlLng.trim().isEmpty() && ndfDlLat != null && !ndfDlLat.trim().isEmpty()) {
+			ndfStore.append("&lng=").append(java.net.URLEncoder.encode(ndfDlLng.trim(), "UTF-8"));
+			ndfStore.append("&lat=").append(java.net.URLEncoder.encode(ndfDlLat.trim(), "UTF-8"));
+		}
+		String ndfStoreJs = ndfStore.toString().replace("\\", "\\\\").replace("\"", "\\\"");
+	%>
+	<script>
+	window.__NDF_DEEP_LINK__ = {
+		code: "<%= ndfJsCode %>",
+		project: "<%= ndfJsProject %>",
+		lng: "<%= ndfJsLng %>",
+		lat: "<%= ndfJsLat %>"
+	};
+	try { sessionStorage.setItem("ndf_pending_deep_link", "<%= ndfStoreJs %>"); } catch (eNdf) { /* ignore */ }
+	</script>
+	<% } %>
 	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/styles.css?v=1">
-	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/custom.css?v=85">
+	<link rel="stylesheet" href="<%=request.getContextPath()%>/assets/css/custom.css?v=87">
 	<!-- OpenLayers CSS will be injected dynamically when needed -->
 </head>
 <body class="<%= isAdminMode ? "admin-mode" : "" %>" data-context-path="<%=request.getContextPath()%>">
@@ -182,7 +267,7 @@
 감사합니다.
 
 26.05.15
- - 모바일 앱 업데이트 알림(푸시알림) 기능 적용용
+ - 모바일 앱 업데이트 알림(푸시알림) 기능 적용
  - 새로운 QR코드로 재다운로드 권장
 </div>
 				<div style="margin-top:24px; display:flex; flex-direction:column; gap:10px;">
@@ -692,7 +777,7 @@
 						<span id="facSearchResultsCount" class="text-muted">프로젝트 시설물: -</span>
 						<div class="d-flex gap-1 align-items-center">
 							<button type="button" class="btn btn-sm btn-outline-primary" id="multiSelectStartBtn" title="포인트를 클릭하거나 드래그로 복수 선택. Shift+드래그로 지도 이동">
-								<iconify-icon icon="tabler:mouse"></iconify-icon> 다중선택
+								<iconify-icon icon="tabler:mouse"></iconify-icon> 다중선택 <span id="multiSelectStartCount" class="multi-select-start-count">0</span>
 							</button>
 							<button type="button" class="btn btn-sm btn-outline-secondary" id="facSearchResetBtn" title="검색 초기화 후 프로젝트 전체 시설물 목록 표시">검색 초기화</button>
 						</div>
@@ -725,6 +810,12 @@
 						</div>
 						<div id="routeDestSuggest" class="route-suggest-list" style="display:none;"></div>
 						<button type="button" class="route-swap-btn" id="routeSwapBtn" title="출발지/도착지 바꾸기">⇅</button>
+					</div>
+
+					<div id="routeMapPickHint" class="route-map-pick-hint" style="display:none;" role="status" aria-live="polite">
+						<iconify-icon icon="tabler:map-pin" class="route-map-pick-hint-icon" aria-hidden="true"></iconify-icon>
+						<span id="routeMapPickHintText" class="route-map-pick-hint-text"></span>
+						<button type="button" class="btn btn-sm btn-link route-map-pick-cancel" id="routeMapPickCancelBtn">선택 취소</button>
 					</div>
 
 					<div class="route-action-row mt-2">
@@ -1018,6 +1109,7 @@
 			<div id="multiSelectToolbar" class="multi-select-toolbar" style="display:none;">
 				<span id="multiSelectCount" class="multi-select-count">0건 선택</span>
 				<button type="button" class="btn btn-sm btn-outline-secondary" id="multiSelectClearBtn">선택 해제</button>
+				<button type="button" class="btn btn-sm btn-success" id="multiSelectExportBtn" disabled title="엑셀·사진 ZIP">엑셀+사진 ZIP</button>
 				<button type="button" class="btn btn-sm btn-primary" id="multiSelectBulkChangeBtn" disabled>사업번호 일괄 변경</button>
 				<button type="button" class="btn btn-sm btn-outline-danger" id="multiSelectEndBtn">다중선택 종료</button>
 			</div>
@@ -1293,16 +1385,41 @@
 	<script src="<%=request.getContextPath()%>/assets/js/project-management.js?v=7"></script>
 
 	<script src="<%=request.getContextPath()%>/assets/js/app.js?v=2"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/map.js?v=20"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/map.js?v=24"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/wms-presets.js?v=2"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/sidebar-panels.js?v=10"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/ui.js?v=8"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/ui.js?v=15"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/list.js?v=2"></script>
 	<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js" crossorigin="anonymous"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/facility.js?v=110"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility.js?v=120"></script>
+	<% if (ndfHasDeepLink) { %>
+	<script>
+	(function () {
+		var d = window.__NDF_DEEP_LINK__;
+		if (!d || !d.code) return;
+		function openOnce() {
+			if (window.NewDbField && NewDbField.facility && NewDbField.facility.openFacilityByDeepLink) {
+				NewDbField.facility.openFacilityByDeepLink(d.code, d.project || "", d.lng || "", d.lat || "");
+				return true;
+			}
+			return false;
+		}
+		function schedule(attempt) {
+			if (openOnce()) return;
+			if (attempt < 40) setTimeout(function () { schedule(attempt + 1); }, 250);
+		}
+		if (document.readyState === "loading") {
+			document.addEventListener("DOMContentLoaded", function () { schedule(0); });
+		} else {
+			schedule(0);
+		}
+	})();
+	</script>
+	<% } %>
 	<script src="<%=request.getContextPath()%>/assets/js/facility-photo-import.js?v=2"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/project-filter.js?v=12"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/facility-search.js?v=12"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility-multi-select.js?v=5"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/project-list.js?v=8"></script>
 	<!-- JSZip, shpjs: SHP/ZIP → GeoJSON 변환 (브라우저) -->
 	<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
