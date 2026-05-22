@@ -8,6 +8,7 @@ import com.newdbfield.fac.FacFieldVO;
 import com.newdbfield.fac.FacService;
 import com.newdbfield.fac.FacServiceImpl;
 import com.newdbfield.util.ClientIpUtils;
+import com.newdbfield.util.FacExportSelectedUtil;
 import com.newdbfield.util.FacImportPhotosUtil;
 import com.newdbfield.util.FacImportPointsParser;
 import com.newdbfield.util.ProjectDeptAccessUtil;
@@ -44,6 +45,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -145,6 +147,9 @@ public class FacCommController extends HttpServlet {
 				case "/survey-report/export":
 					handleSurveyReportExport(req, resp);
 					return;
+				case "/open-link":
+					handleOpenLink(req, resp);
+					return;
 				default:
 					resp.sendError(404);
 			}
@@ -193,6 +198,9 @@ public class FacCommController extends HttpServlet {
 					return;
 				case "/bulk-project-code":
 					handleBulkProjectCode(req, resp);
+					return;
+				case "/export-selected":
+					handleExportSelected(req, resp);
 					return;
 				case "/group/comment":
 					handleUpdateGroupComment(req, resp);
@@ -1587,6 +1595,265 @@ public class FacCommController extends HttpServlet {
 				try { conn.close(); } catch (Exception ignore) {}
 			}
 		}
+	}
+
+	/**
+	 * POST /api/fac/export-selected
+	 * Body: { "codes": ["code1", ...] }
+	 * 선택 시설물의 엑셀(시설목록·사진 시트) + photos/ 폴더 ZIP 다운로드. 최대 500건.
+	 */
+	private void handleExportSelected(HttpServletRequest req, HttpServletResponse resp) throws Exception {
+		String body = readRequestBody(req);
+		List<String> codes = getJsonStringArray(body, "codes");
+		if (codes == null || codes.isEmpty()) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"codes 배열이 비어있습니다.\"}");
+			return;
+		}
+		if (codes.size() > 500) {
+			resp.setStatus(400);
+			writeJson(resp, "{\"success\":false,\"message\":\"한 번에 500건까지만 보낼 수 있습니다.\"}");
+			return;
+		}
+
+		UserInfo userInfo = getUserInfo(req);
+		if (userInfo == null || userInfo.userId == null || userInfo.userId.trim().isEmpty()) {
+			resp.setStatus(401);
+			writeJson(resp, "{\"success\":false,\"message\":\"로그인이 필요합니다.\"}");
+			return;
+		}
+
+		String dbUrl = getServletContext().getInitParameter("DB_URL");
+		String dbUser = getServletContext().getInitParameter("DB_USER");
+		String dbPassword = getServletContext().getInitParameter("DB_PASSWORD");
+		String dbViewUrl = getServletContext().getInitParameter("DB_VIEW_URL");
+		String dbViewUser = getServletContext().getInitParameter("DB_VIEW_USER");
+		String dbViewPassword = getServletContext().getInitParameter("DB_VIEW_PASSWORD");
+		if (dbUrl == null || dbUser == null) {
+			resp.setStatus(500);
+			writeJson(resp, "{\"success\":false,\"message\":\"DB 설정이 없습니다.\"}");
+			return;
+		}
+
+		List<String> allowedProjectCodes;
+		try {
+			allowedProjectCodes = getAllowedProjectCodes(req, dbUrl, dbUser, dbPassword, dbViewUrl, dbViewUser, dbViewPassword);
+		} catch (Exception e) {
+			System.err.println("[FacCommController] export-selected getAllowedProjectCodes: " + e.getMessage());
+			resp.setStatus(500);
+			writeJson(resp, "{\"success\":false,\"message\":\"권한 조회 중 오류가 발생했습니다.\"}");
+			return;
+		}
+		Set<String> allowedSet = allowedProjectCodes != null ? new HashSet<>(allowedProjectCodes) : Collections.emptySet();
+		Integer authority = getUserIdAuthority(req);
+		boolean adminAll = authority != null && authority == 1;
+
+		File uploadDir = (uploadBaseDir != null) ? uploadBaseDir : resolveUploadDir();
+		String baseUrl = buildAppBaseUrl(req);
+		Map<String, String> projectNameCache = new HashMap<>();
+
+		List<FacExportSelectedUtil.FacilityExportRow> exportRows = new ArrayList<>();
+		List<String> trimmedCodes = new ArrayList<>();
+		for (String c : codes) {
+			if (c != null && !c.trim().isEmpty()) {
+				trimmedCodes.add(c.trim());
+			}
+		}
+
+		Class.forName("org.postgresql.Driver");
+		try (Connection conn = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
+			for (String code : trimmedCodes) {
+				String projectCode = null;
+				Double lon = null;
+				Double lat = null;
+				String sql = "SELECT project_code, ST_X(ST_Transform(geometry, 4326)) AS lon, ST_Y(ST_Transform(geometry, 4326)) AS lat "
+						+ "FROM public.gis_a_layer WHERE code = ?";
+				try (PreparedStatement ps = conn.prepareStatement(sql)) {
+					ps.setString(1, code);
+					try (ResultSet rs = ps.executeQuery()) {
+						if (rs.next()) {
+							projectCode = rs.getString("project_code");
+							lon = rs.getDouble("lon");
+							lat = rs.getDouble("lat");
+							if (rs.wasNull()) lon = null;
+							if (rs.wasNull()) lat = null;
+						} else {
+							continue;
+						}
+					}
+				}
+				if (!adminAll && projectCode != null && !projectCode.trim().isEmpty()
+						&& !allowedSet.contains(projectCode.trim())) {
+					continue;
+				}
+				if (!adminAll && (projectCode == null || projectCode.trim().isEmpty())) {
+					continue;
+				}
+
+				FacExportSelectedUtil.FacilityExportRow row = new FacExportSelectedUtil.FacilityExportRow();
+				row.code = code;
+				row.projectCode = projectCode != null ? projectCode.trim() : "";
+				row.lon = lon;
+				row.lat = lat;
+				row.projectName = resolveProjectNameForExport(projectCode, projectNameCache, dbUrl, dbUser, dbPassword, dbViewUrl, dbViewUser, dbViewPassword);
+
+				List<FacFieldVO> fieldRows = service.listFieldItemsByCode(code);
+				LinkedHashMap<Integer, String> commentsByGroup = new LinkedHashMap<>();
+				Set<String> photoFiles = new LinkedHashSet<>();
+				for (FacFieldVO fr : fieldRows) {
+					int gidx = fr.getGroupIndex() == null ? 0 : fr.getGroupIndex();
+					if (fr.getSurvey() != null && !fr.getSurvey().trim().isEmpty()) {
+						commentsByGroup.put(gidx, fr.getSurvey().trim());
+					}
+					if (fr.getImage() != null && !fr.getImage().trim().isEmpty()) {
+						photoFiles.add(fr.getImage().trim());
+					}
+				}
+				StringBuilder commentSb = new StringBuilder();
+				for (String cm : commentsByGroup.values()) {
+					if (commentSb.length() > 0) commentSb.append(" | ");
+					commentSb.append(cm);
+				}
+				row.comments = commentSb.toString();
+
+				for (String img : photoFiles) {
+					FacExportSelectedUtil.PhotoExportEntry pe = new FacExportSelectedUtil.PhotoExportEntry();
+					pe.fileName = img;
+					pe.zipRelativePath = FacExportSelectedUtil.zipPhotoPath(code, img);
+					row.photos.add(pe);
+				}
+				exportRows.add(row);
+			}
+		}
+
+		if (exportRows.isEmpty()) {
+			resp.setStatus(404);
+			writeJson(resp, "{\"success\":false,\"message\":\"보낼 수 있는 시설물이 없습니다. 권한 또는 관리번호를 확인하세요.\"}");
+			return;
+		}
+
+		byte[] xlsxBytes = FacExportSelectedUtil.buildWorkbookBytes(exportRows, baseUrl);
+		String zipName = "시설물_선택보내기_" + exportRows.size() + "건.zip";
+		resp.setContentType("application/zip");
+		resp.setHeader("Content-Disposition", "attachment; filename=\"" + URLEncoder.encode(zipName, StandardCharsets.UTF_8.name()) + "\"");
+		String readme = "시설물 선택보내기 ZIP 사용 안내\r\n"
+				+ "1. 이 ZIP을 폴더에 모두 압축 해제하세요. (압축 풀린 폴더에서 xlsx를 여세요)\r\n"
+				+ "2. 사진(파일명) 클릭 → photos/ 사진 열림.\r\n"
+				+ "3. 상세링크(상세보기) 클릭 → links/ 안의 바로가기로 브라우저에서 시설물 상세 열림.\r\n"
+				+ "   - Tomcat(웹앱) 실행 및 로그인 필요. 주소는 http://서버/go/관리번호 형식입니다.\r\n";
+		try (ZipOutputStream zos = new ZipOutputStream(resp.getOutputStream())) {
+			zos.putNextEntry(new ZipEntry("README.txt"));
+			zos.write(readme.getBytes(StandardCharsets.UTF_8));
+			zos.closeEntry();
+			zos.putNextEntry(new ZipEntry("시설목록.xlsx"));
+			zos.write(xlsxBytes);
+			zos.closeEntry();
+
+			for (FacExportSelectedUtil.FacilityExportRow row : exportRows) {
+				String linkPath = FacExportSelectedUtil.zipDetailLinkPath(row.code);
+				byte[] shortcut = FacExportSelectedUtil.buildInternetShortcutBytes(baseUrl, row.code);
+				if (linkPath != null && shortcut.length > 0) {
+					zos.putNextEntry(new ZipEntry(linkPath));
+					zos.write(shortcut);
+					zos.closeEntry();
+				}
+				for (FacExportSelectedUtil.PhotoExportEntry pe : row.photos) {
+					File f = new File(uploadDir, pe.fileName);
+					if (!f.exists() || !f.isFile()) {
+						continue;
+					}
+					zos.putNextEntry(new ZipEntry(pe.zipRelativePath));
+					Files.copy(f.toPath(), zos);
+					zos.closeEntry();
+				}
+			}
+			zos.finish();
+		}
+	}
+
+	private String buildAppBaseUrl(HttpServletRequest req) {
+		String scheme = req.getScheme();
+		String host = req.getServerName();
+		int port = req.getServerPort();
+		String ctx = req.getContextPath() != null ? req.getContextPath() : "";
+		StringBuilder sb = new StringBuilder();
+		sb.append(scheme).append("://").append(host);
+		if (("http".equalsIgnoreCase(scheme) && port != 80) || ("https".equalsIgnoreCase(scheme) && port != 443)) {
+			sb.append(":").append(port);
+		}
+		sb.append(ctx);
+		return sb.toString();
+	}
+
+	/**
+	 * GET /api/fac/open-link?code=&project=&lng=&lat=
+	 * 엑셀 상세보기 링크용 — index.jsp#fac?… 로 리다이렉트 (쿼리스트링 누락 방지)
+	 */
+	private void handleOpenLink(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+		String code = req.getParameter("code");
+		if (code == null || code.trim().isEmpty()) {
+			resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "code required");
+			return;
+		}
+		String project = req.getParameter("project");
+		Double lng = parseOptionalDouble(req.getParameter("lng"));
+		Double lat = parseOptionalDouble(req.getParameter("lat"));
+		String lngStr = lng != null ? String.format("%.6f", lng) : null;
+		String latStr = lat != null ? String.format("%.6f", lat) : null;
+		com.newdbfield.util.FacDeepLinkCookieUtil.setCookieAndRedirectToIndex(req, resp, code, project, lngStr, latStr);
+	}
+
+	private static Double parseOptionalDouble(String s) {
+		if (s == null || s.trim().isEmpty()) {
+			return null;
+		}
+		try {
+			double v = Double.parseDouble(s.trim());
+			return Double.isFinite(v) ? v : null;
+		} catch (NumberFormatException e) {
+			return null;
+		}
+	}
+
+	private String resolveProjectNameForExport(String projectCode, Map<String, String> cache,
+			String dbUrl, String dbUser, String dbPassword,
+			String dbViewUrl, String dbViewUser, String dbViewPassword) {
+		if (projectCode == null || projectCode.trim().isEmpty()) {
+			return "";
+		}
+		String key = projectCode.trim();
+		if (cache.containsKey(key)) {
+			return cache.get(key);
+		}
+		String projectName = null;
+		try {
+			if (dbViewUrl != null && dbViewUser != null && dbViewPassword != null) {
+				Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
+				try (Connection msConn = DriverManager.getConnection(dbViewUrl, dbViewUser, dbViewPassword);
+					 PreparedStatement msPstmt = msConn.prepareStatement("SELECT CONT_NM FROM VIEW_PROJ_INFO WHERE CONT_NO = ?")) {
+					msPstmt.setString(1, key);
+					try (ResultSet msRs = msPstmt.executeQuery()) {
+						if (msRs.next()) projectName = msRs.getString("CONT_NM");
+					}
+				}
+			}
+			if (projectName == null && dbUrl != null && dbUser != null) {
+				Class.forName("org.postgresql.Driver");
+				try (Connection pgConn = DriverManager.getConnection(dbUrl, dbUser, dbPassword);
+					 PreparedStatement pstmt = pgConn.prepareStatement(
+							 "SELECT project_name FROM public.project WHERE project_code = ?")) {
+					pstmt.setString(1, key);
+					try (ResultSet rs = pstmt.executeQuery()) {
+						if (rs.next()) projectName = rs.getString("project_name");
+					}
+				}
+			}
+		} catch (Exception e) {
+			System.err.println("[FacCommController] resolveProjectNameForExport: " + e.getMessage());
+		}
+		String result = projectName != null ? projectName : "";
+		cache.put(key, result);
+		return result;
 	}
 
 	private Integer getUserIdAuthority(HttpServletRequest req) {

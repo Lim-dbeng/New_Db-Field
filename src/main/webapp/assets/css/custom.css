@@ -2338,8 +2338,60 @@ html, body { height: 100%; margin: 0; }
 	color: #475569;
 }
 .route-input-row.is-selecting {
-	background: rgba(37, 99, 235, 0.06);
+	background: rgba(0, 183, 165, 0.12);
 	border-radius: 6px;
+	outline: 2px solid rgba(0, 183, 165, 0.55);
+	outline-offset: 1px;
+}
+.route-section.is-map-picking .route-input-box {
+	border-color: #00b7a5;
+	box-shadow: 0 0 0 3px rgba(0, 183, 165, 0.18);
+}
+.route-pick-btn.is-armed {
+	background: #00b7a5 !important;
+	border-color: #00a896 !important;
+	color: #fff !important;
+	box-shadow: 0 0 0 3px rgba(0, 183, 165, 0.35);
+	animation: route-pick-btn-pulse 1.2s ease-in-out infinite;
+}
+@keyframes route-pick-btn-pulse {
+	0%, 100% { box-shadow: 0 0 0 3px rgba(0, 183, 165, 0.35); }
+	50% { box-shadow: 0 0 0 6px rgba(0, 183, 165, 0.2); }
+}
+.route-map-pick-hint {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 10px;
+	padding: 10px 12px;
+	border-radius: 8px;
+	background: linear-gradient(90deg, rgba(0, 183, 165, 0.14), rgba(37, 99, 235, 0.08));
+	border: 1px solid rgba(0, 183, 165, 0.45);
+	font-size: 12px;
+	color: #0f766e;
+	font-weight: 600;
+}
+.route-map-pick-hint-icon {
+	font-size: 18px;
+	color: #00b7a5;
+	flex-shrink: 0;
+}
+.route-map-pick-hint-text {
+	flex: 1;
+	min-width: 0;
+	line-height: 1.4;
+}
+.route-map-pick-cancel {
+	flex-shrink: 0;
+	font-size: 12px !important;
+	padding: 0 4px !important;
+	color: #64748b !important;
+	text-decoration: none !important;
+}
+body.route-map-pick-mode #map,
+body.route-map-pick-mode .map-container,
+body.route-map-pick-mode .ol-viewport {
+	cursor: crosshair !important;
 }
 .route-section .form-control.route-input {
 	background: #fff;
@@ -4825,6 +4877,25 @@ body.admin-mode .project-management-modal.project-modal-init-hidden { display: f
 	font-size: 13px;
 	color: #475569;
 	margin-right: 4px;
+}
+
+.multi-select-start-count {
+	display: inline-block;
+	min-width: 1.2em;
+	margin-left: 2px;
+	font-weight: 600;
+}
+
+#multiSelectStartBtn.active {
+	background: rgba(0, 183, 165, 0.12);
+	border-color: #00b7a5;
+	color: #00b7a5;
+}
+
+.fac-search-result-item--selected {
+	outline: 2px solid #00b7a5;
+	outline-offset: 2px;
+	background: rgba(0, 183, 165, 0.06);
 }
 
 /* 사업번호 일괄 변경 모달 */

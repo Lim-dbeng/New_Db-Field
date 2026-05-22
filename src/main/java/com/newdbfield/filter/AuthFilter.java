@@ -110,14 +110,29 @@ public class AuthFilter implements Filter {
 				// login.jsp가 아니면 로그인 페이지로 리다이렉트
 				if (!path.startsWith("/login.jsp")) {
 					if (DEBUG) System.out.println("[AuthFilter] Auto-login failed, redirecting to login.jsp. path=" + path);
-					resp.sendRedirect(contextPath + "/login.jsp");
+					String qs = req.getQueryString();
+					String returnTarget = path;
+					if (qs != null && !qs.isEmpty()) {
+						returnTarget = path + "?" + qs;
+					}
+					resp.sendRedirect(contextPath + "/login.jsp?returnUrl="
+							+ java.net.URLEncoder.encode(returnTarget, java.nio.charset.StandardCharsets.UTF_8.name()));
 					return;
 				}
 				// login.jsp면 그냥 통과 (로그인 폼 표시)
 				if (DEBUG) System.out.println("[AuthFilter] Auto-login failed, but path is login.jsp, allowing access. path=" + path);
 			} else {
-				// 자동로그인 성공 시 login.jsp면 메인으로 리다이렉트
+				// 자동로그인 성공 시 login.jsp면 returnUrl 또는 메인으로 리다이렉트
 				if (path.startsWith("/login.jsp")) {
+					String returnUrl = req.getParameter("returnUrl");
+					if (returnUrl != null) {
+						String r = returnUrl.trim();
+						if (r.startsWith(contextPath + "/") && r.indexOf("://") < 0) {
+							if (DEBUG) System.out.println("[AuthFilter] Auto-login success, redirecting to returnUrl. path=" + path);
+							resp.sendRedirect(r);
+							return;
+						}
+					}
 					if (DEBUG) System.out.println("[AuthFilter] Auto-login success, redirecting to /. path=" + path);
 					resp.sendRedirect(contextPath + "/");
 					return;

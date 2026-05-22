@@ -770,8 +770,39 @@
 		function setRoutePickingUi(role) {
 			var oRow = document.getElementById("routeOriginRow");
 			var dRow = document.getElementById("routeDestRow");
+			var oBtn = document.getElementById("routePickOriginBtn");
+			var dBtn = document.getElementById("routePickDestBtn");
+			var picking = role === "origin" || role === "destination";
 			if (oRow) oRow.classList.toggle("is-selecting", role === "origin");
 			if (dRow) dRow.classList.toggle("is-selecting", role === "destination");
+			if (oBtn) oBtn.classList.toggle("is-armed", role === "origin");
+			if (dBtn) dBtn.classList.toggle("is-armed", role === "destination");
+			if (!picking) {
+				if (oBtn) oBtn.classList.remove("is-armed");
+				if (dBtn) dBtn.classList.remove("is-armed");
+			}
+		}
+		function onRouteMapPickStart(role) {
+			var section = document.getElementById("routeSection");
+			var hint = document.getElementById("routeMapPickHint");
+			var hintText = document.getElementById("routeMapPickHintText");
+			setRoutePickingUi(role);
+			if (section) section.classList.add("is-map-picking");
+			document.body.classList.add("route-map-pick-mode");
+			if (hint) hint.style.display = "flex";
+			if (hintText) {
+				hintText.textContent = role === "destination"
+					? "지도에서 도착지를 클릭하세요. 시설물 포인트를 눌러도 됩니다."
+					: "지도에서 출발지를 클릭하세요. 시설물 포인트를 눌러도 됩니다.";
+			}
+		}
+		function onRouteMapPickEnd() {
+			var section = document.getElementById("routeSection");
+			var hint = document.getElementById("routeMapPickHint");
+			setRoutePickingUi(null);
+			if (section) section.classList.remove("is-map-picking");
+			document.body.classList.remove("route-map-pick-mode");
+			if (hint) hint.style.display = "none";
 		}
 		function pushRouteRecent(originText, destText, mode) {
 			try {
@@ -1107,6 +1138,26 @@
 		}
 		if (!window.NewDbField.routePanel) { window.NewDbField.routePanel = {}; }
 		window.NewDbField.routePanel.open = openRoutePanel;
+		window.NewDbField.routePanel.setPickingUi = setRoutePickingUi;
+		window.NewDbField.routePanel.onMapPickStart = onRouteMapPickStart;
+		window.NewDbField.routePanel.onMapPickEnd = onRouteMapPickEnd;
+		window.NewDbField.routePanel.onFacilityPickedForRoute = function (result) {
+			if (!result) return;
+			if (result.suggestNextRole) {
+				var nextInput = document.getElementById(
+					result.suggestNextRole === "origin" ? "routeOriginInput" : "routeDestInput"
+				);
+				if (nextInput) nextInput.focus();
+			}
+		};
+		var routeMapPickCancelBtn = document.getElementById("routeMapPickCancelBtn");
+		if (routeMapPickCancelBtn) {
+			routeMapPickCancelBtn.addEventListener("click", function () {
+				if (window.NewDbField && NewDbField.facility && NewDbField.facility.cancelRouteMapPick) {
+					NewDbField.facility.cancelRouteMapPick();
+				}
+			});
+		}
 
 		// 시설물 추가 버튼: 클릭 시 바로 추가 모드. 재클릭 시 추가 모드 해제.
 		var menuFacility = document.getElementById("menuFacility");
@@ -1746,26 +1797,86 @@
 
 		App.mapApi.init("vworld");
 		
-		// 딥링크 처리: ?code=xxx&project=yyy → 해당 포인트 자동 선택
-		var urlParams = new URLSearchParams(window.location.search);
-		var deepCode = urlParams.get("code");
-		var deepProject = urlParams.get("project");
+		// 딥링크: ?code= / #fac?code= / sessionStorage → 시설물 상세 패널
+		var deepLink = (function parseNdfDeepLinkParams() {
+			var code, project, lng, lat;
+			function fromParams(params) {
+				if (!params) return;
+				if (!code) code = params.get("code");
+				if (!project) project = params.get("project");
+				if (!lng) lng = params.get("lng");
+				if (!lat) lat = params.get("lat");
+			}
+			if (window.__NDF_DEEP_LINK__ && window.__NDF_DEEP_LINK__.code) {
+				code = window.__NDF_DEEP_LINK__.code;
+				project = window.__NDF_DEEP_LINK__.project || project;
+				lng = window.__NDF_DEEP_LINK__.lng || lng;
+				lat = window.__NDF_DEEP_LINK__.lat || lat;
+			}
+			fromParams(new URLSearchParams(window.location.search));
+			var hash = window.location.hash || "";
+			if (!code && hash.indexOf("#fac?") === 0) {
+				fromParams(new URLSearchParams(hash.substring(5)));
+			}
+			if (!code) {
+				try {
+					var pendingQ = sessionStorage.getItem("ndf_pending_deep_link");
+					if (pendingQ) {
+						var raw = pendingQ.trim();
+						if (raw.charAt(0) === "?") raw = raw.substring(1);
+						if (raw.indexOf("fac?") === 0) raw = raw.substring(4);
+						fromParams(new URLSearchParams(raw));
+					}
+				} catch (ePending) { /* ignore */ }
+			}
+			return { code: code, project: project, lng: lng, lat: lat };
+		})();
+		var deepCode = deepLink.code;
+		var deepProject = deepLink.project;
+		var deepLng = deepLink.lng;
+		var deepLat = deepLink.lat;
 		if (deepCode) {
-			setTimeout(function() {
-				if (window.ProjectFilter && window.ProjectFilter.setFilter && deepProject) {
-					window.ProjectFilter.setFilter(deepProject);
+			try {
+				deepCode = decodeURIComponent(deepCode);
+			} catch (eDec) { /* ignore */ }
+			if (deepProject) {
+				try {
+					deepProject = decodeURIComponent(deepProject);
+				} catch (eDec2) { /* ignore */ }
+			}
+			var deepCodeFinal = deepCode;
+			var deepProjectFinal = deepProject;
+			var deepLngFinal = deepLng;
+			var deepLatFinal = deepLat;
+
+			function tryOpenFacilityDeepLink(attempt) {
+				attempt = attempt || 0;
+				// menuFacilityInfo.click() → FacilitySearch.show()가 상세 패널을 닫으므로 호출하지 않음
+				if (window.NewDbField && NewDbField.facility && NewDbField.facility.openFacilityByDeepLink) {
+					NewDbField.facility.openFacilityByDeepLink(deepCodeFinal, deepProjectFinal, deepLngFinal, deepLatFinal);
+				} else if (window.NewDbField && NewDbField.facility && NewDbField.facility.selectFacilityByCode) {
+					NewDbField.facility.selectFacilityByCode(deepCodeFinal, true, 0, deepLngFinal, deepLatFinal);
 				}
-				setTimeout(function() {
-					if (window.NewDbField && window.NewDbField.facility && window.NewDbField.facility.selectFacilityByCode) {
-						window.NewDbField.facility.selectFacilityByCode(deepCode, false);
-					}
-					// URL에서 query 제거 (선택적, 새로고침 시 깨끗한 URL)
+				if (window.NewDbField && NewDbField.facility && NewDbField.facility.isDetailActiveForCode
+					&& NewDbField.facility.isDetailActiveForCode(deepCodeFinal)) {
+					try {
+						sessionStorage.removeItem("ndf_pending_deep_link");
+					} catch (eClr) { /* ignore */ }
 					if (window.history && window.history.replaceState) {
-						var cleanUrl = window.location.pathname + (window.location.hash || "");
-						window.history.replaceState({}, "", cleanUrl);
+						window.history.replaceState({}, "", window.location.pathname);
 					}
-				}, 1500);
-			}, 800);
+					return;
+				}
+				if (attempt < 24) {
+					setTimeout(function () {
+						tryOpenFacilityDeepLink(attempt + 1);
+					}, 500);
+				}
+			}
+
+			setTimeout(function () {
+				tryOpenFacilityDeepLink(0);
+			}, 200);
 		} else {
 			// 딥링크 없을 때만 마지막 조회한 시설물 좌표 복원 (새로고침 시)
 			setTimeout(function() {

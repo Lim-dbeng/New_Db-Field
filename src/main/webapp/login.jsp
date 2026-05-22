@@ -1,4 +1,16 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
+<%
+	String ctxPath = request.getContextPath();
+	String returnUrlParam = request.getParameter("returnUrl");
+	String afterLoginUrl = ctxPath + "/";
+	if (returnUrlParam != null) {
+		String r = returnUrlParam.trim();
+		if (r.startsWith(ctxPath + "/") && r.indexOf("://") < 0) {
+			afterLoginUrl = r;
+		}
+	}
+	String afterLoginUrlJs = afterLoginUrl.replace("\\", "\\\\").replace("\"", "\\\"");
+%>
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -250,6 +262,11 @@
 	<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 	<script src="<%=request.getContextPath()%>/assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 	<script>
+		var NDF_AFTER_LOGIN_URL = "<%=afterLoginUrlJs%>";
+		function ndfGoMainAfterLogin() {
+			window.location.href = NDF_AFTER_LOGIN_URL;
+		}
+
 		document.addEventListener("DOMContentLoaded", function() {
 			var loginForm = document.getElementById("loginForm");
 			var authenticatedUserId = null;
@@ -628,7 +645,7 @@
 						.then(function(data) {
 							if (data && data.success && data.projectFilter && data.projectFilter.trim() !== "") {
 								console.log("[login] DB project filter found, skipping modal:", data.projectFilter);
-								window.location.href = "/";
+								ndfGoMainAfterLogin();
 								return;
 							}
 							showProjectModal();
@@ -723,13 +740,13 @@
 							}
 						} else {
 							// 프로젝트가 없으면 바로 메인 페이지로 이동
-							window.location.href = "/";
+							ndfGoMainAfterLogin();
 						}
 					})
 					.catch(function(err) {
 						console.error("프로젝트 목록 로드 실패:", err);
 						// 오류 발생 시에도 메인 페이지로 이동
-						window.location.href = "/";
+						ndfGoMainAfterLogin();
 					});
 			}
 			
@@ -978,7 +995,7 @@
 								}
 							}
 
-							window.location.href = "/";
+							ndfGoMainAfterLogin();
 						})
 						.catch(function(error) {
 							console.error("[login] Failed to save selected project:", error);

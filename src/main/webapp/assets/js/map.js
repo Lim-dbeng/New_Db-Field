@@ -1329,6 +1329,7 @@
 		originText: "",
 		destText: "",
 		armRole: null,
+		mapPickActive: false,
 		googlePickListener: null,
 		olPickKey: null,
 		googleRouteHandles: [],
@@ -2106,6 +2107,22 @@
 		}
 	}
 
+	function routeRestoreFacilitySelect() {
+		if (window.NewDbField && NewDbField.facility && NewDbField.facility.attachFacilitySelectAfterRoutePick) {
+			NewDbField.facility.attachFacilitySelectAfterRoutePick();
+		} else if (window.NewDbField && NewDbField.facility && NewDbField.facility.setFacilitySelectInteractionActive) {
+			NewDbField.facility.setFacilitySelectInteractionActive(true);
+		}
+	}
+
+	function routeSuspendFacilitySelect() {
+		if (window.NewDbField && NewDbField.facility && NewDbField.facility.detachFacilitySelectForRoutePick) {
+			NewDbField.facility.detachFacilitySelectForRoutePick();
+		} else if (window.NewDbField && NewDbField.facility && NewDbField.facility.setFacilitySelectInteractionActive) {
+			NewDbField.facility.setFacilitySelectInteractionActive(false);
+		}
+	}
+
 	function cancelRoutePickInternal(skipClearArmRole) {
 		if (routeFlowState.googlePickListener && window.google && google.maps && google.maps.event) {
 			google.maps.event.removeListener(routeFlowState.googlePickListener);
@@ -2120,7 +2137,14 @@
 			} catch (eIgn) {}
 		}
 		routeFlowState.olPickKey = null;
-		if (!skipClearArmRole) routeFlowState.armRole = null;
+		if (!skipClearArmRole) {
+			routeFlowState.armRole = null;
+			routeFlowState.mapPickActive = false;
+			routeRestoreFacilitySelect();
+			if (window.NewDbField.routePanel && NewDbField.routePanel.onMapPickEnd) {
+				NewDbField.routePanel.onMapPickEnd();
+			}
+		}
 	}
 
 	function kakaoKeywordFirstCoord(placeText) {
@@ -2202,6 +2226,45 @@
 				routeFlowState.destination = null;
 			}
 		};
+		function routePickCoordAndTitleFromFeature(feature) {
+			if (!feature) return null;
+			var olLib = window.OL || window.ol;
+			var vals = feature.values_ || {};
+			var code = vals.code || vals.CODE || feature.get("code") || feature.get("CODE") || feature.getId() || "";
+			var lng;
+			var lat;
+			if (feature._lng != null && feature._lat != null) {
+				lng = parseFloat(feature._lng);
+				lat = parseFloat(feature._lat);
+			} else if (feature.getGeometry && olLib && olLib.proj) {
+				var geom = feature.getGeometry();
+				if (geom) {
+					var c = geom.getCoordinates();
+					if (c) {
+						var ll = olLib.proj.toLonLat(c);
+						lng = ll[0];
+						lat = ll[1];
+					}
+				}
+			}
+			if (!isFinite(lng) || !isFinite(lat)) return null;
+			var title = code ? String(code) : (lng.toFixed(5) + ", " + lat.toFixed(5));
+			return { lng: lng, lat: lat, title: title };
+		}
+
+		/** 길찾기 「지도 선택」 중 시설물 포인트 클릭 시 출발/도착으로만 반영 (상세 패널 열지 않음) */
+		F.tryRoutePickFromFacilityFeature = function (feature) {
+			var arm = routeFlowState.armRole;
+			if (!arm || !feature) return null;
+			var hit = routePickCoordAndTitleFromFeature(feature);
+			if (!hit) return null;
+			F.setRouteFlowPoint(arm, [hit.lng, hit.lat], hit.title);
+			return {
+				pickedRole: arm,
+				suggestNextRole: arm === "origin" ? "destination" : "origin"
+			};
+		};
+
 		F.setRouteFlowPoint = function (role, coord, title) {
 			cancelRoutePickInternal(false);
 			if (!coord || coord.length < 2) return;
@@ -2218,7 +2281,15 @@
 			var inp = document.getElementById(role === "origin" ? "routeOriginInput" : "routeDestInput");
 			if (inp && title) inp.value = title;
 			routeFlowState.armRole = null;
+			routeFlowState.mapPickActive = false;
+			if (window.NewDbField.routePanel && NewDbField.routePanel.onMapPickEnd) {
+				NewDbField.routePanel.onMapPickEnd();
+			}
 		};
+		F.isRouteMapPickActive = function () {
+			return !!(routeFlowState.mapPickActive || routeFlowState.armRole);
+		};
+
 		F.getRouteFlowState = function () {
 			return {
 				origin: routeFlowState.origin,
@@ -2227,6 +2298,10 @@
 				destText: routeFlowState.destText,
 				picking: routeFlowState.armRole
 			};
+		};
+
+		F.cancelRouteMapPick = function () {
+			cancelRoutePickInternal(false);
 		};
 		F.startRouteFlow = function () {
 			cancelRoutePickInternal(false);
@@ -2258,7 +2333,12 @@
 		};
 		F.armRouteFlowFor = function (role) {
 			cancelRoutePickInternal(true);
+			routeFlowState.mapPickActive = true;
 			routeFlowState.armRole = role || "origin";
+			routeSuspendFacilitySelect();
+			if (window.NewDbField.routePanel && NewDbField.routePanel.onMapPickStart) {
+				NewDbField.routePanel.onMapPickStart(routeFlowState.armRole);
+			}
 			if (App.state.provider === "google" && App.state.google && App.state.google.map && google.maps && google.maps.event) {
 				var gmap = App.state.google.map;
 				routeFlowState.googlePickListener = google.maps.event.addListenerOnce(gmap, "click", function (e) {
@@ -2281,10 +2361,36 @@
 						routeFlowState.olPickKey = null;
 					}
 					var arm = routeFlowState.armRole;
-					routeFlowState.armRole = null;
-					if (!arm || !evt.coordinate) return;
+					if (!arm || !evt.coordinate) {
+						routeFlowState.armRole = null;
+						routeRestoreFacilitySelect();
+						return;
+					}
+					var layerA = F.getLayerA ? F.getLayerA() : null;
+					var hitFeature = null;
+					if (layerA && s.map.forEachFeatureAtPixel) {
+						s.map.forEachFeatureAtPixel(evt.pixel, function (feat, layer) {
+							if (layer === layerA) {
+								hitFeature = feat;
+								return true;
+							}
+						}, { hitTolerance: 12, layerFilter: function (layer) { return layer === layerA; } });
+					}
+					if (hitFeature) {
+						var pickFromFeat = F.tryRoutePickFromFacilityFeature(hitFeature);
+						if (pickFromFeat && window.NewDbField.routePanel && NewDbField.routePanel.onFacilityPickedForRoute) {
+							NewDbField.routePanel.onFacilityPickedForRoute(pickFromFeat);
+						}
+						return;
+					}
 					var lonlat = olLib.proj.toLonLat(evt.coordinate);
 					F.setRouteFlowPoint(arm, lonlat, lonlat[0].toFixed(5) + ", " + lonlat[1].toFixed(5));
+					if (window.NewDbField.routePanel && NewDbField.routePanel.onFacilityPickedForRoute) {
+						NewDbField.routePanel.onFacilityPickedForRoute({
+							pickedRole: arm,
+							suggestNextRole: arm === "origin" ? "destination" : "origin"
+						});
+					}
 				});
 				return;
 			}

@@ -204,6 +204,16 @@
 		<url-pattern>/api/fac/*</url-pattern>
 	</servlet-mapping>
 
+	<!-- 엑셀 상세보기: /go/{관리번호} (쿼리스트링 없음) -->
+	<servlet>
+		<servlet-name>FacGoServlet</servlet-name>
+		<servlet-class>com.newdbfield.web.FacGoServlet</servlet-class>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>FacGoServlet</servlet-name>
+		<url-pattern>/go/*</url-pattern>
+	</servlet-mapping>
+
 	<!-- App init listener (reads DB config) -->
 	<listener>
 		<listener-class>com.newdbfield.core.AppInit</listener-class>
