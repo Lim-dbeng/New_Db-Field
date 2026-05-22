@@ -49,6 +49,13 @@
 		<param-name>DEFAULT_ZOOM</param-name>
 		<param-value>13</param-value>
 	</context-param>
+	<!-- ZIP 링크: 기본은 브라우저 접속 주소(clientBaseUrl). 프록시 등으로만 깨질 때 고정 URL 설정 -->
+	<!--
+	<context-param>
+		<param-name>APP_PUBLIC_BASE_URL</param-name>
+		<param-value>http://172.21.15.140:9091</param-value>
+	</context-param>
+	-->
 	<!-- 조사 보고서 HWP 파싱용 kordoc 루트 (dist/cli.js 포함). 미설정 시 환경변수 KORDOC_HOME 또는 웹앱 상위 kordoc 폴더를 시도 -->
 	<!--
 	<context-param>

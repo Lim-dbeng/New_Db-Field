@@ -1392,6 +1392,7 @@
 	<script src="<%=request.getContextPath()%>/assets/js/list.js?v=2"></script>
 	<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js" crossorigin="anonymous"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/facility.js?v=120"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility-photo-gps.js?v=3"></script>
 	<% if (ndfHasDeepLink) { %>
 	<script>
 	(function () {
@@ -1419,7 +1420,7 @@
 	<script src="<%=request.getContextPath()%>/assets/js/facility-photo-import.js?v=2"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/project-filter.js?v=12"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/facility-search.js?v=12"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/facility-multi-select.js?v=5"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility-multi-select.js?v=6"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/project-list.js?v=8"></script>
 	<!-- JSZip, shpjs: SHP/ZIP → GeoJSON 변환 (브라우저) -->
 	<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>

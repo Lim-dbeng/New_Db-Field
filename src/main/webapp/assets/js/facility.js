@@ -2294,6 +2294,9 @@
 			}
 		}
 		console.log("[facility.js] detailState.groups after apply:", detailState.groups);
+		if (window.NewDbField && NewDbField.photoGps && NewDbField.photoGps.refreshIfActive) {
+			NewDbField.photoGps.refreshIfActive(detailState.code || "");
+		}
 	}
 
 	function updatePhotoSliderCounterForTrack(track) {
@@ -4541,6 +4544,10 @@
 		setFacilityLayerVisible: setFacilityLayerVisible,
 		getSourceA: function() { return sourceA; },
 		getLayerA: function() { return layerA; },
+		getOlMap: function() {
+			var s = getOlState();
+			return s && s.map ? s.map : null;
+		},
 		getFacilitiesInView: getFacilitiesInView,
 		zoomMapToFacilities: zoomMapToFacilities,
 		fetchProjectFacilitiesForZoom: fetchProjectFacilitiesForZoom,
@@ -4594,8 +4601,13 @@
 	window.NewDbField.facility.detachSelectForMultiSelect = detachFacilitySelectForMultiSelect;
 	window.NewDbField.facility.attachSelectAfterMultiSelect = attachFacilitySelectAfterMultiSelect;
 	window.NewDbField.facility.getLayerA = function () { return layerA; };
+	window.NewDbField.facility.getOlMap = function () {
+		var s = getOlState();
+		return s && s.map ? s.map : null;
+	};
 
-	function ensureFacilityLayerInitialized(onReady) {
+	function ensureFacilityLayerInitialized(onReady, opts) {
+		var skipRefresh = opts && opts.skipRefresh === true;
 		var attempts = 0;
 		var maxAttempts = 40;
 		function tryInit() {
@@ -4619,7 +4631,7 @@
 				return;
 			}
 			if (layerA && sourceA && isLayerOnCurrentMap()) {
-				if (sourceA) {
+				if (sourceA && !skipRefresh) {
 					sourceA.refresh();
 				}
 				if (typeof onReady === "function") {
@@ -4632,7 +4644,9 @@
 			}
 			initFacilityLayer();
 			if (layerA && sourceA && isLayerOnCurrentMap()) {
-				sourceA.refresh();
+				if (sourceA && !skipRefresh) {
+					sourceA.refresh();
+				}
 				if (typeof onReady === "function") {
 					onReady();
 				}

@@ -471,6 +471,16 @@
 		}
 	}
 
+	function getClientPublicBaseUrl() {
+		var origin = window.location.origin || "";
+		var ctx = "";
+		if (document.body && document.body.getAttribute("data-context-path")) {
+			ctx = document.body.getAttribute("data-context-path");
+		}
+		var base = origin + (ctx || "");
+		return base.replace(/\/+$/, "");
+	}
+
 	function exportSelected() {
 		var codes = getSelectedCodes();
 		if (!codes.length) {
@@ -487,7 +497,10 @@
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			credentials: "include",
-			body: JSON.stringify({ codes: codes })
+			body: JSON.stringify({
+				codes: codes,
+				clientBaseUrl: getClientPublicBaseUrl()
+			})
 		})
 			.then(function (res) {
 				if (!res.ok) {

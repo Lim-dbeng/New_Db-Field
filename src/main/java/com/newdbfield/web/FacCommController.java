@@ -1649,7 +1649,8 @@ public class FacCommController extends HttpServlet {
 		boolean adminAll = authority != null && authority == 1;
 
 		File uploadDir = (uploadBaseDir != null) ? uploadBaseDir : resolveUploadDir();
-		String baseUrl = buildAppBaseUrl(req);
+		String clientBaseUrl = getJsonValue(body, "clientBaseUrl");
+		String baseUrl = com.newdbfield.util.AppBaseUrlUtil.resolvePublicBaseUrl(req, clientBaseUrl);
 		Map<String, String> projectNameCache = new HashMap<>();
 
 		List<FacExportSelectedUtil.FacilityExportRow> exportRows = new ArrayList<>();
@@ -1771,19 +1772,6 @@ public class FacCommController extends HttpServlet {
 		}
 	}
 
-	private String buildAppBaseUrl(HttpServletRequest req) {
-		String scheme = req.getScheme();
-		String host = req.getServerName();
-		int port = req.getServerPort();
-		String ctx = req.getContextPath() != null ? req.getContextPath() : "";
-		StringBuilder sb = new StringBuilder();
-		sb.append(scheme).append("://").append(host);
-		if (("http".equalsIgnoreCase(scheme) && port != 80) || ("https".equalsIgnoreCase(scheme) && port != 443)) {
-			sb.append(":").append(port);
-		}
-		sb.append(ctx);
-		return sb.toString();
-	}
 
 	/**
 	 * GET /api/fac/open-link?code=&project=&lng=&lat=
