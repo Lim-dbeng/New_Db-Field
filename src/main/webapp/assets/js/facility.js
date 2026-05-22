@@ -97,6 +97,7 @@
 		title: "",
 		lightbox: { groupIndex: 0, photoIndex: 0 },
 		fromSearch: false, // 검색 결과에서 선택되었는지 여부
+		keepListVisible: false, // true면 좌측 프로젝트 시설물 목록을 상세와 함께 표시
 		representativePhotoName: null // 대표사진 파일명
 	};
 
@@ -1228,7 +1229,7 @@
 	 * 현재 선택 사업의 전체 시설물 목록 갱신 (지도 이동과 무관).
 	 * 키워드 검색 결과 표시 중에는 건드리지 않음.
 	 */
-	function updateProjectFacilityList(forceReload) {
+	function updateProjectFacilityList(forceReload, projectCodeOverride) {
 		var facSearchSection = document.getElementById("facSearchSection");
 		if (!facSearchSection) {
 			return;
@@ -1254,7 +1255,8 @@
 			paginationEl.innerHTML = "";
 		}
 
-		var projectCode = getCurrentProjectCodeForMap();
+		var projectCode = (projectCodeOverride && String(projectCodeOverride).trim())
+			|| getCurrentProjectCodeForMap();
 		if (!projectCode) {
 			projectFacilityListCache = [];
 			projectFacilityListLoadedFor = "";
@@ -2141,10 +2143,25 @@
 			var itemCode = items[i].getAttribute("data-code");
 			if (code && itemCode === code) {
 				items[i].classList.add("is-selected");
+				items[i].scrollIntoView({ block: "nearest", behavior: "smooth" });
 			} else {
 				items[i].classList.remove("is-selected");
 			}
 		}
+	}
+
+	function setKeepFacilityListVisible(flag) {
+		detailState.keepListVisible = !!flag;
+	}
+
+	/** 사진 GPS·지도 선택 시 좌측 프로젝트 시설물 목록을 상세와 함께 표시 */
+	function showFacilityListWithDetail() {
+		var search = document.getElementById("facSearchSection");
+		if (search) {
+			search.classList.remove("fac-search-section--detail-only");
+		}
+		var pc = detailState.projectCode || getCurrentProjectCodeForMap() || "";
+		updateProjectFacilityList(true, pc || undefined);
 	}
 
 	function shouldOpenDetailStack() {
@@ -2294,9 +2311,6 @@
 			}
 		}
 		console.log("[facility.js] detailState.groups after apply:", detailState.groups);
-		if (window.NewDbField && NewDbField.photoGps && NewDbField.photoGps.refreshIfActive) {
-			NewDbField.photoGps.refreshIfActive(detailState.code || "");
-		}
 	}
 
 	function updatePhotoSliderCounterForTrack(track) {
@@ -2687,7 +2701,12 @@
 		} else {
 			ensureFacDetailEmbeddedInFacSearch();
 			if (facSearch) {
-				facSearch.classList.add("fac-search-section--detail-only");
+				if (detailState.keepListVisible) {
+					facSearch.classList.remove("fac-search-section--detail-only");
+					detailState.keepListVisible = false;
+				} else {
+					facSearch.classList.add("fac-search-section--detail-only");
+				}
 			}
 			activateFacilityInfoMenuForMapDetail();
 			if (sp && sp.closeDetailSidebar) {
@@ -4554,6 +4573,10 @@
 		selectFacilityByCode: selectFacilityByCode,
 		closePointPopup: closePointPopup,
 		updateProjectFacilityList: updateProjectFacilityList,
+		showFacilityListWithDetail: showFacilityListWithDetail,
+		setKeepFacilityListVisible: setKeepFacilityListVisible,
+		getDetailProjectCode: function () { return detailState.projectCode || ""; },
+		markProjectFacilitySelection: markFacSearchResultSelection,
 		updateVisibleFacilityCount: updateVisibleFacilityCount,
 		showToast: showFacilityToast,
 		setLoading: setFacilityLoading
@@ -4579,6 +4602,10 @@
 	window.NewDbField.facility.showFacModePanel = showFacModePanel;
 	window.NewDbField.facility.isAddModeActive = function () { return addModeActive; };
 	window.NewDbField.facility.updateProjectFacilityList = updateProjectFacilityList;
+	window.NewDbField.facility.showFacilityListWithDetail = showFacilityListWithDetail;
+	window.NewDbField.facility.setKeepFacilityListVisible = setKeepFacilityListVisible;
+	window.NewDbField.facility.getDetailProjectCode = function () { return detailState.projectCode || ""; };
+	window.NewDbField.facility.markProjectFacilitySelection = markFacSearchResultSelection;
 	window.NewDbField.facility.updateVisibleFacilityCount = updateVisibleFacilityCount;
 	window.NewDbField.facility.showToast = showFacilityToast;
 	window.NewDbField.facility.setLoading = setFacilityLoading;

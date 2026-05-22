@@ -1392,7 +1392,7 @@
 	<script src="<%=request.getContextPath()%>/assets/js/list.js?v=2"></script>
 	<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js" crossorigin="anonymous"></script>
 	<script src="<%=request.getContextPath()%>/assets/js/facility.js?v=120"></script>
-	<script src="<%=request.getContextPath()%>/assets/js/facility-photo-gps.js?v=3"></script>
+	<script src="<%=request.getContextPath()%>/assets/js/facility-photo-gps.js?v=9"></script>
 	<% if (ndfHasDeepLink) { %>
 	<script>
 	(function () {

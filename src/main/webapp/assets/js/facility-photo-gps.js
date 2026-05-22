@@ -42,11 +42,23 @@
 
 	var photoGpsBusy = false;
 
+	var photoGpsPauseMoveRefreshUntil = 0;
+
 	var PHOTO_GPS_MAX_CODES = 60;
+
+	var _linkOutlineStyle = null;
 
 	var _linkStyle = null;
 
+	var _pointHaloStyle = null;
+
 	var _pointStyle = null;
+
+	var PHOTO_GPS_LINK_COLOR = "rgba(0, 212, 255, 0.98)";
+
+	var PHOTO_GPS_DIR_COLOR = "rgba(255, 149, 0, 0.98)";
+
+	var PHOTO_GPS_OUTLINE = "rgba(0, 0, 0, 0.62)";
 
 
 
@@ -328,6 +340,30 @@
 
 	/** 화면에 보이는 관리번호 집합만 (좌표 반올림 제외 — 패닝 시 불필요 재조회 방지) */
 
+	function areAllEntriesRendered(entries) {
+
+		if (!entries || !entries.length) {
+
+			return false;
+
+		}
+
+		for (var i = 0; i < entries.length; i++) {
+
+			if (!photoGpsRenderedCodes.has(entries[i].code)) {
+
+				return false;
+
+			}
+
+		}
+
+		return true;
+
+	}
+
+
+
 	function buildExtentCodeSig(entries) {
 
 		var codes = entries.map(function (e) { return e.code; });
@@ -364,7 +400,73 @@
 
 
 
+	function addOutlinedLineStyles(styles, ol, coords, color, width) {
+
+		var geom = new ol.geom.LineString(coords);
+
+		styles.push(new ol.style.Style({
+
+			geometry: geom,
+
+			stroke: new ol.style.Stroke({
+
+				color: PHOTO_GPS_OUTLINE,
+
+				width: width + 5,
+
+				lineCap: "round",
+
+				lineJoin: "round"
+
+			})
+
+		}));
+
+		styles.push(new ol.style.Style({
+
+			geometry: geom,
+
+			stroke: new ol.style.Stroke({
+
+				color: color,
+
+				width: width,
+
+				lineCap: "round",
+
+				lineJoin: "round"
+
+			})
+
+		}));
+
+	}
+
+
+
 	function ensureStaticStyles(ol) {
+
+		if (!_linkOutlineStyle) {
+
+			_linkOutlineStyle = new ol.style.Style({
+
+				stroke: new ol.style.Stroke({
+
+					color: PHOTO_GPS_OUTLINE,
+
+					width: 5,
+
+					lineCap: "round",
+
+					lineJoin: "round",
+
+					lineDash: [10, 8]
+
+				})
+
+			});
+
+		}
 
 		if (!_linkStyle) {
 
@@ -372,11 +474,33 @@
 
 				stroke: new ol.style.Stroke({
 
-					color: "rgba(14, 165, 233, 0.65)",
+					color: PHOTO_GPS_LINK_COLOR,
 
-					width: 2,
+					width: 2.5,
 
-					lineDash: [6, 6]
+					lineCap: "round",
+
+					lineJoin: "round",
+
+					lineDash: [10, 8]
+
+				})
+
+			});
+
+		}
+
+		if (!_pointHaloStyle) {
+
+			_pointHaloStyle = new ol.style.Style({
+
+				image: new ol.style.Circle({
+
+					radius: 13,
+
+					fill: new ol.style.Fill({ color: "rgba(0, 0, 0, 0.5)" }),
+
+					stroke: new ol.style.Stroke({ color: "rgba(255, 255, 255, 0.95)", width: 3 })
 
 				})
 
@@ -390,11 +514,11 @@
 
 				image: new ol.style.Circle({
 
-					radius: 7,
+					radius: 9,
 
-					fill: new ol.style.Fill({ color: "rgba(14, 165, 233, 0.95)" }),
+					fill: new ol.style.Fill({ color: "#00d4ff" }),
 
-					stroke: new ol.style.Stroke({ color: "#ffffff", width: 2 })
+					stroke: new ol.style.Stroke({ color: "#ffffff", width: 3 })
 
 				})
 
@@ -416,55 +540,39 @@
 
 		var rad = (deg * Math.PI) / 180;
 
-		var len = 50;
+		var len = 58;
 
-		var tail = 7;
+		var end = [
 
-		var dx = Math.sin(rad) * len;
+			photoCoord[0] + Math.sin(rad) * len,
 
-		var dy = Math.cos(rad) * len;
-
-		var start = [photoCoord[0] - Math.sin(rad) * tail, photoCoord[1] - Math.cos(rad) * tail];
-
-		var end = [start[0] + dx, start[1] + dy];
-
-		var styles = [
-
-			new ol.style.Style({
-
-				geometry: new ol.geom.LineString([start, end]),
-
-				stroke: new ol.style.Stroke({ color: "rgba(2, 132, 199, 0.9)", width: 2, lineDash: [4, 3] })
-
-			})
+			photoCoord[1] + Math.cos(rad) * len
 
 		];
 
-		var headLen = 12;
+		var styles = [];
 
-		var spread = 0.45;
-
-		var bx = end[0] - Math.sin(rad) * headLen;
-
-		var by = end[1] - Math.cos(rad) * headLen;
-
-		var left = [bx + Math.sin(rad + spread) * headLen, by + Math.cos(rad + spread) * headLen];
-
-		var right = [bx + Math.sin(rad - spread) * headLen, by + Math.cos(rad - spread) * headLen];
+		addOutlinedLineStyles(styles, ol, [photoCoord, end], PHOTO_GPS_DIR_COLOR, 4);
 
 		styles.push(new ol.style.Style({
 
-			geometry: new ol.geom.LineString([end, left]),
+			geometry: new ol.geom.Point(end),
 
-			stroke: new ol.style.Stroke({ color: "rgba(2, 132, 199, 0.9)", width: 2 })
+			image: new ol.style.RegularShape({
 
-		}));
+				points: 3,
 
-		styles.push(new ol.style.Style({
+				radius: 14,
 
-			geometry: new ol.geom.LineString([end, right]),
+				rotation: rad,
 
-			stroke: new ol.style.Stroke({ color: "rgba(2, 132, 199, 0.9)", width: 2 })
+				rotateWithView: true,
+
+				fill: new ol.style.Fill({ color: PHOTO_GPS_DIR_COLOR }),
+
+				stroke: new ol.style.Stroke({ color: PHOTO_GPS_OUTLINE, width: 2.5 })
+
+			})
 
 		}));
 
@@ -626,13 +734,75 @@
 
 
 
-	function focusPhotoCard(facCode, photoUrl) {
+	function highlightProjectListWhenReady(facCode, attempt) {
 
-		if (window.NewDbField && NewDbField.facility && NewDbField.facility.selectFacilityByCode) {
+		var fac = window.NewDbField && NewDbField.facility;
 
-			NewDbField.facility.selectFacilityByCode(facCode, true);
+		if (!fac || !fac.markProjectFacilitySelection) {
+
+			return;
 
 		}
+
+		var listEl = document.getElementById("facSearchResultsList");
+
+		var item = listEl && listEl.querySelector(".fac-search-result-item[data-code=\"" + facCode + "\"]");
+
+		if (item) {
+
+			fac.markProjectFacilitySelection(facCode);
+
+			return;
+
+		}
+
+		if ((attempt || 0) < 30) {
+
+			setTimeout(function () {
+
+				highlightProjectListWhenReady(facCode, (attempt || 0) + 1);
+
+			}, 250);
+
+		}
+
+	}
+
+
+
+	function pausePhotoGpsMoveRefresh(ms) {
+
+		photoGpsPauseMoveRefreshUntil = Date.now() + (ms || 2500);
+
+	}
+
+
+
+	function focusPhotoCard(facCode, photoUrl) {
+
+		var fac = window.NewDbField && NewDbField.facility;
+
+		pausePhotoGpsMoveRefresh(2800);
+
+		if (fac && fac.setKeepFacilityListVisible) {
+
+			fac.setKeepFacilityListVisible(true);
+
+		}
+
+		if (fac && fac.selectFacilityByCode) {
+
+			fac.selectFacilityByCode(facCode, false);
+
+		}
+
+		if (fac && fac.showFacilityListWithDetail) {
+
+			fac.showFacilityListWithDetail();
+
+		}
+
+		highlightProjectListWhenReady(facCode, 0);
 
 		setTimeout(function () {
 
@@ -804,7 +974,7 @@
 
 
 
-		if (codeSig === photoGpsLastCodeSig && photoGpsRenderedCodes.size > 0) {
+		if (codeSig === photoGpsLastCodeSig && areAllEntriesRendered(entries)) {
 
 			return;
 
@@ -1046,6 +1216,12 @@
 
 			}
 
+			if (Date.now() < photoGpsPauseMoveRefreshUntil) {
+
+				return;
+
+			}
+
 			schedulePhotoGpsRefresh(1200, 0);
 
 		};
@@ -1110,7 +1286,7 @@
 
 				if (kind === "link") {
 
-					return _linkStyle;
+					return [_linkOutlineStyle, _linkStyle];
 
 				}
 
@@ -1122,15 +1298,15 @@
 
 					var extra = buildPhotoGpsDirectionStyles(dir, coord, ol);
 
+					var ptStyles = [_pointHaloStyle, _pointStyle];
+
 					if (extra.length) {
 
-						extra.push(_pointStyle);
-
-						return extra;
+						return extra.concat(ptStyles);
 
 					}
 
-					return _pointStyle;
+					return ptStyles;
 
 				}
 
@@ -1364,7 +1540,7 @@
 
 	window.NewDbField.photoGps = {
 
-		refreshIfActive: function (facilityCode) {
+		refreshIfActive: function (facilityCode, opts) {
 
 			if (!photoGpsEnabled) {
 
@@ -1376,7 +1552,13 @@
 
 				photoGpsRenderedCodes.delete(facilityCode);
 
-				removePhotoGpsFeaturesForCode(facilityCode);
+				if (opts && opts.clearFeatures) {
+
+					removePhotoGpsFeaturesForCode(facilityCode);
+
+				}
+
+				photoGpsLastCodeSig = "";
 
 			}
 
